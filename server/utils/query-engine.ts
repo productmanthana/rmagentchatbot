@@ -14374,7 +14374,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           /\bthose\s+(projects|clients|results|companies|states|records|items)/i,
           /\b(the\s+)?(above|previous|same)\s+(projects|clients|results|companies|states|records|items)/i,
           /\bfrom\s+(them|these|those|the\s+above|the\s+results|the\s+data)/i,
-          /\bin\s+(these|those|the\s+above|the\s+results)/i,
+          /\bin\s+(these|those|above|the\s+above|the\s+results)/i,
           /\btotal\s+(fee|value|revenue|cost)\s+from\s+(these|those|them)/i,
           /\bwhich\s+of\s+(this|these|those|them)\b/i,
           /\b(of\s+)?(this|these|those)\s+(are|is)\s+(most\s+)?(likely|probable)/i,
