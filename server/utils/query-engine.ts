@@ -14497,6 +14497,62 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
               delete classification.arguments.end_date;
               delete classification.arguments._date_already_applied;
               console.log(`[QueryEngine]   Removed date filters - PID filtering is sufficient`);
+            } else {
+              // NO PIDs FOUND - Try in-memory top/bottom sorting
+              console.log(`[QueryEngine]   ⚠️ No PIDs found in context data`);
+              
+              // Check for top/bottom X patterns
+              const topBottomPattern = /\b(top|bottom|highest|lowest|largest|smallest|first|last)\s*(\d+)?\b/i;
+              const topBottomMatch = topBottomPattern.exec(questionLower);
+              
+              if (topBottomMatch && contextForPids?.result_data?.length > 0) {
+                const direction = topBottomMatch[1].toLowerCase();
+                const isTop = ['top', 'highest', 'largest', 'first'].includes(direction);
+                const limit = topBottomMatch[2] ? parseInt(topBottomMatch[2]) : 10;
+                
+                console.log(`[QueryEngine]   🔄 IN-MEMORY ${isTop ? 'TOP' : 'BOTTOM'} ${limit} from ${contextForPids.result_data.length} results`);
+                
+                // Parse fee values
+                const parseNumeric = (val) => {
+                  if (typeof val === 'number') return val;
+                  if (!val) return 0;
+                  const str = String(val).replace(/[$,]/g, '');
+                  const num = parseFloat(str);
+                  return isNaN(num) ? 0 : num;
+                };
+                
+                // Sort by fee
+                const sortedData = [...contextForPids.result_data].sort((a, b) => {
+                  const feeA = parseNumeric(a.Fee);
+                  const feeB = parseNumeric(b.Fee);
+                  return isTop ? (feeB - feeA) : (feeA - feeB);
+                });
+                
+                // Take top/bottom N
+                const limitedData = sortedData.slice(0, limit);
+                
+                // Calculate summary stats
+                const summary = this.calculateSummaryStats(limitedData);
+                const chartConfig = this.generateChartConfig(limitedData, 'get_projects_by_context_sort');
+                
+                return {
+                  success: true,
+                  question: userQuestion,
+                  function_name: 'get_projects_by_context_sort',
+                  arguments: {
+                    sort_direction: isTop ? 'DESC' : 'ASC',
+                    limit: limit,
+                    source_count: contextForPids?.result_data?.length || 0,
+                  },
+                  data: limitedData,
+                  row_count: limitedData.length,
+                  summary,
+                  chart_config: chartConfig,
+                  message: `${isTop ? 'Top' : 'Bottom'} ${limitedData.length} projects by fee (from ${contextForPids.result_data.length} previous results)`,
+                  sql_query: `-- In-memory sort: ${isTop ? 'TOP' : 'BOTTOM'} ${limit} by Fee from ${contextForPids.result_data.length} previous results`,
+                  sql_params: [],
+                };
+              }
             }
           }
           
