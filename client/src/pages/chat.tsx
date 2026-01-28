@@ -3522,6 +3522,18 @@ export default function ChatPage() {
                 </Button>
               </Link>
             )}
+            {isSuperadmin && (
+              <Link href="/integration">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10"
+                  data-testid="button-integration"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Integration
+                </Button>
+              </Link>
+            )}
             <Link href="/help">
               <Button
                 variant="ghost"
