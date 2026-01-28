@@ -252,6 +252,20 @@ export async function setupAuth(app: Express) {
         return res.status(401).json({ message: "Not authenticated" });
       }
 
+      // Check if this is an embed session
+      if ((req.session as any).isEmbed) {
+        const embedId = (req.session as any).embedId;
+        const embedRole = (req.session as any).embedRole || 'user';
+        return res.json({
+          id: `embed_${embedId}`,
+          email: req.session.userEmail || `embed@domain`,
+          firstName: 'Embed',
+          lastName: 'User',
+          role: embedRole,
+          isEmbed: true,
+        });
+      }
+
       // Find user in MS SQL
       const user = await mssqlStorage.getUserById(req.session.userId);
 

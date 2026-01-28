@@ -1804,6 +1804,63 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Create embed session (public - creates a session for embed users)
+  app.post("/api/embed/session", async (req, res) => {
+    try {
+      const { embedId } = req.body;
+      
+      if (!embedId) {
+        return res.status(400).json({ error: "Embed ID required" });
+      }
+
+      const referer = req.headers.referer || req.headers.origin || "";
+      const link = await mssqlStorage.getEmbedLinkByEmbedId(embedId);
+      
+      if (!link) {
+        return res.status(404).json({ error: "Embed link not found" });
+      }
+
+      // Verify domain
+      let requestDomain = "";
+      try {
+        if (referer) {
+          const url = new URL(referer);
+          requestDomain = url.hostname.toLowerCase();
+        }
+      } catch {
+        requestDomain = "";
+      }
+
+      const allowedDomain = link.allowed_domain.toLowerCase();
+      const isAllowed = requestDomain === allowedDomain || 
+                        requestDomain.endsWith(`.${allowedDomain}`) ||
+                        allowedDomain === '*' ||
+                        process.env.NODE_ENV === 'development';
+
+      if (!isAllowed) {
+        return res.status(403).json({ error: "Domain not authorized" });
+      }
+
+      // Create embed session
+      if (req.session) {
+        req.session.userId = `embed_${embedId}`;
+        req.session.userEmail = `embed@${link.allowed_domain}`;
+        (req.session as any).embedId = embedId;
+        (req.session as any).embedRole = link.role;
+        (req.session as any).isEmbed = true;
+      }
+
+      res.json({ 
+        success: true, 
+        sessionId: `embed_${embedId}`,
+        role: link.role 
+      });
+    } catch (error: any) {
+      console.error("Error creating embed session:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Validate embed link (public - called by embed page)
   app.get("/api/embed/validate/:embedId", async (req, res) => {
     try {

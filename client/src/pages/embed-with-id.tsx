@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import { useParams } from "wouter";
 import ChatPage from "./chat";
 
@@ -9,13 +9,32 @@ interface EmbedValidation {
   error?: string;
 }
 
+interface EmbedContextType {
+  isEmbed: boolean;
+  embedId: string | null;
+  role: 'superadmin' | 'admin' | 'user' | null;
+  embedName: string | null;
+}
+
+export const EmbedContext = createContext<EmbedContextType>({
+  isEmbed: false,
+  embedId: null,
+  role: null,
+  embedName: null,
+});
+
+export function useEmbedContext() {
+  return useContext(EmbedContext);
+}
+
 export default function EmbedWithIdPage() {
   const params = useParams<{ embedId: string }>();
   const [validation, setValidation] = useState<EmbedValidation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionCreated, setSessionCreated] = useState(false);
 
   useEffect(() => {
-    async function validateEmbed() {
+    async function validateAndCreateSession() {
       if (!params.embedId) {
         setValidation({ valid: false, error: "No embed ID provided" });
         setLoading(false);
@@ -23,9 +42,29 @@ export default function EmbedWithIdPage() {
       }
 
       try {
-        const response = await fetch(`/api/embed/validate/${params.embedId}`);
-        const data = await response.json();
-        setValidation(data);
+        // First validate the embed link
+        const validateResponse = await fetch(`/api/embed/validate/${params.embedId}`);
+        const validateData = await validateResponse.json();
+        
+        if (!validateData.valid) {
+          setValidation(validateData);
+          setLoading(false);
+          return;
+        }
+
+        // Create an embed session on the server
+        const sessionResponse = await fetch(`/api/embed/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ embedId: params.embedId }),
+        });
+
+        if (sessionResponse.ok) {
+          setSessionCreated(true);
+        }
+
+        setValidation(validateData);
       } catch (error) {
         setValidation({ valid: false, error: "Failed to validate embed link" });
       } finally {
@@ -33,7 +72,7 @@ export default function EmbedWithIdPage() {
       }
     }
 
-    validateEmbed();
+    validateAndCreateSession();
   }, [params.embedId]);
 
   if (loading) {
@@ -66,9 +105,18 @@ export default function EmbedWithIdPage() {
     );
   }
 
+  const embedContext: EmbedContextType = {
+    isEmbed: true,
+    embedId: params.embedId || null,
+    role: validation.role || null,
+    embedName: validation.name || null,
+  };
+
   return (
-    <div className="h-screen w-full" data-embed-role={validation.role}>
-      <ChatPage />
-    </div>
+    <EmbedContext.Provider value={embedContext}>
+      <div className="h-screen w-full" data-embed-role={validation.role} data-embed-id={params.embedId}>
+        <ChatPage />
+      </div>
+    </EmbedContext.Provider>
   );
 }
