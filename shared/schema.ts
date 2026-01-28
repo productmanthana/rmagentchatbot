@@ -377,3 +377,37 @@ export interface ExternalDBConfig {
   ssl?: boolean;
   connectTimeout?: number;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// EMBED LINKS TABLE (Domain-Restricted Iframe Embedding)
+// ═══════════════════════════════════════════════════════════════
+
+export interface EmbedLink {
+  id: string;
+  embed_id: string;
+  role: UserRole;
+  allowed_domain: string;
+  name: string;
+  created_by: string;
+  created_by_email: string;
+  is_active: boolean;
+  created_at: Date;
+  last_used_at: Date | null;
+}
+
+export interface InsertEmbedLink {
+  embed_id: string;
+  role: UserRole;
+  allowed_domain: string;
+  name: string;
+  created_by: string;
+  created_by_email: string;
+}
+
+export const insertEmbedLinkSchema = z.object({
+  role: z.enum(USER_ROLES),
+  allowed_domain: z.string().min(1, "Domain is required"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+});
+
+export type InsertEmbedLinkInput = z.infer<typeof insertEmbedLinkSchema>;

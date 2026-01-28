@@ -5,13 +5,13 @@ import { QueryEngine } from "./utils/query-engine";
 import { OpenAIClient } from "./utils/openai-client";
 import { RAGVectorStore } from "./utils/rag-store";
 import { openaiQueue } from "./utils/request-queue";
-import { QueryRequestSchema, insertChatSchema, insertMessageSchema, AIAnalysisMessageSchema, updateMessageFAQSchema, insertErrorLogSchema } from "@shared/schema";
+import { QueryRequestSchema, insertChatSchema, insertMessageSchema, AIAnalysisMessageSchema, updateMessageFAQSchema, insertErrorLogSchema, insertEmbedLinkSchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import multer from "multer";
 import { unifiedStorage as chatStorage } from "./unified-storage";
 import { mssqlStorage } from "./mssql-storage";
-import { setupAuth, isAuthenticated, getUserId, getUserEmail } from "./simpleAuth";
+import { setupAuth, isAuthenticated, getUserId, getUserEmail, getUserRole } from "./simpleAuth";
 import * as XLSX from "xlsx";
 
 let queryEngine: QueryEngine | null = null;
@@ -1730,6 +1730,129 @@ Please provide a helpful analysis for the follow-up question.`,
         error: error.message,
         stack: error.stack
       });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // EMBED LINKS API (Domain-Restricted Iframe Embedding)
+  // ═══════════════════════════════════════════════════════════════
+
+  // List all embed links (superadmin only)
+  app.get("/api/embed-links", isAuthenticated, async (req, res) => {
+    try {
+      const role = await getUserRole(req);
+      if (role !== 'superadmin') {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+      const links = await mssqlStorage.listEmbedLinks();
+      res.json(links);
+    } catch (error: any) {
+      console.error("Error listing embed links:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new embed link (superadmin only)
+  app.post("/api/embed-links", isAuthenticated, async (req, res) => {
+    try {
+      const role = await getUserRole(req);
+      if (role !== 'superadmin') {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+
+      const validation = insertEmbedLinkSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+
+      const { role: linkRole, allowed_domain, name } = validation.data;
+      const userId = getUserId(req) || "unknown";
+      const userEmail = getUserEmail(req) || "unknown";
+
+      // Generate unique embed ID
+      const embedId = nanoid(16);
+
+      const link = await mssqlStorage.createEmbedLink({
+        embed_id: embedId,
+        role: linkRole,
+        allowed_domain: allowed_domain.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, ''),
+        name,
+        created_by: userId,
+        created_by_email: userEmail,
+      });
+
+      res.json(link);
+    } catch (error: any) {
+      console.error("Error creating embed link:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete embed link (superadmin only)
+  app.delete("/api/embed-links/:id", isAuthenticated, async (req, res) => {
+    try {
+      const role = await getUserRole(req);
+      if (role !== 'superadmin') {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+
+      await mssqlStorage.deleteEmbedLink(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting embed link:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Validate embed link (public - called by embed page)
+  app.get("/api/embed/validate/:embedId", async (req, res) => {
+    try {
+      const { embedId } = req.params;
+      const referer = req.headers.referer || req.headers.origin || "";
+      
+      const link = await mssqlStorage.getEmbedLinkByEmbedId(embedId);
+      
+      if (!link) {
+        return res.status(404).json({ valid: false, error: "Embed link not found or inactive" });
+      }
+
+      // Extract domain from referer
+      let requestDomain = "";
+      try {
+        if (referer) {
+          const url = new URL(referer);
+          requestDomain = url.hostname.toLowerCase();
+        }
+      } catch {
+        requestDomain = "";
+      }
+
+      // Check domain restriction
+      const allowedDomain = link.allowed_domain.toLowerCase();
+      const isAllowed = requestDomain === allowedDomain || 
+                        requestDomain.endsWith(`.${allowedDomain}`) ||
+                        allowedDomain === '*' ||
+                        process.env.NODE_ENV === 'development'; // Allow in dev
+
+      if (!isAllowed) {
+        console.log(`[Embed] Domain mismatch: ${requestDomain} vs allowed ${allowedDomain}`);
+        return res.status(403).json({ 
+          valid: false, 
+          error: "Domain not authorized for this embed link" 
+        });
+      }
+
+      // Update last used timestamp
+      await mssqlStorage.updateEmbedLinkLastUsed(embedId);
+
+      res.json({
+        valid: true,
+        role: link.role,
+        name: link.name,
+      });
+    } catch (error: any) {
+      console.error("Error validating embed link:", error);
+      res.status(500).json({ valid: false, error: error.message });
     }
   });
 

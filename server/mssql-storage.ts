@@ -4,7 +4,7 @@
  */
 
 import { getAppPool, queryAppDb } from './mssql-app-db';
-import type { Chat, Message, InsertChat, InsertMessage, User, UpsertUser, UpdateMessageFAQ, FAQSampleQuestion, ErrorLog, InsertErrorLog, UpdateErrorLog } from '@shared/schema';
+import type { Chat, Message, InsertChat, InsertMessage, User, UpsertUser, UpdateMessageFAQ, FAQSampleQuestion, ErrorLog, InsertErrorLog, UpdateErrorLog, EmbedLink, InsertEmbedLink } from '@shared/schema';
 
 // Helper to generate UUID
 function generateId(): string {
@@ -619,6 +619,123 @@ export class MssqlStorage {
         }
       }
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EMBED LINKS OPERATIONS (Domain-Restricted Iframe Embedding)
+  // ═══════════════════════════════════════════════════════════════
+
+  async ensureEmbedLinksTable(): Promise<void> {
+    const pool = this.ensurePool();
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='embed_links' AND xtype='U')
+      CREATE TABLE embed_links (
+        id VARCHAR(255) PRIMARY KEY,
+        embed_id VARCHAR(255) NOT NULL UNIQUE,
+        role VARCHAR(50) NOT NULL,
+        allowed_domain VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        created_by VARCHAR(255) NOT NULL,
+        created_by_email VARCHAR(255) NOT NULL,
+        is_active BIT DEFAULT 1,
+        created_at DATETIME2 DEFAULT GETUTCDATE(),
+        last_used_at DATETIME2 NULL
+      )
+    `);
+  }
+
+  async listEmbedLinks(): Promise<EmbedLink[]> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedLinksTable();
+    const result = await pool.request().query(`
+      SELECT id, embed_id, role, allowed_domain, name, created_by, created_by_email, 
+             is_active, created_at, last_used_at
+      FROM embed_links
+      ORDER BY created_at DESC
+    `);
+    return result.recordset.map(this.mapEmbedLink);
+  }
+
+  async getEmbedLinkByEmbedId(embedId: string): Promise<EmbedLink | null> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedLinksTable();
+    const result = await pool.request()
+      .input('embedId', embedId)
+      .query(`
+        SELECT TOP 1 id, embed_id, role, allowed_domain, name, created_by, created_by_email,
+               is_active, created_at, last_used_at
+        FROM embed_links
+        WHERE embed_id = @embedId AND is_active = 1
+      `);
+    return result.recordset[0] ? this.mapEmbedLink(result.recordset[0]) : null;
+  }
+
+  async createEmbedLink(link: InsertEmbedLink): Promise<EmbedLink> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedLinksTable();
+    const id = generateId();
+    const now = new Date();
+    await pool.request()
+      .input('id', id)
+      .input('embed_id', link.embed_id)
+      .input('role', link.role)
+      .input('allowed_domain', link.allowed_domain)
+      .input('name', link.name)
+      .input('created_by', link.created_by)
+      .input('created_by_email', link.created_by_email)
+      .input('created_at', now)
+      .query(`
+        INSERT INTO embed_links (id, embed_id, role, allowed_domain, name, created_by, created_by_email, is_active, created_at)
+        VALUES (@id, @embed_id, @role, @allowed_domain, @name, @created_by, @created_by_email, 1, @created_at)
+      `);
+    
+    return {
+      id,
+      embed_id: link.embed_id,
+      role: link.role as any,
+      allowed_domain: link.allowed_domain,
+      name: link.name,
+      created_by: link.created_by,
+      created_by_email: link.created_by_email,
+      is_active: true,
+      created_at: now,
+      last_used_at: null,
+    };
+  }
+
+  async deleteEmbedLink(id: string): Promise<void> {
+    const pool = this.ensurePool();
+    await pool.request()
+      .input('id', id)
+      .query('DELETE FROM embed_links WHERE id = @id');
+  }
+
+  async updateEmbedLinkLastUsed(embedId: string): Promise<void> {
+    const pool = this.ensurePool();
+    const now = new Date();
+    await pool.request()
+      .input('embedId', embedId)
+      .input('now', now)
+      .query(`
+        UPDATE embed_links
+        SET last_used_at = @now
+        WHERE embed_id = @embedId
+      `);
+  }
+
+  private mapEmbedLink(row: any): EmbedLink {
+    return {
+      id: row.id,
+      embed_id: row.embed_id,
+      role: row.role,
+      allowed_domain: row.allowed_domain,
+      name: row.name,
+      created_by: row.created_by,
+      created_by_email: row.created_by_email,
+      is_active: row.is_active === true || row.is_active === 1,
+      created_at: new Date(row.created_at),
+      last_used_at: row.last_used_at ? new Date(row.last_used_at) : null,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════
