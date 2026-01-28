@@ -15,6 +15,7 @@ import { setupAuth, isAuthenticated, getUserId, getUserEmail, getUserRole, embed
 import * as XLSX from "xlsx";
 import { generateIntegrationPDF } from "./generate-pdf";
 import { generateTechnicalArchitecturePDF } from "./generate-tech-pdf";
+import { generateTechnicalArchitectureDOCX } from "./generate-tech-docx";
 
 let queryEngine: QueryEngine | null = null;
 let ragStore: RAGVectorStore | null = null;
@@ -1355,6 +1356,19 @@ Please provide a helpful analysis for the follow-up question.`,
     } catch (error: any) {
       console.error("Error generating PDF:", error);
       res.status(500).json({ error: "Failed to generate PDF" });
+    }
+  });
+
+  app.get("/api/download/technical-architecture.docx", async (req, res) => {
+    try {
+      const docxBuffer = await generateTechnicalArchitectureDOCX();
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', 'attachment; filename="RMOne-Technical-Architecture.docx"');
+      res.setHeader('Content-Length', docxBuffer.length);
+      res.send(docxBuffer);
+    } catch (error: any) {
+      console.error("Error generating DOCX:", error);
+      res.status(500).json({ error: "Failed to generate Word document" });
     }
   });
 
