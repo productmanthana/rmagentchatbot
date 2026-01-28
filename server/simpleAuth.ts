@@ -308,6 +308,15 @@ export async function setupAuth(app: Express) {
   // Check if current user is admin
   app.get("/api/admin/check", async (req, res) => {
     try {
+      // First check for embed token (works without cookies)
+      const embedCheck = checkEmbedToken(req);
+      if (embedCheck.valid) {
+        // For embed users, check if their role is admin or superadmin
+        const embedRole = embedCheck.role || 'user';
+        const isEmbedAdmin = embedRole === 'admin' || embedRole === 'superadmin';
+        return res.json({ isAdmin: isEmbedAdmin });
+      }
+      
       if (!req.session.userId) {
         return res.status(401).json({ isAdmin: false });
       }
