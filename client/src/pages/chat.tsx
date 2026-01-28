@@ -1806,6 +1806,8 @@ export default function ChatPage() {
   const isAdminOrAbove = userRole === 'superadmin' || userRole === 'admin';
   const canViewQueryLogs = isAdminOrAbove; // Superadmin sees all logs, admin sees only their own logs
   const canViewLogsTab = isAdminOrAbove; // Superadmin and admin can see Logs tab
+  const canManageFAQ = isAdminOrAbove; // Superadmin and admin can add/edit FAQ samples
+  const canEditChat = isAdminOrAbove; // Superadmin and admin can edit chat titles
   
   // Fetch hidden FAQs from server (persisted per-user in database)
   const { data: hiddenFaqsData } = useQuery<{ success: boolean; data: string[] }>({
@@ -3499,7 +3501,7 @@ export default function ChatPage() {
                       </p>
                     </div>
                     <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {canViewLogsTab && (
+                      {canEditChat && (
                         <Button
                           size="icon"
                           variant="ghost"
@@ -3790,20 +3792,22 @@ export default function ChatPage() {
                                 +{message.aiAnalysisMessages?.filter(m => m.type === "user").length} follow-ups
                               </span>
                             )}
-                            {/* FAQ Edit Button - appears on hover */}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/20 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenFaqDialog(message.id);
-                              }}
-                              title="Mark as FAQ sample"
-                              data-testid={`button-faq-edit-${message.id}`}
-                            >
-                              <Star className="h-3.5 w-3.5" />
-                            </Button>
+                            {/* FAQ Edit Button - appears on hover (only for admin/superadmin) */}
+                            {canManageFAQ && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/20 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenFaqDialog(message.id);
+                                }}
+                                title="Mark as FAQ sample"
+                                data-testid={`button-faq-edit-${message.id}`}
+                              >
+                                <Star className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                           <p className="text-sm text-white" data-testid={`text-bot-message-${message.id}`}>
                             {message.response?.question || message.originalQuestion || message.content}
@@ -5210,25 +5214,27 @@ export default function ChatPage() {
                       <p className="text-sm text-[#374151] line-clamp-2">{chatSettingsMessageContent}</p>
                     </div>
                     
-                    {/* Mark as FAQ Checkbox */}
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="chat-settings-is-faq"
-                        checked={chatSettingsIsFaq}
-                        onCheckedChange={(checked) => setChatSettingsIsFaq(checked === true)}
-                        className="border-[#D1D5DB] data-[state=checked]:bg-[#8BC34A] data-[state=checked]:border-[#8BC34A]"
-                        data-testid="checkbox-chat-settings-faq"
-                      />
-                      <Label 
-                        htmlFor="chat-settings-is-faq" 
-                        className="text-sm font-medium text-[#374151] cursor-pointer"
-                      >
-                        Mark as FAQ sample (show on home page)
-                      </Label>
-                    </div>
+                    {/* Mark as FAQ Checkbox - only for admin/superadmin */}
+                    {canManageFAQ && (
+                      <div className="flex items-center space-x-3">
+                        <Checkbox
+                          id="chat-settings-is-faq"
+                          checked={chatSettingsIsFaq}
+                          onCheckedChange={(checked) => setChatSettingsIsFaq(checked === true)}
+                          className="border-[#D1D5DB] data-[state=checked]:bg-[#8BC34A] data-[state=checked]:border-[#8BC34A]"
+                          data-testid="checkbox-chat-settings-faq"
+                        />
+                        <Label 
+                          htmlFor="chat-settings-is-faq" 
+                          className="text-sm font-medium text-[#374151] cursor-pointer"
+                        >
+                          Mark as FAQ sample (show on home page)
+                        </Label>
+                      </div>
+                    )}
                     
-                    {/* Category Selector - Combobox with create new option */}
-                    {chatSettingsIsFaq && (
+                    {/* Category Selector - Combobox with create new option (only for admin/superadmin) */}
+                    {canManageFAQ && chatSettingsIsFaq && (
                       <div className="space-y-2 pl-6">
                         <Label className="text-sm font-medium text-[#374151]">
                           Category <span className="text-red-500">*</span>
