@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RMOne AI Agents - Embed Integration Architecture</title>
+  <style>
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none; }
+      .page-break { page-break-before: always; }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1f2937; background: #fff; padding: 40px; max-width: 900px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #2563eb; }
+    .logo { font-size: 28px; font-weight: bold; color: #2563eb; margin-bottom: 5px; }
+    .title { font-size: 24px; color: #1f2937; margin-bottom: 10px; }
+    .subtitle { font-size: 14px; color: #6b7280; }
+    .version { display: inline-block; background: #dbeafe; color: #1d4ed8; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 10px; }
+    h2 { color: #1e40af; font-size: 20px; margin: 30px 0 15px; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
+    h3 { color: #374151; font-size: 16px; margin: 20px 0 10px; }
+    p { margin-bottom: 12px; color: #4b5563; }
+    ul, ol { margin: 10px 0 15px 25px; color: #4b5563; }
+    li { margin-bottom: 8px; }
+    .highlight-box { background: #f0f9ff; border-left: 4px solid #2563eb; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+    .highlight-box.success { background: #f0fdf4; border-color: #16a34a; }
+    .highlight-box.warning { background: #fffbeb; border-color: #f59e0b; }
+    .code-block { background: #1f2937; color: #e5e7eb; padding: 15px 20px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 13px; overflow-x: auto; margin: 15px 0; white-space: pre-wrap; }
+    .architecture-diagram { background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 20px 0; text-align: center; }
+    .flow-step { display: inline-block; background: #2563eb; color: white; padding: 10px 20px; border-radius: 8px; margin: 5px; font-weight: 500; }
+    .flow-arrow { color: #9ca3af; font-size: 24px; margin: 0 10px; }
+    .role-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .role-table th, .role-table td { border: 1px solid #e5e7eb; padding: 12px 15px; text-align: left; }
+    .role-table th { background: #f3f4f6; color: #374151; font-weight: 600; }
+    .role-table tr:nth-child(even) { background: #f9fafb; }
+    .check { color: #16a34a; font-weight: bold; }
+    .cross { color: #dc2626; font-weight: bold; }
+    .step-box { display: flex; align-items: flex-start; margin: 15px 0; padding: 15px; background: #f9fafb; border-radius: 8px; }
+    .step-number { background: #2563eb; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0; }
+    .step-content { flex: 1; }
+    .footer { margin-top: 50px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px; }
+    .download-btn { display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 20px 0; cursor: pointer; border: none; font-size: 16px; }
+    .download-btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="text-align: center; margin-bottom: 30px;">
+    <button class="download-btn" onclick="window.print()">Download as PDF</button>
+    <p style="color: #6b7280; font-size: 13px;">Click the button above, then select "Save as PDF" in your print dialog</p>
+  </div>
+
+  <div class="header">
+    <div class="logo">RMOne AI Agents</div>
+    <div class="title">Embed Integration Architecture Guide</div>
+    <div class="subtitle">External Website Integration Documentation</div>
+    <div class="version">Version 2.0 | January 2026</div>
+  </div>
+
+  <h2>1. Executive Summary</h2>
+  <p>RMOne AI Agents provides a powerful <strong>one-click embed solution</strong> that allows external websites to integrate the AI-powered project query chatbot seamlessly. This document outlines the architecture, security model, and implementation approach for embedding the chatbot on client portals like rmone.com.</p>
+  
+  <div class="highlight-box success">
+    <strong>Key Benefits:</strong>
+    <ul style="margin-top: 10px;">
+      <li>One-click embed generation with unique secure tokens</li>
+      <li>Domain-restricted access with automatic subdomain support</li>
+      <li>Role-based permissions (Superadmin, Admin, User)</li>
+      <li>Token-based authentication (works in all browsers, including Safari)</li>
+      <li>No cookies required - iframe compatible</li>
+    </ul>
+  </div>
+
+  <h2>2. Architecture Overview</h2>
+  
+  <div class="architecture-diagram">
+    <div style="margin-bottom: 20px; font-weight: 600; color: #374151;">Embed Authentication Flow</div>
+    <div class="flow-step">Client Website</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Embed URL</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Token Validation</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Role Assignment</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Chat Interface</div>
+  </div>
+
+  <h3>2.1 Component Overview</h3>
+  <ul>
+    <li><strong>Integration Management Page:</strong> Admin interface to create/manage embed links</li>
+    <li><strong>Embed Token System:</strong> Secure 16-character unique identifiers per embed</li>
+    <li><strong>Domain Validator:</strong> Restricts embed usage to authorized domains</li>
+    <li><strong>Role-Based Access Control:</strong> Three permission levels with granular access</li>
+    <li><strong>Session Management:</strong> Isolated chat history per embed instance</li>
+  </ul>
+
+  <h2>3. How It Works</h2>
+
+  <div class="step-box">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <strong>Create Embed Link</strong>
+      <p>Admin navigates to Integration page and creates a new embed link with name, role, and allowed domain.</p>
+    </div>
+  </div>
+
+  <div class="step-box">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <strong>Configure Domain</strong>
+      <p>Specify the allowed domain (e.g., <code>rmone.com</code>). All subdomains are automatically included (e.g., <code>portal.rmone.com</code>, <code>app.rmone.com</code>).</p>
+    </div>
+  </div>
+
+  <div class="step-box">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <strong>Select Role</strong>
+      <p>Choose permission level: Superadmin (full access), Admin (logs + FAQ), or User (chat only).</p>
+    </div>
+  </div>
+
+  <div class="step-box">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <strong>Copy & Embed</strong>
+      <p>Copy the generated iframe code and paste into your website. That's it!</p>
+    </div>
+  </div>
+
+  <h2>4. Role-Based Permissions</h2>
+
+  <table class="role-table">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>Superadmin</th>
+        <th>Admin</th>
+        <th>User</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Chat with AI</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+      </tr>
+      <tr>
+        <td>View Chat History</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+      </tr>
+      <tr>
+        <td>Query Logs Access</td>
+        <td class="check">✓ All logs</td>
+        <td class="check">✓ Own logs</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>FAQ Management</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>Edit Chat Titles</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>Integration Management</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Security Features</h2>
+
+  <div class="highlight-box">
+    <strong>Token-Based Authentication</strong>
+    <p style="margin-top: 10px;">Unlike traditional cookie-based auth, embed uses secure tokens sent via HTTP headers. This bypasses third-party cookie restrictions in modern browsers (Safari, Chrome) making it iframe-compatible.</p>
+  </div>
+
+  <ul>
+    <li><strong>Domain Validation:</strong> Embeds only work on authorized domains</li>
+    <li><strong>Unique Tokens:</strong> Each embed has a cryptographically secure 16-character ID</li>
+    <li><strong>Isolated Sessions:</strong> Each embed instance has separate chat history</li>
+    <li><strong>No Cookie Dependency:</strong> Works reliably in all iframe scenarios</li>
+    <li><strong>Audit Trail:</strong> Last-used timestamps tracked for each embed</li>
+  </ul>
+
+  <h2 class="page-break">6. Implementation Example</h2>
+
+  <h3>6.1 Basic Embed (Full Page)</h3>
+  <div class="code-block">&lt;iframe 
+  src="https://rmchat.vyaasai.com/embed/[EMBED_ID]" 
+  width="100%" 
+  height="100%" 
+  frameborder="0" 
+  style="border: none;"&gt;
+&lt;/iframe&gt;</div>
+
+  <h3>6.2 Role-Based Embed (.NET/C# Example)</h3>
+  <div class="code-block">@if (User.IsInRole("Administrator"))
+{
+    // Admin embed - shows logs and FAQ management
+    &lt;iframe src="https://rmchat.vyaasai.com/embed/ADMIN_EMBED_ID" 
+            width="100%" height="100%" frameborder="0"&gt;&lt;/iframe&gt;
+}
+else
+{
+    // User embed - chat only
+    &lt;iframe src="https://rmchat.vyaasai.com/embed/USER_EMBED_ID" 
+            width="100%" height="100%" frameborder="0"&gt;&lt;/iframe&gt;
+}</div>
+
+  <h2>7. Domain Configuration</h2>
+
+  <div class="highlight-box warning">
+    <strong>Subdomain Support</strong>
+    <p style="margin-top: 10px;">When you set the allowed domain to <code>rmone.com</code>, the following are automatically allowed:</p>
+    <ul style="margin-top: 10px;">
+      <li><code>rmone.com</code> (exact match)</li>
+      <li><code>portal.rmone.com</code> (subdomain)</li>
+      <li><code>app.rmone.com</code> (subdomain)</li>
+      <li><code>staging.portal.rmone.com</code> (nested subdomain)</li>
+    </ul>
+  </div>
+
+  <h2>8. Quick Start Checklist</h2>
+  <ol>
+    <li>Login to RMOne AI Agents as Superadmin</li>
+    <li>Navigate to <strong>Integration</strong> page</li>
+    <li>Click <strong>"Create New Embed Link"</strong></li>
+    <li>Enter a descriptive name (e.g., "RMOne Portal - Admin")</li>
+    <li>Set the allowed domain (e.g., <code>rmone.com</code>)</li>
+    <li>Select the appropriate role</li>
+    <li>Click <strong>Create</strong></li>
+    <li>Copy the iframe code</li>
+    <li>Paste into your website HTML</li>
+    <li>Done! The chatbot is now embedded.</li>
+  </ol>
+
+  <h2>9. Technical Specifications</h2>
+  <table class="role-table">
+    <tr>
+      <td><strong>Authentication Method</strong></td>
+      <td>Token-based (X-Embed-Token header)</td>
+    </tr>
+    <tr>
+      <td><strong>Token Length</strong></td>
+      <td>16 characters (alphanumeric)</td>
+    </tr>
+    <tr>
+      <td><strong>Session Storage</strong></td>
+      <td>Browser sessionStorage (isolated per embed)</td>
+    </tr>
+    <tr>
+      <td><strong>Cookie Requirement</strong></td>
+      <td>None (iframe compatible)</td>
+    </tr>
+    <tr>
+      <td><strong>Browser Support</strong></td>
+      <td>All modern browsers including Safari</td>
+    </tr>
+    <tr>
+      <td><strong>Production URL</strong></td>
+      <td>https://rmchat.vyaasai.com</td>
+    </tr>
+  </table>
+
+  <div class="footer">
+    <p><strong>RMOne AI Agents</strong> - Natural Language Database Query System</p>
+    <p>Confidential - For Internal Use Only</p>
+    <p>Document Version 2.0 | January 2026</p>
+  </div>
+</body>
+</html>
