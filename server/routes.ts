@@ -14,6 +14,7 @@ import { mssqlStorage } from "./mssql-storage";
 import { setupAuth, isAuthenticated, getUserId, getUserEmail, getUserRole, embedTokenStore } from "./simpleAuth";
 import * as XLSX from "xlsx";
 import { generateIntegrationPDF } from "./generate-pdf";
+import { generateTechnicalArchitecturePDF } from "./generate-tech-pdf";
 
 let queryEngine: QueryEngine | null = null;
 let ragStore: RAGVectorStore | null = null;
@@ -1336,6 +1337,19 @@ Please provide a helpful analysis for the follow-up question.`,
       const pdfBuffer = await generateIntegrationPDF();
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'attachment; filename="RMOne-Embed-Integration-Guide.pdf"');
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Error generating PDF:", error);
+      res.status(500).json({ error: "Failed to generate PDF" });
+    }
+  });
+
+  app.get("/api/download/technical-architecture.pdf", async (req, res) => {
+    try {
+      const pdfBuffer = await generateTechnicalArchitecturePDF();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="RMOne-Technical-Architecture.pdf"');
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error: any) {
