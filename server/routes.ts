@@ -1807,42 +1807,30 @@ Please provide a helpful analysis for the follow-up question.`,
   // Create embed session (public - creates a session for embed users)
   app.post("/api/embed/session", async (req, res) => {
     try {
-      const { embedId } = req.body;
+      const { embedId, parentOrigin } = req.body;
       
       if (!embedId) {
         return res.status(400).json({ error: "Embed ID required" });
       }
 
-      const referer = req.headers.referer || req.headers.origin || "";
       const link = await mssqlStorage.getEmbedLinkByEmbedId(embedId);
       
       if (!link) {
         return res.status(404).json({ error: "Embed link not found" });
       }
 
-      // Verify domain - with fallback for missing headers
-      let requestDomain = "";
-      try {
-        if (referer) {
-          const url = new URL(referer);
-          requestDomain = url.hostname.toLowerCase();
-        }
-      } catch {
-        requestDomain = "";
-      }
-
+      // Use parentOrigin from request body (sent by client detecting iframe parent)
+      const requestDomain = (parentOrigin || '').toLowerCase();
       const allowedDomain = link.allowed_domain.toLowerCase();
-      // In development or if wildcard domain, always allow
-      // If Referer/Origin headers are missing (common in iframes), we allow since embed_id is required
-      // The embed_id itself acts as authentication token
+      
+      // Check domain restriction (same logic as validate endpoint)
       const isWildcard = allowedDomain === '*';
       const isDevelopment = process.env.NODE_ENV === 'development';
-      const domainMatches = requestDomain === allowedDomain || 
-                           requestDomain.endsWith(`.${allowedDomain}`);
-      const headersAbsent = !referer;
+      const isDirectAccess = !parentOrigin; // Not in an iframe
+      const exactMatch = requestDomain === allowedDomain;
+      const subdomainMatch = requestDomain.endsWith(`.${allowedDomain}`);
       
-      // Allow if: wildcard, development, domain matches, or headers missing (token-based auth via embedId)
-      const isAllowed = isWildcard || isDevelopment || domainMatches || headersAbsent;
+      const isAllowed = isWildcard || isDevelopment || isDirectAccess || exactMatch || subdomainMatch;
 
       if (!isAllowed) {
         return res.status(403).json({ error: "Domain not authorized" });
@@ -1884,10 +1872,11 @@ Please provide a helpful analysis for the follow-up question.`,
   });
 
   // Validate embed link (public - called by embed page)
-  app.get("/api/embed/validate/:embedId", async (req, res) => {
+  // Changed to POST to receive parentOrigin from client
+  app.post("/api/embed/validate/:embedId", async (req, res) => {
     try {
       const { embedId } = req.params;
-      const referer = req.headers.referer || req.headers.origin || "";
+      const { parentOrigin } = req.body || {};
       
       const link = await mssqlStorage.getEmbedLinkByEmbedId(embedId);
       
@@ -1895,23 +1884,24 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(404).json({ valid: false, error: "Embed link not found or inactive" });
       }
 
-      // Extract domain from referer
-      let requestDomain = "";
-      try {
-        if (referer) {
-          const url = new URL(referer);
-          requestDomain = url.hostname.toLowerCase();
-        }
-      } catch {
-        requestDomain = "";
-      }
-
-      // Check domain restriction
+      // Use parentOrigin from request body (sent by client detecting iframe parent)
+      const requestDomain = (parentOrigin || '').toLowerCase();
       const allowedDomain = link.allowed_domain.toLowerCase();
-      const isAllowed = requestDomain === allowedDomain || 
-                        requestDomain.endsWith(`.${allowedDomain}`) ||
-                        allowedDomain === '*' ||
-                        process.env.NODE_ENV === 'development'; // Allow in dev
+      
+      // Check domain restriction
+      // Allow if:
+      // 1. Wildcard domain (*)
+      // 2. Exact domain match
+      // 3. Subdomain match (request is subdomain of allowed)
+      // 4. No parent origin (direct access, not in iframe) - embed ID acts as token
+      // 5. Development mode
+      const isWildcard = allowedDomain === '*';
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      const isDirectAccess = !parentOrigin; // Not in an iframe
+      const exactMatch = requestDomain === allowedDomain;
+      const subdomainMatch = requestDomain.endsWith(`.${allowedDomain}`);
+      
+      const isAllowed = isWildcard || isDevelopment || isDirectAccess || exactMatch || subdomainMatch;
 
       if (!isAllowed) {
         console.log(`[Embed] Domain mismatch: ${requestDomain} vs allowed ${allowedDomain}`);

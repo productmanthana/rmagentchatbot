@@ -42,8 +42,35 @@ export default function EmbedWithIdPage() {
       }
 
       try {
-        // First validate the embed link
-        const validateResponse = await fetch(`/api/embed/validate/${params.embedId}`);
+        // Detect if we're in an iframe and get parent origin
+        let parentOrigin = '';
+        try {
+          // Check if we're in an iframe
+          if (window.self !== window.top) {
+            // We're in an iframe - try to get parent origin via document.referrer
+            // document.referrer contains the parent page URL when loaded in iframe
+            if (document.referrer) {
+              const refUrl = new URL(document.referrer);
+              parentOrigin = refUrl.hostname;
+            }
+          }
+        } catch (e) {
+          // Cross-origin iframe, can't access parent
+          // Use document.referrer as fallback
+          if (document.referrer) {
+            try {
+              const refUrl = new URL(document.referrer);
+              parentOrigin = refUrl.hostname;
+            } catch {}
+          }
+        }
+
+        // First validate the embed link - send parent origin for domain check
+        const validateResponse = await fetch(`/api/embed/validate/${params.embedId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parentOrigin }),
+        });
         const validateData = await validateResponse.json();
         
         if (!validateData.valid) {
@@ -57,7 +84,7 @@ export default function EmbedWithIdPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ embedId: params.embedId }),
+          body: JSON.stringify({ embedId: params.embedId, parentOrigin }),
         });
 
         if (sessionResponse.ok) {
