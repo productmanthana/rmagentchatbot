@@ -104,7 +104,7 @@ export default function IntegrationPage() {
 
   const getIframeCode = (embedId: string) => {
     const url = getEmbedUrl(embedId);
-    return `<iframe src="${url}" width="100%" height="600" frameborder="0" style="border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></iframe>`;
+    return `<iframe src="${url}" width="100%" height="100%" frameborder="0" style="border: none;"></iframe>`;
   };
 
   const copyToClipboard = async (text: string, id: string, type: 'url' | 'iframe') => {
