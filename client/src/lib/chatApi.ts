@@ -2,6 +2,21 @@ import { useQuery, useMutation, useQueryClient, QueryClient } from '@tanstack/re
 import type { Chat, Message } from '@shared/schema';
 
 // ═══════════════════════════════════════════════════════════════
+// EMBED TOKEN HELPER - For token-based auth in iframes
+// ═══════════════════════════════════════════════════════════════
+
+function getEmbedHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  try {
+    const embedToken = sessionStorage.getItem('embedToken');
+    if (embedToken) {
+      headers['X-Embed-Token'] = embedToken;
+    }
+  } catch {}
+  return headers;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CACHE CONFIGURATION - Optimized for instant switching like ChatGPT/Claude
 // ═══════════════════════════════════════════════════════════════
 
@@ -38,7 +53,10 @@ export function useChats() {
   return useQuery<Chat[]>({
     queryKey: ['/api/chats'],
     queryFn: async () => {
-      const response = await fetch('/api/chats', { credentials: 'include' });
+      const response = await fetch('/api/chats', { 
+        credentials: 'include',
+        headers: getEmbedHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch chats');
       const data = await response.json();
       return data.data;
@@ -51,7 +69,10 @@ export function useChat(chatId: string | null) {
     queryKey: ['/api/chats', chatId],
     queryFn: async () => {
       if (!chatId) return null;
-      const response = await fetch(`/api/chats/${chatId}`, { credentials: 'include' });
+      const response = await fetch(`/api/chats/${chatId}`, { 
+        credentials: 'include',
+        headers: getEmbedHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch chat');
       const data = await response.json();
       return data.data;
@@ -69,6 +90,7 @@ export function useCreateChat() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getEmbedHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify(params),
@@ -96,6 +118,7 @@ export function useUpdateChat() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          ...getEmbedHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({ title }),
@@ -120,6 +143,7 @@ export function useDeleteChat() {
       const response = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         credentials: 'include',
+        headers: getEmbedHeaders(),
       });
       
       if (!response.ok) throw new Error('Failed to delete chat');
@@ -141,7 +165,10 @@ export function useMessages(chatId: string | null) {
     queryKey: ['/api/chats', chatId, 'messages'],
     queryFn: async () => {
       if (!chatId) return [];
-      const response = await fetch(`/api/chats/${chatId}/messages`, { credentials: 'include' });
+      const response = await fetch(`/api/chats/${chatId}/messages`, { 
+        credentials: 'include',
+        headers: getEmbedHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch messages');
       const data = await response.json();
       return data.data;
@@ -164,7 +191,10 @@ export function prefetchMessages(queryClient: QueryClient, chatId: string) {
   queryClient.prefetchQuery({
     queryKey: ['/api/chats', chatId, 'messages'],
     queryFn: async () => {
-      const response = await fetch(`/api/chats/${chatId}/messages`, { credentials: 'include' });
+      const response = await fetch(`/api/chats/${chatId}/messages`, { 
+        credentials: 'include',
+        headers: getEmbedHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch messages');
       const data = await response.json();
       return data.data;
@@ -188,6 +218,7 @@ export function useCreateMessage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getEmbedHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify(messageData),
