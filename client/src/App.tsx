@@ -7,9 +7,11 @@ import ChatPage from "@/pages/chat";
 import DashboardPage from "@/pages/dashboard";
 import ConversationsPage from "@/pages/conversations";
 import EmbedPage from "@/pages/embed";
+import EmbedWithIdPage from "@/pages/embed-with-id";
 import AuthPage from "@/pages/auth";
 import LogsPage from "@/pages/logs";
 import HelpPage from "@/pages/help";
+import IntegrationPage from "@/pages/integration";
 import NotFound from "@/pages/not-found";
 
 interface AuthUser {
@@ -48,7 +50,9 @@ function AuthenticatedRouter() {
       <Route path="/conversations" component={ConversationsPage} />
       <Route path="/logs" component={LogsPage} />
       <Route path="/help" component={HelpPage} />
+      <Route path="/embed/:embedId" component={EmbedWithIdPage} />
       <Route path="/embed" component={EmbedPage} />
+      <Route path="/integration" component={IntegrationPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -59,6 +63,7 @@ function UnauthenticatedRouter() {
     <Switch>
       <Route path="/" component={AuthPage} />
       <Route path="/login" component={AuthPage} />
+      <Route path="/embed/:embedId" component={EmbedWithIdPage} />
       <Route path="/embed" component={EmbedPage} />
       <Route component={AuthPage} />
     </Switch>
