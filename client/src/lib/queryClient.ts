@@ -7,12 +7,31 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Helper to get embed token from sessionStorage
+function getEmbedToken(): string | null {
+  try {
+    return sessionStorage.getItem('embedToken');
+  } catch {
+    return null;
+  }
+}
+
+// Helper to get headers with embed token if available
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const embedToken = getEmbedToken();
+  if (embedToken) {
+    headers['X-Embed-Token'] = embedToken;
+  }
+  return headers;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = getAuthHeaders();
   
   if (data) {
     headers['Content-Type'] = 'application/json';
@@ -37,6 +56,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: getAuthHeaders(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

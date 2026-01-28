@@ -1827,10 +1827,28 @@ export default function ChatPage() {
   });
   
   // Session keepalive - ping auth endpoint every 10 minutes to prevent session expiration
+  // Helper to get embed token for fetch calls
+  const getEmbedHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {};
+    try {
+      const embedToken = sessionStorage.getItem('embedToken');
+      if (embedToken) {
+        headers['X-Embed-Token'] = embedToken;
+      }
+    } catch {}
+    return headers;
+  };
+  
   useEffect(() => {
+    // Skip keepalive in embed mode - embed tokens are stateless
+    if (isEmbed) return;
+    
     const keepaliveInterval = setInterval(async () => {
       try {
-        const response = await fetch('/api/auth/user', { credentials: 'include' });
+        const response = await fetch('/api/auth/user', { 
+          credentials: 'include',
+          headers: getEmbedHeaders()
+        });
         if (!response.ok) {
           console.warn('[ChatPage] Session check failed, session may have expired');
           // Don't redirect here - let the next action handle it
@@ -1841,7 +1859,7 @@ export default function ChatPage() {
     }, 10 * 60 * 1000); // 10 minutes
     
     return () => clearInterval(keepaliveInterval);
-  }, []);
+  }, [isEmbed]);
   
   // Function to hide a default example (persisted in database)
   const hideDefaultExample = (text: string) => {
@@ -2273,11 +2291,14 @@ export default function ChatPage() {
         let chatId = variables.forceNewChat ? null : currentChatId;
         
         if (!chatId) {
-          // Create new chat - first verify session is still valid
+          // Create new chat - first verify session is still valid (skip in embed mode)
           try {
             // Quick auth check before creating chat
-            const authCheck = await fetch('/api/auth/user', { credentials: 'include' });
-            if (!authCheck.ok) {
+            const authCheck = await fetch('/api/auth/user', { 
+              credentials: 'include',
+              headers: getEmbedHeaders()
+            });
+            if (!authCheck.ok && !isEmbed) {
               console.error('[ChatPage] ✗ Session expired, redirecting to login');
               toast({
                 variant: "destructive",

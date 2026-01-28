@@ -79,12 +79,18 @@ export default function EmbedWithIdPage() {
         }
 
         // Create an embed session on the server for authentication
-        await fetch(`/api/embed/session`, {
+        const sessionResponse = await fetch(`/api/embed/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ embedId: params.embedId, parentOrigin }),
         });
+        const sessionData = await sessionResponse.json();
+        
+        // Store the embed token in sessionStorage for API calls (works without cookies)
+        if (sessionData.token) {
+          sessionStorage.setItem('embedToken', sessionData.token);
+        }
 
         setValidation(validateData);
       } catch (error) {

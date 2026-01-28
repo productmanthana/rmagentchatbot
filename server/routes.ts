@@ -11,7 +11,7 @@ import { nanoid } from "nanoid";
 import multer from "multer";
 import { unifiedStorage as chatStorage } from "./unified-storage";
 import { mssqlStorage } from "./mssql-storage";
-import { setupAuth, isAuthenticated, getUserId, getUserEmail, getUserRole } from "./simpleAuth";
+import { setupAuth, isAuthenticated, getUserId, getUserEmail, getUserRole, embedTokenStore } from "./simpleAuth";
 import * as XLSX from "xlsx";
 
 let queryEngine: QueryEngine | null = null;
@@ -1804,6 +1804,11 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Helper to generate a simple token
+  function generateEmbedToken(): string {
+    return `emb_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  }
+
   // Create embed session (public - creates a session for embed users)
   app.post("/api/embed/session", async (req, res) => {
     try {
@@ -1836,32 +1841,35 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(403).json({ error: "Domain not authorized" });
       }
 
-      // Create embed session
+      // Generate a token for embed authentication (works without cookies)
+      const token = generateEmbedToken();
+      embedTokenStore.set(token, {
+        embedId,
+        role: link.role,
+        domain: link.allowed_domain,
+        createdAt: Date.now()
+      });
+      
+      // Clean up old tokens (older than 24 hours)
+      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      embedTokenStore.forEach((value, key) => {
+        if (value.createdAt < dayAgo) {
+          embedTokenStore.delete(key);
+        }
+      });
+
+      // Also try cookie-based session as fallback
       if (req.session) {
         req.session.userId = `embed_${embedId}`;
         req.session.userEmail = `embed@${link.allowed_domain}`;
         (req.session as any).embedId = embedId;
         (req.session as any).embedRole = link.role;
         (req.session as any).isEmbed = true;
-        
-        // Explicitly save session to ensure it persists
-        req.session.save((err) => {
-          if (err) {
-            console.error("Error saving embed session:", err);
-            return res.status(500).json({ error: "Failed to create session" });
-          }
-          
-          res.json({ 
-            success: true, 
-            sessionId: `embed_${embedId}`,
-            role: link.role 
-          });
-        });
-        return; // Return here to prevent duplicate response
       }
 
       res.json({ 
         success: true, 
+        token, // Return the token for client to use
         sessionId: `embed_${embedId}`,
         role: link.role 
       });

@@ -248,11 +248,24 @@ export async function setupAuth(app: Express) {
   // Get current user
   app.get("/api/auth/user", async (req, res) => {
     try {
+      // First check for embed token (works without cookies)
+      const embedCheck = checkEmbedToken(req);
+      if (embedCheck.valid) {
+        return res.json({
+          id: embedCheck.userId,
+          email: embedCheck.userEmail || `embed@domain`,
+          firstName: 'Embed',
+          lastName: 'User',
+          role: embedCheck.role || 'user',
+          isEmbed: true,
+        });
+      }
+      
       if (!req.session.userId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      // Check if this is an embed session
+      // Check if this is an embed session (cookie-based fallback)
       if ((req.session as any).isEmbed) {
         const embedId = (req.session as any).embedId;
         const embedRole = (req.session as any).embedRole || 'user';
@@ -305,9 +318,50 @@ export async function setupAuth(app: Express) {
   });
 }
 
+// Store for embed tokens (shared with routes.ts)
+export const embedTokenStore = new Map<string, { embedId: string; role: string; domain: string; createdAt: number }>();
+
+// Check embed token and return user info
+export function checkEmbedToken(req: any): { valid: boolean; embedId?: string; role?: string; userId?: string; userEmail?: string } {
+  const token = req.headers['x-embed-token'] as string;
+  if (!token) return { valid: false };
+  
+  const tokenData = embedTokenStore.get(token);
+  if (!tokenData) return { valid: false };
+  
+  // Token is valid for 24 hours
+  if (Date.now() - tokenData.createdAt > 24 * 60 * 60 * 1000) {
+    embedTokenStore.delete(token);
+    return { valid: false };
+  }
+  
+  return { 
+    valid: true, 
+    embedId: tokenData.embedId, 
+    role: tokenData.role,
+    userId: `embed_${tokenData.embedId}`,
+    userEmail: `embed@${tokenData.domain}`
+  };
+}
+
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // First check for embed token (works without cookies)
+  const embedCheck = checkEmbedToken(req);
+  if (embedCheck.valid) {
+    // Set session-like data for embed users
+    if (!req.session.userId) {
+      req.session.userId = embedCheck.userId;
+      req.session.userEmail = embedCheck.userEmail;
+      (req.session as any).embedId = embedCheck.embedId;
+      (req.session as any).embedRole = embedCheck.role;
+      (req.session as any).isEmbed = true;
+    }
+    return next();
+  }
+  
+  // Fall back to session-based auth
   if (!req.session.userId) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Not authenticated" });
   }
   next();
 };
