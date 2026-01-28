@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useLocation } from "wouter";
+import { useEmbedContext } from "./embed-with-id";
 import { QueryResponse, DEFAULT_FAQ_CATEGORIES, type FAQSampleQuestion } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { 
@@ -876,6 +877,8 @@ function MaximizedTableWithScrollbars({ data }: { data: any[] }) {
 export default function ChatPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const embedContext = useEmbedContext();
+  const isEmbed = embedContext?.isEmbed || false;
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
   const [input, setInput] = useState("");
@@ -3510,7 +3513,8 @@ export default function ChatPage() {
           
           {/* Bottom Navigation */}
           <div className="p-4 border-t border-white/10 space-y-1">
-            {canViewQueryLogs && (
+            {/* Hide Query Logs and Integration in embed mode */}
+            {canViewQueryLogs && !isEmbed && (
               <Link href="/logs">
                 <Button
                   variant="ghost"
@@ -3522,7 +3526,7 @@ export default function ChatPage() {
                 </Button>
               </Link>
             )}
-            {isSuperadmin && (
+            {isSuperadmin && !isEmbed && (
               <Link href="/integration">
                 <Button
                   variant="ghost"
@@ -3544,24 +3548,29 @@ export default function ChatPage() {
                 Help & Guidelines
               </Button>
             </Link>
-            <Button
-              onClick={handleLogout}
-              variant="ghost"
-              className="w-full justify-start text-white/70 hover:text-white hover:bg-red-500/20"
-              data-testid="button-logout"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-            
-            {/* User Email Display */}
-            {currentUserData?.email && (
-              <div className="flex items-center gap-2 px-3 py-2 mt-3 border-t border-white/10 pt-3">
-                <User className="h-4 w-4 text-white/40 shrink-0" />
-                <span className="text-xs text-white/50 truncate" data-testid="text-user-email">
-                  {currentUserData.email}
-                </span>
-              </div>
+            {/* Hide Sign Out and User Email in embed mode */}
+            {!isEmbed && (
+              <>
+                <Button
+                  onClick={handleLogout}
+                  variant="ghost"
+                  className="w-full justify-start text-white/70 hover:text-white hover:bg-red-500/20"
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </Button>
+                
+                {/* User Email Display */}
+                {currentUserData?.email && (
+                  <div className="flex items-center gap-2 px-3 py-2 mt-3 border-t border-white/10 pt-3">
+                    <User className="h-4 w-4 text-white/40 shrink-0" />
+                    <span className="text-xs text-white/50 truncate" data-testid="text-user-email">
+                      {currentUserData.email}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </aside>
