@@ -1,6 +1,6 @@
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "wouter";
-import ChatPage from "./chat";
+import EmbedChat from "./embed-chat";
 
 interface EmbedValidation {
   valid: boolean;
@@ -9,29 +9,10 @@ interface EmbedValidation {
   error?: string;
 }
 
-interface EmbedContextType {
-  isEmbed: boolean;
-  embedId: string | null;
-  role: 'superadmin' | 'admin' | 'user' | null;
-  embedName: string | null;
-}
-
-export const EmbedContext = createContext<EmbedContextType>({
-  isEmbed: false,
-  embedId: null,
-  role: null,
-  embedName: null,
-});
-
-export function useEmbedContext() {
-  return useContext(EmbedContext);
-}
-
 export default function EmbedWithIdPage() {
   const params = useParams<{ embedId: string }>();
   const [validation, setValidation] = useState<EmbedValidation | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sessionCreated, setSessionCreated] = useState(false);
 
   useEffect(() => {
     async function validateAndCreateSession() {
@@ -79,18 +60,6 @@ export default function EmbedWithIdPage() {
           return;
         }
 
-        // Create an embed session on the server
-        const sessionResponse = await fetch(`/api/embed/session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ embedId: params.embedId, parentOrigin }),
-        });
-
-        if (sessionResponse.ok) {
-          setSessionCreated(true);
-        }
-
         setValidation(validateData);
       } catch (error) {
         setValidation({ valid: false, error: "Failed to validate embed link" });
@@ -132,18 +101,13 @@ export default function EmbedWithIdPage() {
     );
   }
 
-  const embedContext: EmbedContextType = {
-    isEmbed: true,
-    embedId: params.embedId || null,
-    role: validation.role || null,
-    embedName: validation.name || null,
-  };
-
   return (
-    <EmbedContext.Provider value={embedContext}>
-      <div className="h-screen w-full" data-embed-role={validation.role} data-embed-id={params.embedId}>
-        <ChatPage />
-      </div>
-    </EmbedContext.Provider>
+    <div className="h-screen w-full" data-embed-role={validation.role} data-embed-id={params.embedId}>
+      <EmbedChat 
+        embedId={params.embedId || ''} 
+        role={validation.role || 'user'} 
+        embedName={validation.name || ''}
+      />
+    </div>
   );
 }
