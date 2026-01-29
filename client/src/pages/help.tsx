@@ -21,8 +21,50 @@ import {
   Key
 } from "lucide-react";
 
+// Parse embed context from URL params (for iframe third-party context)
+function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null; displayId: string | null; role: 'superadmin' | 'admin' | 'user' | null } {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmbedId = urlParams.get('embed');
+    const urlToken = urlParams.get('token');
+    
+    if (urlEmbedId && urlToken) {
+      // Get display ID from localStorage (localStorage usually works even in iframes)
+      let storedDisplayId: string | null = null;
+      try {
+        storedDisplayId = localStorage.getItem(`embed_display_id_${urlEmbedId}`);
+      } catch {}
+      
+      return {
+        isEmbed: true,
+        embedId: urlEmbedId,
+        displayId: storedDisplayId,
+        role: 'user', // Default role
+      };
+    }
+  } catch (e) {
+    console.error('[HelpPage] Error parsing URL params:', e);
+  }
+  return { isEmbed: false, embedId: null, displayId: null, role: null };
+}
+
 export default function HelpPage() {
-  const embedContext = useEmbedContext();
+  console.log('[HelpPage] Rendering...');
+  
+  // Try context first, then fall back to URL params
+  const contextEmbed = useEmbedContext();
+  const urlEmbed = getEmbedContextFromUrl();
+  
+  // Use context if it has embed data, otherwise use URL params
+  const embedContext = contextEmbed.isEmbed ? contextEmbed : {
+    ...contextEmbed,
+    isEmbed: urlEmbed.isEmbed,
+    embedId: urlEmbed.embedId,
+    displayId: urlEmbed.displayId,
+    role: urlEmbed.role,
+  };
+  
+  console.log('[HelpPage] embedContext:', embedContext, 'urlEmbed:', urlEmbed);
   const [copied, setCopied] = useState(false);
   
   const handleCopyId = () => {
@@ -34,7 +76,7 @@ export default function HelpPage() {
   };
 
   return (
-    <div className="flex-1 overflow-auto p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-auto p-6">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-4">
           <div className="flex items-center justify-between">

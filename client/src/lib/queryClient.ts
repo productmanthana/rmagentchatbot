@@ -7,9 +7,15 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-// Helper to get embed token from sessionStorage
+// Helper to get embed token from URL params or sessionStorage
 function getEmbedToken(): string | null {
   try {
+    // Check URL params first (for iframe third-party context)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) return urlToken;
+    
+    // Fall back to sessionStorage
     return sessionStorage.getItem('embedToken');
   } catch {
     return null;

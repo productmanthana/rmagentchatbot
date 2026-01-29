@@ -27,11 +27,15 @@ function useAuth() {
   // Skip auth check for embed routes - they use token-based auth
   const isEmbedRoute = window.location.pathname.startsWith('/embed');
   
-  // Check if user has embed token (came from embed page)
-  let hasEmbedToken = false;
+  // Check if user has embed token (from sessionStorage OR URL params)
+  let embedToken: string | null = null;
   try {
-    hasEmbedToken = !!sessionStorage.getItem('embedToken');
+    // Check URL params first (for iframe third-party context)
+    const urlParams = new URLSearchParams(window.location.search);
+    embedToken = urlParams.get('token') || sessionStorage.getItem('embedToken');
   } catch {}
+  
+  const hasEmbedToken = !!embedToken;
   
   return useQuery<AuthUser | null>({
     // Use different query key for embed token auth to avoid cache conflicts
@@ -39,10 +43,14 @@ function useAuth() {
     queryFn: async () => {
       // Include embed token if available (for embed users navigating to other pages)
       const headers: Record<string, string> = {};
+      
+      // Get token from URL params or sessionStorage
+      let token: string | null = null;
       try {
-        const embedToken = sessionStorage.getItem('embedToken');
-        if (embedToken) {
-          headers['X-Embed-Token'] = embedToken;
+        const urlParams = new URLSearchParams(window.location.search);
+        token = urlParams.get('token') || sessionStorage.getItem('embedToken');
+        if (token) {
+          headers['X-Embed-Token'] = token;
         }
       } catch {}
       
@@ -80,42 +88,58 @@ function AuthenticatedRouter() {
   );
 }
 
-function EmbedAwareRouter() {
-  // Get embed context data from storage
-  const [embedContextData, setEmbedContextData] = useState<{
-    embedId: string | null;
-    role: 'superadmin' | 'admin' | 'user' | null;
-    displayId: string | null;
-  }>({ embedId: null, role: null, displayId: null });
-
-  useEffect(() => {
-    try {
-      const storedEmbedId = sessionStorage.getItem('currentEmbedId');
-      const embedToken = sessionStorage.getItem('embedToken');
-      
-      if (storedEmbedId && embedToken) {
-        // Parse token to get role
+// Parse embed context from URL params
+function getEmbedContextFromUrl(): { embedId: string | null; role: 'superadmin' | 'admin' | 'user' | null; displayId: string | null; token: string | null } {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmbedId = urlParams.get('embed');
+    const urlToken = urlParams.get('token');
+    
+    let embedId = urlEmbedId;
+    let embedToken = urlToken;
+    
+    // Fall back to sessionStorage if URL params not present
+    if (!embedId || !embedToken) {
+      try {
+        embedId = sessionStorage.getItem('currentEmbedId');
+        embedToken = sessionStorage.getItem('embedToken');
+      } catch {}
+    }
+    
+    if (embedId && embedToken) {
+      // Parse token to get role
+      let role: 'superadmin' | 'admin' | 'user' = 'user';
+      try {
         const tokenData = JSON.parse(atob(embedToken.split('.')[1] || '{}'));
-        const displayId = localStorage.getItem(`embed_display_id_${storedEmbedId}`);
-        
-        setEmbedContextData({
-          embedId: storedEmbedId,
-          role: tokenData.role || 'user',
-          displayId: displayId,
-        });
-      }
-    } catch {}
-  }, []);
+        role = tokenData.role || 'user';
+      } catch {}
+      
+      let displayId: string | null = null;
+      try {
+        displayId = localStorage.getItem(`embed_display_id_${embedId}`);
+      } catch {}
+      
+      return { embedId, role, displayId, token: embedToken };
+    }
+  } catch {}
+  return { embedId: null, role: null, displayId: null, token: null };
+}
 
+function EmbedAwareRouter() {
+  // Get embed context data synchronously to avoid render issues
+  const contextData = getEmbedContextFromUrl();
+  
   const embedContext = {
     isEmbed: true,
-    embedId: embedContextData.embedId,
-    role: embedContextData.role,
+    embedId: contextData.embedId,
+    role: contextData.role,
     embedName: null,
-    displayId: embedContextData.displayId,
+    displayId: contextData.displayId,
     sessionId: null,
     onRecoverSession: async () => false,
   };
+  
+  console.log('[EmbedAwareRouter] context:', embedContext);
 
   return (
     <EmbedContext.Provider value={embedContext}>
@@ -133,14 +157,28 @@ function EmbedAwareRouter() {
 }
 
 function UnauthenticatedRouter() {
-  // Check if user has embed token - if so, show embed-aware routes
+  // Check if user has embed token - from sessionStorage OR URL params
   let hasEmbedToken = false;
   try {
-    hasEmbedToken = !!sessionStorage.getItem('embedToken');
-  } catch {}
+    // Check URL params first (for iframe third-party context)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) {
+      hasEmbedToken = true;
+      console.log('[UnauthenticatedRouter] Found token in URL params');
+    } else {
+      hasEmbedToken = !!sessionStorage.getItem('embedToken');
+      console.log('[UnauthenticatedRouter] sessionStorage token:', hasEmbedToken);
+    }
+  } catch (e) {
+    console.log('[UnauthenticatedRouter] Error checking token:', e);
+  }
+  
+  console.log('[UnauthenticatedRouter] hasEmbedToken:', hasEmbedToken);
   
   // If user has embed token, show all routes with embed context
   if (hasEmbedToken) {
+    console.log('[UnauthenticatedRouter] Rendering EmbedAwareRouter');
     return <EmbedAwareRouter />;
   }
   
@@ -157,6 +195,7 @@ function UnauthenticatedRouter() {
 
 // Wrapper to provide embed context for non-embed routes when embed token exists
 function EmbedContextWrapper({ children, user }: { children: React.ReactNode; user: AuthUser | null }) {
+  console.log('[EmbedContextWrapper] Mounting, user:', user?.id);
   const [embedData, setEmbedData] = useState<{
     embedId: string | null;
     role: 'superadmin' | 'admin' | 'user' | null;
@@ -165,18 +204,35 @@ function EmbedContextWrapper({ children, user }: { children: React.ReactNode; us
   }>({ embedId: null, role: null, displayId: null, sessionId: null });
 
   useEffect(() => {
-    // Check if we have embed token (meaning user came from embed)
+    // Check if we have embed token from URL params OR sessionStorage (for iframe third-party context)
     try {
-      const embedToken = sessionStorage.getItem('embedToken');
-      const storedEmbedId = sessionStorage.getItem('currentEmbedId');
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlEmbedId = urlParams.get('embed');
+      const urlToken = urlParams.get('token');
       
-      if (embedToken && storedEmbedId) {
+      // Use URL params first, fall back to sessionStorage
+      let embedId = urlEmbedId;
+      let embedToken = urlToken;
+      
+      if (!embedId || !embedToken) {
+        embedToken = sessionStorage.getItem('embedToken');
+        embedId = sessionStorage.getItem('currentEmbedId');
+      }
+      
+      if (embedToken && embedId) {
+        // Parse token to get role
+        let role: 'superadmin' | 'admin' | 'user' = 'user';
+        try {
+          const tokenData = JSON.parse(atob(embedToken.split('.')[1] || '{}'));
+          role = tokenData.role || 'user';
+        } catch {}
+        
         // Get display ID from localStorage
-        const storedDisplayId = localStorage.getItem(`embed_display_id_${storedEmbedId}`);
+        const storedDisplayId = localStorage.getItem(`embed_display_id_${embedId}`);
         
         setEmbedData({
-          embedId: storedEmbedId,
-          role: (user as any)?.role || 'user',
+          embedId: embedId,
+          role: role,
           displayId: storedDisplayId,
           sessionId: user?.id || null,
         });
@@ -185,7 +241,9 @@ function EmbedContextWrapper({ children, user }: { children: React.ReactNode; us
   }, [user]);
 
   // If we have embed data, provide the context
+  console.log('[EmbedContextWrapper] embedData:', embedData);
   if (embedData.embedId) {
+    console.log('[EmbedContextWrapper] Providing embed context');
     const embedContext = {
       isEmbed: true,
       embedId: embedData.embedId,
@@ -210,8 +268,12 @@ function AppContent() {
   // Check if we're on an embed route - skip auth check for embeds
   const isEmbedRoute = window.location.pathname.startsWith('/embed');
   
-  const { data: user, isLoading, error } = useAuth();
-
+  // Debug logging
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasUrlToken = !!urlParams.get('token');
+  const hasUrlEmbed = !!urlParams.get('embed');
+  console.log('[AppContent] path:', window.location.pathname, 'isEmbedRoute:', isEmbedRoute, 'hasUrlToken:', hasUrlToken, 'hasUrlEmbed:', hasUrlEmbed);
+  
   // For embed routes, render directly without auth check (embed has its own auth)
   if (isEmbedRoute) {
     return (
@@ -221,6 +283,15 @@ function AppContent() {
       </Switch>
     );
   }
+
+  // For embed navigation with token in URL (e.g., /help?embed=xxx&token=xxx), skip auth and use EmbedAwareRouter
+  if (hasUrlToken && hasUrlEmbed) {
+    console.log('[AppContent] Embed navigation detected, using EmbedAwareRouter');
+    return <EmbedAwareRouter />;
+  }
+  
+  const { data: user, isLoading, error } = useAuth();
+  console.log('[AppContent] user:', JSON.stringify(user), 'isLoading:', isLoading, 'error:', error, 'willRenderUnauth:', !isLoading && !user);
 
   if (isLoading) {
     return (

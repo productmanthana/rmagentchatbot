@@ -973,6 +973,34 @@ function EmbedUserIdDisplay({
   );
 }
 
+// Helper to safely get embed token for navigation links (handles iframe third-party context)
+function getSafeEmbedToken(): string {
+  try {
+    // Check URL params first (for iframe third-party context)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) return urlToken;
+    
+    // Fall back to sessionStorage
+    return sessionStorage.getItem('embedToken') || '';
+  } catch {
+    return '';
+  }
+}
+
+// Helper to get embed ID for navigation links
+function getSafeEmbedId(): string {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmbedId = urlParams.get('embed');
+    if (urlEmbedId) return urlEmbedId;
+    
+    return sessionStorage.getItem('currentEmbedId') || '';
+  } catch {
+    return '';
+  }
+}
+
 export default function ChatPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -3649,7 +3677,7 @@ export default function ChatPage() {
           <div className="p-4 border-t border-white/10 space-y-1">
             {/* Show Query Logs for admin/superadmin (even in embed mode) */}
             {canViewQueryLogs && (
-              <Link href="/logs">
+              <Link href={isEmbed ? `/logs?embed=${embedContext.embedId || getSafeEmbedId()}&token=${encodeURIComponent(getSafeEmbedToken())}` : "/logs"}>
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10"
@@ -3662,7 +3690,7 @@ export default function ChatPage() {
             )}
             {/* Show Integration for superadmin (including in embed mode) */}
             {isSuperadmin && (
-              <Link href="/integration">
+              <Link href={isEmbed ? `/integration?embed=${embedContext.embedId || getSafeEmbedId()}&token=${encodeURIComponent(getSafeEmbedToken())}` : "/integration"}>
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10"
@@ -3673,7 +3701,7 @@ export default function ChatPage() {
                 </Button>
               </Link>
             )}
-            <Link href="/help">
+            <Link href={isEmbed ? `/help?embed=${embedContext.embedId || getSafeEmbedId()}&token=${encodeURIComponent(getSafeEmbedToken())}` : "/help"}>
               <Button
                 variant="ghost"
                 className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10"
