@@ -1015,6 +1015,8 @@ Sample Data (first 3 rows): ${JSON.stringify(response.data.slice(0, 3), null, 2)
       const { getUserRole } = await import("./simpleAuth");
       const userRole = await getUserRole(req);
       
+      console.log('[error-logs] Request - userId:', userId, 'userEmail:', userEmail, 'role:', userRole, 'embedData:', (req as any).embedData);
+      
       if (!userId) {
         return res.status(401).json({
           success: false,
@@ -1031,11 +1033,13 @@ Sample Data (first 3 rows): ${JSON.stringify(response.data.slice(0, 3), null, 2)
       
       // Superadmin sees ALL logs from ALL users (except private users' logs)
       if (userRole === 'superadmin') {
+        console.log('[error-logs] Superadmin access - fetching ALL logs');
         if (chatId) {
           errorLogs = await chatStorage.listErrorLogsByChat(chatId);
         } else {
           errorLogs = await chatStorage.listErrorLogs();
         }
+        console.log('[error-logs] Superadmin fetched', errorLogs?.length || 0, 'total logs');
         
         // Filter out private users' logs unless the superadmin IS that private user
         if (!isPrivateUser) {
