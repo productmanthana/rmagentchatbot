@@ -791,9 +791,11 @@ Sample Data (first 3 rows): ${JSON.stringify(response.data.slice(0, 3), null, 2)
 
   app.get("/api/faq-samples", isAuthenticated, async (req, res) => {
     try {
-      // FAQs are GLOBAL - all FAQs added by admin/superadmin are visible to everyone
-      // This ensures FAQs persist across browser changes and are shared with all embed users
-      const faqQuestions = await chatStorage.getFAQSampleQuestions();
+      const userId = getUserId(req);
+      // For logged-in users (admin/superadmin), use their email as userId
+      // This ensures FAQs persist across browsers when they log in with same account
+      // For embed users without login, FAQs are tied to browser session
+      const faqQuestions = await chatStorage.getFAQSampleQuestions(userId || undefined);
       res.json({ success: true, data: faqQuestions });
     } catch (error) {
       console.error("Error fetching FAQ samples:", error);
