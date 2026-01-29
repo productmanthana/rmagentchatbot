@@ -2103,26 +2103,34 @@ Please provide a helpful analysis for the follow-up question.`,
         });
       }
 
-      // Link the current session to the old display ID (merges data, scoped to embed link)
-      const success = await mssqlStorage.linkEmbedUserToDisplayId(currentSessionId, displayId, embedId);
+      // SHARED SESSION: Join the existing session instead of merging data
+      // This allows multiple browsers (Chrome, Firefox, incognito) to share the same session
+      const joinResult = await mssqlStorage.joinExistingSession(displayId, embedId);
       
-      if (!success) {
-        return res.status(500).json({ success: false, error: "Failed to recover session" });
+      if (!joinResult.success || !joinResult.originalInternalUserId) {
+        return res.status(500).json({ success: false, error: "Failed to join session" });
       }
 
-      // Update session in memory if available
+      const originalInternalUserId = joinResult.originalInternalUserId;
+
+      // Update the embed token to use the original internal user ID
+      // This makes both browsers point to the same session
+      tokenData.userId = originalInternalUserId;
+      embedTokenStore.set(embedToken, tokenData);
+
+      // Update session in memory to use the original internal user ID
       if (req.session && (req.session as any).embedSessions) {
         const embedSessions = (req.session as any).embedSessions;
         if (embedSessions[embedId]) {
-          // Update the internal user ID to point to the recovered one
-          embedSessions[embedId].userId = currentSessionId;
+          embedSessions[embedId].userId = originalInternalUserId;
         }
       }
 
       res.json({ 
         success: true, 
-        message: "Session recovered successfully. Your chat history and data have been restored.",
+        message: "Session joined successfully. You are now sharing the same session across browsers.",
         displayId: displayId,
+        internalUserId: originalInternalUserId,
       });
     } catch (error: any) {
       console.error("Error recovering embed session:", error);

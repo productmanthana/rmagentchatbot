@@ -856,6 +856,32 @@ export class MssqlStorage {
     };
   }
 
+  // Join existing session - returns the original internal user ID so multiple browsers can share the same session
+  async joinExistingSession(displayId: string, embedLinkId: string): Promise<{ success: boolean; originalInternalUserId?: string }> {
+    await this.ensureEmbedUserIdsTable();
+    
+    // Get the ORIGINAL internal user ID for this display ID (scoped by embed link)
+    const existingUser = await this.getEmbedUserByDisplayId(displayId, embedLinkId);
+    if (!existingUser) {
+      return { success: false };
+    }
+    
+    // Just update the last_used_at timestamp
+    const pool = this.ensurePool();
+    await pool.request()
+      .input('displayId', displayId.toLowerCase())
+      .input('embedLinkId', embedLinkId)
+      .input('now', new Date())
+      .query(`
+        UPDATE embed_user_ids 
+        SET last_used_at = @now
+        WHERE LOWER(display_id) = @displayId AND embed_link_id = @embedLinkId
+      `);
+    
+    // Return the original internal user ID so the caller can update their session to use it
+    return { success: true, originalInternalUserId: existingUser.internalUserId };
+  }
+
   // Link a new internal user ID to an existing display ID (for recovery/merge, scoped by embed link)
   async linkEmbedUserToDisplayId(newInternalUserId: string, displayId: string, embedLinkId: string): Promise<boolean> {
     const pool = this.ensurePool();
