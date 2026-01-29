@@ -138,6 +138,7 @@ export default function HelpPage() {
         body: JSON.stringify({
           embedId: embedContext.embedId,
           token: token,
+          currentDisplayId: currentDisplayId,
           newDisplayId: editedId.trim()
         })
       });

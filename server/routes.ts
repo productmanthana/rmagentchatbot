@@ -2161,9 +2161,9 @@ Please provide a helpful analysis for the follow-up question.`,
   // Update embed user's display ID
   app.post("/api/embed/update-display-id", async (req, res) => {
     try {
-      const { embedId, token, newDisplayId } = req.body;
+      const { embedId, token, newDisplayId, currentDisplayId } = req.body;
       
-      if (!embedId || !token || !newDisplayId) {
+      if (!embedId || !token || !newDisplayId || !currentDisplayId) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
       }
 
@@ -2173,24 +2173,11 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(401).json({ success: false, error: "Invalid token" });
       }
 
-      // Get internal user ID from session
-      let internalUserId: string | null = null;
-      if (req.session && (req.session as any).embedSessions) {
-        const embedSessions = (req.session as any).embedSessions;
-        if (embedSessions[embedId]) {
-          internalUserId = embedSessions[embedId].userId;
-        }
-      }
-
-      if (!internalUserId) {
-        return res.status(400).json({ success: false, error: "No active session found" });
-      }
-
-      // Update the display ID
-      const success = await mssqlStorage.updateEmbedUserDisplayId(internalUserId, newDisplayId.trim(), embedId);
+      // Update the display ID using the current displayId to verify ownership
+      const success = await mssqlStorage.updateEmbedUserDisplayId(currentDisplayId.trim(), newDisplayId.trim(), embedId);
       
       if (!success) {
-        return res.status(400).json({ success: false, error: "ID already taken or update failed" });
+        return res.status(400).json({ success: false, error: "ID already taken or current ID not found" });
       }
 
       res.json({ success: true, displayId: newDisplayId.trim() });

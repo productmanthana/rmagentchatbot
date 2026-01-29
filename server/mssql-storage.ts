@@ -914,31 +914,38 @@ export class MssqlStorage {
   }
 
   // Update the display ID for an embed user (allows custom ID)
-  async updateEmbedUserDisplayId(internalUserId: string, newDisplayId: string, embedLinkId: string): Promise<boolean> {
+  // currentDisplayId is the user's current ID (to verify ownership)
+  // newDisplayId is what they want to change it to
+  async updateEmbedUserDisplayId(currentDisplayId: string, newDisplayId: string, embedLinkId: string): Promise<boolean> {
     const pool = this.ensurePool();
     await this.ensureEmbedUserIdsTable();
     
-    // Check if the new display ID is already taken by another user in this embed link
-    const existing = await pool.request()
-      .input('displayId', newDisplayId.toLowerCase())
-      .input('embedLinkId', embedLinkId)
-      .query('SELECT internal_user_id FROM embed_user_ids WHERE LOWER(display_id) = @displayId AND embed_link_id = @embedLinkId');
+    // If same ID, nothing to do
+    if (currentDisplayId.toLowerCase() === newDisplayId.toLowerCase()) {
+      return true;
+    }
     
-    if (existing.recordset.length > 0 && existing.recordset[0].internal_user_id !== internalUserId) {
-      // Display ID is already taken by a different user
+    // Check if the new display ID is already taken by someone else
+    const existing = await pool.request()
+      .input('newDisplayId', newDisplayId.toLowerCase())
+      .input('embedLinkId', embedLinkId)
+      .query('SELECT display_id FROM embed_user_ids WHERE LOWER(display_id) = @newDisplayId AND embed_link_id = @embedLinkId');
+    
+    if (existing.recordset.length > 0) {
+      // Display ID is already taken
       return false;
     }
     
-    // Update the display ID
+    // Update the display ID using the current display ID to identify the record
     const result = await pool.request()
-      .input('internalUserId', internalUserId)
+      .input('currentDisplayId', currentDisplayId.toLowerCase())
       .input('embedLinkId', embedLinkId)
       .input('newDisplayId', newDisplayId.toLowerCase())
       .input('now', new Date())
       .query(`
         UPDATE embed_user_ids 
         SET display_id = @newDisplayId, last_used_at = @now
-        WHERE internal_user_id = @internalUserId AND embed_link_id = @embedLinkId
+        WHERE LOWER(display_id) = @currentDisplayId AND embed_link_id = @embedLinkId
       `);
     
     return result.rowsAffected[0] > 0;
