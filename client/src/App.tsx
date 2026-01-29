@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -265,14 +265,17 @@ function EmbedContextWrapper({ children, user }: { children: React.ReactNode; us
 }
 
 function AppContent() {
-  // Check if we're on an embed route - skip auth check for embeds
-  const isEmbedRoute = window.location.pathname.startsWith('/embed');
+  // Use wouter's useLocation to properly detect path changes during client-side navigation
+  const [location] = useLocation();
   
-  // Debug logging
+  // Check if we're on an embed route - skip auth check for embeds
+  const isEmbedRoute = location.startsWith('/embed');
+  
+  // Debug logging - use window.location.search for query params (wouter doesn't include them in location)
   const urlParams = new URLSearchParams(window.location.search);
   const hasUrlToken = !!urlParams.get('token');
   const hasUrlEmbed = !!urlParams.get('embed');
-  console.log('[AppContent] path:', window.location.pathname, 'isEmbedRoute:', isEmbedRoute, 'hasUrlToken:', hasUrlToken, 'hasUrlEmbed:', hasUrlEmbed);
+  console.log('[AppContent] path:', location, 'isEmbedRoute:', isEmbedRoute, 'hasUrlToken:', hasUrlToken, 'hasUrlEmbed:', hasUrlEmbed);
   
   // For embed routes, render directly without auth check (embed has its own auth)
   if (isEmbedRoute) {

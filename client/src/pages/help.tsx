@@ -80,7 +80,7 @@ export default function HelpPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Link href="/">
+            <Link href={embedContext.isEmbed && embedContext.embedId ? `/embed/${embedContext.embedId}` : "/"}>
               <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
                 <ArrowLeft className="h-4 w-4" />
                 Back to Chat
