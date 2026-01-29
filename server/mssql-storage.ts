@@ -916,12 +916,25 @@ export class MssqlStorage {
   // Update the display ID for an embed user (allows custom ID)
   // currentDisplayId is the user's current ID (to verify ownership)
   // newDisplayId is what they want to change it to
-  async updateEmbedUserDisplayId(currentDisplayId: string, newDisplayId: string, embedLinkId: string): Promise<boolean> {
+  // newInternalUserId is the current session's internal ID (to keep the record linked)
+  async updateEmbedUserDisplayId(currentDisplayId: string, newDisplayId: string, embedLinkId: string, newInternalUserId?: string): Promise<boolean> {
     const pool = this.ensurePool();
     await this.ensureEmbedUserIdsTable();
     
-    // If same ID, nothing to do
+    // If same ID, just update the internal_user_id if provided
     if (currentDisplayId.toLowerCase() === newDisplayId.toLowerCase()) {
+      if (newInternalUserId) {
+        await pool.request()
+          .input('currentDisplayId', currentDisplayId.toLowerCase())
+          .input('embedLinkId', embedLinkId)
+          .input('newInternalUserId', newInternalUserId)
+          .input('now', new Date())
+          .query(`
+            UPDATE embed_user_ids 
+            SET internal_user_id = @newInternalUserId, last_used_at = @now
+            WHERE LOWER(display_id) = @currentDisplayId AND embed_link_id = @embedLinkId
+          `);
+      }
       return true;
     }
     
@@ -936,17 +949,32 @@ export class MssqlStorage {
       return false;
     }
     
-    // Update the display ID using the current display ID to identify the record
-    const result = await pool.request()
+    // Update the display ID AND internal_user_id (to keep record linked to current session)
+    let query = `
+      UPDATE embed_user_ids 
+      SET display_id = @newDisplayId, last_used_at = @now
+    `;
+    
+    if (newInternalUserId) {
+      query = `
+        UPDATE embed_user_ids 
+        SET display_id = @newDisplayId, internal_user_id = @newInternalUserId, last_used_at = @now
+      `;
+    }
+    
+    query += ` WHERE LOWER(display_id) = @currentDisplayId AND embed_link_id = @embedLinkId`;
+    
+    const request = pool.request()
       .input('currentDisplayId', currentDisplayId.toLowerCase())
       .input('embedLinkId', embedLinkId)
       .input('newDisplayId', newDisplayId.toLowerCase())
-      .input('now', new Date())
-      .query(`
-        UPDATE embed_user_ids 
-        SET display_id = @newDisplayId, last_used_at = @now
-        WHERE LOWER(display_id) = @currentDisplayId AND embed_link_id = @embedLinkId
-      `);
+      .input('now', new Date());
+    
+    if (newInternalUserId) {
+      request.input('newInternalUserId', newInternalUserId);
+    }
+    
+    const result = await request.query(query);
     
     return result.rowsAffected[0] > 0;
   }

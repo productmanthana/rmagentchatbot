@@ -2186,12 +2186,24 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(401).json({ success: false, error: "Invalid token" });
       }
 
-      // Debug: check what exists in the database for this embed
-      const existingRecords = await mssqlStorage.debugGetAllEmbedUsers(embedId);
-      console.log('[update-display-id] Existing records for embed:', existingRecords);
+      // Get current session's internal user ID to keep record linked
+      let currentInternalUserId: string | undefined;
+      if (req.session && (req.session as any).embedSessions) {
+        const embedSessions = (req.session as any).embedSessions;
+        if (embedSessions[embedId]) {
+          currentInternalUserId = embedSessions[embedId].userId;
+        }
+      }
+      
+      console.log('[update-display-id] Current internal user ID:', currentInternalUserId);
 
-      // Update the display ID using the current displayId to verify ownership
-      const success = await mssqlStorage.updateEmbedUserDisplayId(currentDisplayId.trim(), newDisplayId.trim(), embedId);
+      // Update the display ID AND link to current session's internal user ID
+      const success = await mssqlStorage.updateEmbedUserDisplayId(
+        currentDisplayId.trim(), 
+        newDisplayId.trim(), 
+        embedId,
+        currentInternalUserId
+      );
       
       console.log('[update-display-id] Update result:', success);
       
