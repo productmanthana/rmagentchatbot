@@ -2163,6 +2163,8 @@ Please provide a helpful analysis for the follow-up question.`,
     try {
       const { embedId, token, newDisplayId, currentDisplayId } = req.body;
       
+      console.log('[update-display-id] Request:', { embedId, currentDisplayId, newDisplayId, hasToken: !!token });
+      
       if (!embedId || !token || !newDisplayId || !currentDisplayId) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
       }
@@ -2173,8 +2175,14 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(401).json({ success: false, error: "Invalid token" });
       }
 
+      // Debug: check what exists in the database for this embed
+      const existingRecords = await mssqlStorage.debugGetAllEmbedUsers(embedId);
+      console.log('[update-display-id] Existing records for embed:', existingRecords);
+
       // Update the display ID using the current displayId to verify ownership
       const success = await mssqlStorage.updateEmbedUserDisplayId(currentDisplayId.trim(), newDisplayId.trim(), embedId);
+      
+      console.log('[update-display-id] Update result:', success);
       
       if (!success) {
         return res.status(400).json({ success: false, error: "ID already taken or current ID not found" });

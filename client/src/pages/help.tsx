@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
+import { useToast } from "@/hooks/use-toast";
 import { 
   MessageSquare, 
   Filter, 
@@ -51,6 +52,7 @@ function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null; d
 
 export default function HelpPage() {
   console.log('[HelpPage] Rendering...');
+  const { toast } = useToast();
   
   // Try context first, then fall back to URL params
   const contextEmbed = useEmbedContext();
@@ -68,14 +70,14 @@ export default function HelpPage() {
   console.log('[HelpPage] embedContext:', embedContext, 'urlEmbed:', urlEmbed);
 
   const [isEditingId, setIsEditingId] = useState(false);
-  const [editedId, setEditedId] = useState(embedContext.displayId || "");
-  const [currentDisplayId, setCurrentDisplayId] = useState(embedContext.displayId || "");
-  const [isLoadingId, setIsLoadingId] = useState(false);
+  const [editedId, setEditedId] = useState("");
+  const [currentDisplayId, setCurrentDisplayId] = useState("");
+  const [isLoadingId, setIsLoadingId] = useState(true);
 
-  // Fetch displayId from server if we have embed params but no displayId
+  // ALWAYS fetch displayId from server to ensure we have the correct current ID
   useEffect(() => {
     const fetchDisplayId = async () => {
-      if (embedContext.isEmbed && !currentDisplayId && embedContext.embedId) {
+      if (embedContext.isEmbed && embedContext.embedId) {
         setIsLoadingId(true);
         try {
           // Get token from sessionStorage or URL
@@ -95,26 +97,42 @@ export default function HelpPage() {
             
             if (response.ok) {
               const data = await response.json();
+              console.log('[HelpPage] Fetched displayId from server:', data.displayId);
               if (data.displayId) {
                 setCurrentDisplayId(data.displayId);
                 setEditedId(data.displayId);
-                // Also store in localStorage for future use
+                // Update localStorage with current server value
                 try {
                   localStorage.setItem(`embed_display_id_${embedContext.embedId}`, data.displayId);
                 } catch {}
               }
             }
+          } else {
+            // Fallback to localStorage if no token (shouldn't happen)
+            const cached = localStorage.getItem(`embed_display_id_${embedContext.embedId}`);
+            if (cached) {
+              setCurrentDisplayId(cached);
+              setEditedId(cached);
+            }
           }
         } catch (error) {
           console.error('[HelpPage] Error fetching displayId:', error);
+          // Fallback to localStorage on error
+          const cached = localStorage.getItem(`embed_display_id_${embedContext.embedId}`);
+          if (cached) {
+            setCurrentDisplayId(cached);
+            setEditedId(cached);
+          }
         } finally {
           setIsLoadingId(false);
         }
+      } else {
+        setIsLoadingId(false);
       }
     };
     
     fetchDisplayId();
-  }, [embedContext.isEmbed, embedContext.embedId, currentDisplayId]);
+  }, [embedContext.isEmbed, embedContext.embedId]);
 
   const handleSaveId = async () => {
     if (!editedId.trim() || !embedContext.embedId) return;
@@ -129,8 +147,15 @@ export default function HelpPage() {
       
       if (!token) {
         console.error('No embed token available');
+        toast({
+          title: "Error",
+          description: "Session expired. Please refresh the page.",
+          variant: "destructive",
+        });
         return;
       }
+      
+      console.log('[HelpPage] Updating ID from', currentDisplayId, 'to', editedId.trim());
       
       const response = await fetch('/api/embed/update-display-id', {
         method: 'POST',
@@ -144,18 +169,36 @@ export default function HelpPage() {
       });
       
       if (response.ok) {
+        const data = await response.json();
+        console.log('[HelpPage] Update successful:', data);
         try {
           localStorage.setItem(`embed_display_id_${embedContext.embedId}`, editedId.trim());
         } catch {}
         // Update state for immediate UI update
         setCurrentDisplayId(editedId.trim());
         setIsEditingId(false);
+        toast({
+          title: "ID Updated",
+          description: `Your ID is now: ${editedId.trim()}`,
+        });
       } else {
         const errorData = await response.json();
         console.error('Failed to update ID:', errorData.error);
+        toast({
+          title: "Update Failed",
+          description: errorData.error === "ID already taken or current ID not found" 
+            ? "This ID is already taken. Please try another." 
+            : errorData.error,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Failed to update ID:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update ID. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -186,46 +229,50 @@ export default function HelpPage() {
         </div>
 
         {/* Session identifier for embed users - with edit option */}
-        {embedContext.isEmbed && currentDisplayId && (
+        {embedContext.isEmbed && (
           <div className="flex items-center gap-2">
-            {isEditingId ? (
-              <>
-                <Input
-                  value={editedId}
-                  onChange={(e) => setEditedId(e.target.value)}
-                  className="h-7 w-40 text-sm"
-                  data-testid="input-edit-display-id"
-                  autoFocus
-                />
-                <button
-                  onClick={handleSaveId}
-                  className="text-green-600 hover:text-green-700 p-1"
-                  data-testid="button-save-id"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="text-muted-foreground hover:text-foreground p-1"
-                  data-testid="button-cancel-edit"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
-                  {currentDisplayId}
-                </span>
-                <button
-                  onClick={() => setIsEditingId(true)}
-                  className="text-muted-foreground hover:text-foreground p-1"
-                  data-testid="button-edit-id"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </>
-            )}
+            {isLoadingId ? (
+              <span className="text-sm text-muted-foreground">Loading ID...</span>
+            ) : currentDisplayId ? (
+              isEditingId ? (
+                <>
+                  <Input
+                    value={editedId}
+                    onChange={(e) => setEditedId(e.target.value)}
+                    className="h-7 w-40 text-sm"
+                    data-testid="input-edit-display-id"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSaveId}
+                    className="text-green-600 hover:text-green-700 p-1"
+                    data-testid="button-save-id"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="text-muted-foreground hover:text-foreground p-1"
+                    data-testid="button-cancel-edit"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
+                    {currentDisplayId}
+                  </span>
+                  <button
+                    onClick={() => setIsEditingId(true)}
+                    className="text-muted-foreground hover:text-foreground p-1"
+                    data-testid="button-edit-id"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </>
+              )
+            ) : null}
           </div>
         )}
 

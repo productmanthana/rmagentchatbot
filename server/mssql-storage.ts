@@ -951,6 +951,20 @@ export class MssqlStorage {
     return result.rowsAffected[0] > 0;
   }
 
+  // Debug method to see all embed users for an embed link
+  async debugGetAllEmbedUsers(embedLinkId: string): Promise<any[]> {
+    const pool = this.ensurePool();
+    try {
+      const result = await pool.request()
+        .input('embedLinkId', embedLinkId)
+        .query('SELECT internal_user_id, display_id, embed_link_id FROM embed_user_ids WHERE embed_link_id = @embedLinkId');
+      return result.recordset;
+    } catch (error) {
+      console.error('[debugGetAllEmbedUsers] Error:', error);
+      return [];
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // HELPER METHODS
   // ═══════════════════════════════════════════════════════════════
