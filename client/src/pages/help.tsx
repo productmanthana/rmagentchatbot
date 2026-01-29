@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
+import { useEmbedContext } from "./embed-with-id";
 import { 
   MessageSquare, 
   Filter, 
@@ -13,20 +15,53 @@ import {
   XCircle,
   Lightbulb,
   Table2,
-  MousePointerClick
+  MousePointerClick,
+  Copy,
+  Check
 } from "lucide-react";
 
 export default function HelpPage() {
+  const embedContext = useEmbedContext();
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopyId = () => {
+    if (embedContext.displayId) {
+      navigator.clipboard.writeText(embedContext.displayId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-auto p-6">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-4">
-          <Link href="/">
-            <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Chat
-            </Button>
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link href="/">
+              <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Chat
+              </Button>
+            </Link>
+            
+            {/* Show User ID for embed users */}
+            {embedContext.isEmbed && embedContext.displayId && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md">
+                <span className="text-xs text-muted-foreground">Your ID:</span>
+                <span className="text-xs font-mono font-medium" data-testid="text-embed-display-id">
+                  {embedContext.displayId}
+                </span>
+                <button
+                  onClick={handleCopyId}
+                  className="text-muted-foreground hover:text-foreground ml-1"
+                  title="Copy ID"
+                  data-testid="button-copy-id"
+                >
+                  {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                </button>
+              </div>
+            )}
+          </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-bold" data-testid="text-help-title">Help & Guidelines</h1>
             <p className="text-muted-foreground">

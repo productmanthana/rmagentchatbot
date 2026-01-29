@@ -3684,14 +3684,6 @@ export default function ChatPage() {
               </Button>
             </Link>
             
-            {/* Embed User ID Display - Show after Help for embed mode */}
-            {isEmbed && embedContext.displayId && (
-              <EmbedUserIdDisplay 
-                displayId={embedContext.displayId}
-                onRecover={embedContext.onRecoverSession}
-              />
-            )}
-            
             {/* Hide Sign Out and User Email in embed mode */}
             {!isEmbed && (
               <>
