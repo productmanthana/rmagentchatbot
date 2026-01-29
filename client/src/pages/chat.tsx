@@ -3538,8 +3538,8 @@ export default function ChatPage() {
           
           {/* Bottom Navigation */}
           <div className="p-4 border-t border-white/10 space-y-1">
-            {/* Hide Query Logs and Integration in embed mode */}
-            {canViewQueryLogs && !isEmbed && (
+            {/* Show Query Logs for admin/superadmin (even in embed mode) */}
+            {canViewQueryLogs && (
               <Link href="/logs">
                 <Button
                   variant="ghost"
@@ -3551,6 +3551,7 @@ export default function ChatPage() {
                 </Button>
               </Link>
             )}
+            {/* Hide Integration in embed mode - only for main app */}
             {isSuperadmin && !isEmbed && (
               <Link href="/integration">
                 <Button
