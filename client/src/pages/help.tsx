@@ -69,13 +69,23 @@ export default function HelpPage() {
 
   const [isEditingId, setIsEditingId] = useState(false);
   const [editedId, setEditedId] = useState(embedContext.displayId || "");
+  const [currentDisplayId, setCurrentDisplayId] = useState(embedContext.displayId || "");
 
   const handleSaveId = async () => {
     if (!editedId.trim() || !embedContext.embedId) return;
     
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
+      // Get token from sessionStorage (where embed page stores it) or URL params as fallback
+      let token = sessionStorage.getItem('embedToken');
+      if (!token) {
+        const urlParams = new URLSearchParams(window.location.search);
+        token = urlParams.get('token');
+      }
+      
+      if (!token) {
+        console.error('No embed token available');
+        return;
+      }
       
       const response = await fetch('/api/embed/update-display-id', {
         method: 'POST',
@@ -91,8 +101,12 @@ export default function HelpPage() {
         try {
           localStorage.setItem(`embed_display_id_${embedContext.embedId}`, editedId.trim());
         } catch {}
+        // Update state for immediate UI update
+        setCurrentDisplayId(editedId.trim());
         setIsEditingId(false);
-        window.location.reload();
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to update ID:', errorData.error);
       }
     } catch (error) {
       console.error('Failed to update ID:', error);
@@ -100,7 +114,7 @@ export default function HelpPage() {
   };
 
   const handleCancelEdit = () => {
-    setEditedId(embedContext.displayId || "");
+    setEditedId(currentDisplayId);
     setIsEditingId(false);
   };
 
@@ -155,7 +169,7 @@ export default function HelpPage() {
             ) : (
               <>
                 <span className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
-                  {embedContext.displayId}
+                  {currentDisplayId}
                 </span>
                 <button
                   onClick={() => setIsEditingId(true)}
