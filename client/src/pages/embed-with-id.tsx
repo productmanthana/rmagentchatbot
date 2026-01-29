@@ -105,7 +105,7 @@ export default function EmbedWithIdPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-full w-full flex items-center justify-center bg-gray-50" style={{ minHeight: '100vh', height: '100%' }}>
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-[#8BC34A] border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-600">Validating embed access...</p>
@@ -116,7 +116,7 @@ export default function EmbedWithIdPage() {
 
   if (!validation?.valid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-full w-full flex items-center justify-center bg-gray-50" style={{ minHeight: '100vh', height: '100%' }}>
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
           <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
