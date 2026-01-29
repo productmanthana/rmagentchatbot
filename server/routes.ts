@@ -1916,6 +1916,7 @@ Please provide a helpful analysis for the follow-up question.`,
       // 4. Main site login is NOT affected by embed usage
       
       let embedUserId = `embed_${embedId}`;
+      let isNewSession = false;
       
       if (req.session) {
         // Initialize embed sessions map if not exists
@@ -1933,6 +1934,7 @@ Please provide a helpful analysis for the follow-up question.`,
             userEmail: `embed@${link.allowed_domain}`,
             role: link.role,
           };
+          isNewSession = true;
         }
         
         embedUserId = embedSessions[embedId].userId;
@@ -1945,11 +1947,17 @@ Please provide a helpful analysis for the follow-up question.`,
 
       const sessionUserId = embedUserId;
       
+      // Generate or retrieve display ID (e.g., admin_k7m2x9)
+      // Scoped by embed link ID for security isolation
+      const { displayId, isNew: isNewDisplayId } = await mssqlStorage.getOrCreateEmbedUserId(sessionUserId, link.role, embedId);
+      
       res.json({ 
         success: true, 
         token, // Return the token for client to use
         sessionId: sessionUserId,
-        role: link.role 
+        displayId, // User-friendly ID for display and recovery
+        role: link.role,
+        isNewSession: isNewSession || isNewDisplayId,
       });
     } catch (error: any) {
       console.error("Error creating embed session:", error);
@@ -2008,6 +2016,139 @@ Please provide a helpful analysis for the follow-up question.`,
     } catch (error: any) {
       console.error("Error validating embed link:", error);
       res.status(500).json({ valid: false, error: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // EMBED USER ID RECOVERY
+  // ═══════════════════════════════════════════════════════════════
+
+  // Recover embed session using display ID
+  // SECURITY: Requires valid embed token and scopes recovery to same embed link
+  app.post("/api/embed/recover", async (req, res) => {
+    try {
+      // Validate embed token for authentication
+      const embedToken = req.headers['x-embed-token'] as string;
+      if (!embedToken) {
+        return res.status(401).json({ success: false, error: "Authentication required" });
+      }
+
+      const tokenData = embedTokenStore.get(embedToken);
+      if (!tokenData) {
+        return res.status(401).json({ success: false, error: "Invalid or expired token" });
+      }
+
+      const { displayId } = req.body;
+      
+      if (!displayId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Missing required field: displayId" 
+        });
+      }
+
+      // Use embedId from token (not from request body) for security
+      const embedId = tokenData.embedId;
+      
+      // SECURITY: Derive currentSessionId from server-side session, not from client
+      let currentSessionId: string | null = null;
+      if (req.session && (req.session as any).embedSessions) {
+        const embedSessions = (req.session as any).embedSessions;
+        if (embedSessions[embedId]) {
+          currentSessionId = embedSessions[embedId].userId;
+        }
+      }
+      
+      if (!currentSessionId) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "No active session found. Please refresh the page and try again." 
+        });
+      }
+
+      // Validate embed link exists
+      const link = await mssqlStorage.getEmbedLinkByEmbedId(embedId);
+      if (!link) {
+        return res.status(404).json({ success: false, error: "Embed link not found" });
+      }
+
+      // Look up the old user by display ID (scoped to this embed link)
+      const oldUser = await mssqlStorage.getEmbedUserByDisplayId(displayId, embedId);
+      if (!oldUser) {
+        return res.status(404).json({ 
+          success: false, 
+          error: "ID not found. Please check and try again." 
+        });
+      }
+
+      // Verify role consistency - prevent role escalation
+      if (oldUser.role !== tokenData.role) {
+        return res.status(403).json({ 
+          success: false, 
+          error: "Cannot recover session with different role" 
+        });
+      }
+
+      // Link the current session to the old display ID (merges data, scoped to embed link)
+      const success = await mssqlStorage.linkEmbedUserToDisplayId(currentSessionId, displayId, embedId);
+      
+      if (!success) {
+        return res.status(500).json({ success: false, error: "Failed to recover session" });
+      }
+
+      // Update session in memory if available
+      if (req.session && (req.session as any).embedSessions) {
+        const embedSessions = (req.session as any).embedSessions;
+        if (embedSessions[embedId]) {
+          // Update the internal user ID to point to the recovered one
+          embedSessions[embedId].userId = currentSessionId;
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Session recovered successfully. Your chat history and data have been restored.",
+        displayId: displayId,
+      });
+    } catch (error: any) {
+      console.error("Error recovering embed session:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Get current embed user's display ID
+  app.get("/api/embed/user-id", async (req, res) => {
+    try {
+      const embedToken = req.headers['x-embed-token'] as string;
+      if (!embedToken) {
+        return res.status(401).json({ error: "No embed token provided" });
+      }
+
+      const tokenData = embedTokenStore.get(embedToken);
+      if (!tokenData) {
+        return res.status(401).json({ error: "Invalid embed token" });
+      }
+
+      // Get the session user ID from the embed sessions map
+      let internalUserId = `embed_${tokenData.embedId}`;
+      
+      if (req.session && (req.session as any).embedSessions) {
+        const embedSessions = (req.session as any).embedSessions;
+        if (embedSessions[tokenData.embedId]) {
+          internalUserId = embedSessions[tokenData.embedId].userId;
+        }
+      }
+
+      // Get or create display ID (scoped to embed link)
+      const { displayId } = await mssqlStorage.getOrCreateEmbedUserId(internalUserId, tokenData.role, tokenData.embedId);
+
+      res.json({ 
+        displayId,
+        role: tokenData.role,
+      });
+    } catch (error: any) {
+      console.error("Error getting embed user ID:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

@@ -14,6 +14,9 @@ interface EmbedContextType {
   embedId: string | null;
   role: 'superadmin' | 'admin' | 'user' | null;
   embedName: string | null;
+  displayId: string | null;
+  sessionId: string | null;
+  onRecoverSession: (newDisplayId: string) => Promise<boolean>;
 }
 
 export const EmbedContext = createContext<EmbedContextType>({
@@ -21,6 +24,9 @@ export const EmbedContext = createContext<EmbedContextType>({
   embedId: null,
   role: null,
   embedName: null,
+  displayId: null,
+  sessionId: null,
+  onRecoverSession: async () => false,
 });
 
 export function useEmbedContext() {
@@ -31,6 +37,61 @@ export default function EmbedWithIdPage() {
   const params = useParams<{ embedId: string }>();
   const [validation, setValidation] = useState<EmbedValidation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [displayId, setDisplayId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  // Recovery function to link current session to an old display ID
+  const handleRecoverSession = async (newDisplayId: string): Promise<boolean> => {
+    if (!params.embedId) return false;
+    
+    try {
+      const token = sessionStorage.getItem('embedToken');
+      if (!token) {
+        console.error('No embed token available');
+        return false;
+      }
+      
+      const response = await fetch('/api/embed/recover', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Embed-Token': token,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          displayId: newDisplayId.toLowerCase(),
+          // Note: currentSessionId and embedId are derived server-side for security
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update local state with recovered display ID
+        setDisplayId(newDisplayId.toLowerCase());
+        // Store in localStorage for persistence
+        localStorage.setItem(`embed_display_id_${params.embedId}`, newDisplayId.toLowerCase());
+        // Reload to refresh chat history
+        window.location.reload();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Failed to recover session:', error);
+      return false;
+    }
+  };
+
+  // Hydrate displayId from localStorage on mount
+  useEffect(() => {
+    if (params.embedId) {
+      const storedDisplayId = localStorage.getItem(`embed_display_id_${params.embedId}`);
+      if (storedDisplayId) {
+        setDisplayId(storedDisplayId);
+      }
+    }
+  }, [params.embedId]);
 
   useEffect(() => {
     async function validateAndCreateSession() {
@@ -91,6 +152,17 @@ export default function EmbedWithIdPage() {
         if (sessionData.token) {
           sessionStorage.setItem('embedToken', sessionData.token);
         }
+        
+        // Store session ID and display ID
+        if (sessionData.sessionId) {
+          setSessionId(sessionData.sessionId);
+        }
+        
+        if (sessionData.displayId) {
+          setDisplayId(sessionData.displayId);
+          // Store in localStorage for persistence across refreshes
+          localStorage.setItem(`embed_display_id_${params.embedId}`, sessionData.displayId);
+        }
 
         setValidation(validateData);
       } catch (error) {
@@ -138,6 +210,9 @@ export default function EmbedWithIdPage() {
     embedId: params.embedId || null,
     role: validation.role || null,
     embedName: validation.name || null,
+    displayId: displayId,
+    sessionId: sessionId,
+    onRecoverSession: handleRecoverSession,
   };
 
   return (

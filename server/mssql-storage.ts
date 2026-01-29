@@ -739,6 +739,181 @@ export class MssqlStorage {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // EMBED USER IDS (Recovery codes for embed users)
+  // ═══════════════════════════════════════════════════════════════
+
+  async ensureEmbedUserIdsTable(): Promise<void> {
+    const pool = this.ensurePool();
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='embed_user_ids' AND xtype='U')
+      CREATE TABLE embed_user_ids (
+        id VARCHAR(255) PRIMARY KEY,
+        display_id VARCHAR(50) NOT NULL,
+        embed_link_id VARCHAR(255) NOT NULL,
+        internal_user_id VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        created_at DATETIME2 DEFAULT GETUTCDATE(),
+        last_used_at DATETIME2 DEFAULT GETUTCDATE(),
+        CONSTRAINT UQ_embed_user_display UNIQUE (display_id, embed_link_id)
+      );
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_embed_user_ids_internal' AND object_id = OBJECT_ID('embed_user_ids'))
+      CREATE INDEX IX_embed_user_ids_internal ON embed_user_ids(internal_user_id);
+      IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_embed_user_ids_embed_link' AND object_id = OBJECT_ID('embed_user_ids'))
+      CREATE INDEX IX_embed_user_ids_embed_link ON embed_user_ids(embed_link_id);
+    `);
+  }
+
+  // Generate a unique display ID in format: role_random6
+  async generateEmbedDisplayId(role: string, embedLinkId: string): Promise<string> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedUserIdsTable();
+    
+    // Generate random 6-char alphanumeric (lowercase)
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let displayId: string;
+    let attempts = 0;
+    
+    do {
+      let randomPart = '';
+      for (let i = 0; i < 6; i++) {
+        randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      displayId = `${role}_${randomPart}`;
+      
+      // Check if already exists for this embed link
+      const existing = await pool.request()
+        .input('displayId', displayId)
+        .input('embedLinkId', embedLinkId)
+        .query('SELECT 1 FROM embed_user_ids WHERE display_id = @displayId AND embed_link_id = @embedLinkId');
+      
+      if (existing.recordset.length === 0) {
+        break;
+      }
+      attempts++;
+    } while (attempts < 10);
+    
+    return displayId;
+  }
+
+  // Create or get embed user ID for an internal user ID (scoped by embed link)
+  async getOrCreateEmbedUserId(internalUserId: string, role: string, embedLinkId: string): Promise<{ displayId: string; isNew: boolean }> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedUserIdsTable();
+    
+    // Check if this internal user ID already has a display ID for this embed link
+    const existing = await pool.request()
+      .input('internalUserId', internalUserId)
+      .input('embedLinkId', embedLinkId)
+      .query('SELECT display_id FROM embed_user_ids WHERE internal_user_id = @internalUserId AND embed_link_id = @embedLinkId');
+    
+    if (existing.recordset.length > 0) {
+      // Update last used
+      await pool.request()
+        .input('internalUserId', internalUserId)
+        .input('embedLinkId', embedLinkId)
+        .input('now', new Date())
+        .query('UPDATE embed_user_ids SET last_used_at = @now WHERE internal_user_id = @internalUserId AND embed_link_id = @embedLinkId');
+      
+      return { displayId: existing.recordset[0].display_id, isNew: false };
+    }
+    
+    // Create new display ID
+    const displayId = await this.generateEmbedDisplayId(role, embedLinkId);
+    const id = generateId();
+    
+    await pool.request()
+      .input('id', id)
+      .input('displayId', displayId)
+      .input('embedLinkId', embedLinkId)
+      .input('internalUserId', internalUserId)
+      .input('role', role)
+      .input('now', new Date())
+      .query(`
+        INSERT INTO embed_user_ids (id, display_id, embed_link_id, internal_user_id, role, created_at, last_used_at)
+        VALUES (@id, @displayId, @embedLinkId, @internalUserId, @role, @now, @now)
+      `);
+    
+    return { displayId, isNew: true };
+  }
+
+  // Get internal user ID from display ID (for recovery, scoped by embed link)
+  async getEmbedUserByDisplayId(displayId: string, embedLinkId: string): Promise<{ internalUserId: string; role: string } | null> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedUserIdsTable();
+    
+    const result = await pool.request()
+      .input('displayId', displayId.toLowerCase())
+      .input('embedLinkId', embedLinkId)
+      .query('SELECT internal_user_id, role FROM embed_user_ids WHERE LOWER(display_id) = @displayId AND embed_link_id = @embedLinkId');
+    
+    if (result.recordset.length === 0) {
+      return null;
+    }
+    
+    return {
+      internalUserId: result.recordset[0].internal_user_id,
+      role: result.recordset[0].role,
+    };
+  }
+
+  // Link a new internal user ID to an existing display ID (for recovery/merge, scoped by embed link)
+  async linkEmbedUserToDisplayId(newInternalUserId: string, displayId: string, embedLinkId: string): Promise<boolean> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedUserIdsTable();
+    
+    // Get the OLD internal user ID for this display ID (scoped by embed link)
+    const oldUser = await this.getEmbedUserByDisplayId(displayId, embedLinkId);
+    if (!oldUser) {
+      return false;
+    }
+    
+    const oldInternalUserId = oldUser.internalUserId;
+    
+    // Update the display ID record to point to the new internal user ID
+    // (Keep the old one for reference, but new queries will use newInternalUserId)
+    await pool.request()
+      .input('displayId', displayId.toLowerCase())
+      .input('embedLinkId', embedLinkId)
+      .input('newInternalUserId', newInternalUserId)
+      .input('now', new Date())
+      .query(`
+        UPDATE embed_user_ids 
+        SET internal_user_id = @newInternalUserId, last_used_at = @now
+        WHERE LOWER(display_id) = @displayId AND embed_link_id = @embedLinkId
+      `);
+    
+    // Now merge chats: Update old chats to belong to new user ID
+    await pool.request()
+      .input('oldUserId', oldInternalUserId)
+      .input('newUserId', newInternalUserId)
+      .query(`
+        UPDATE chats SET session_id = @newUserId WHERE session_id = @oldUserId
+      `);
+    
+    // Merge FAQs: Update messages with user_id
+    await pool.request()
+      .input('oldUserId', oldInternalUserId)
+      .input('newUserId', newInternalUserId)
+      .query(`
+        UPDATE messages SET user_id = @newUserId WHERE user_id = @oldUserId
+      `);
+    
+    // Merge query logs if they exist
+    try {
+      await pool.request()
+        .input('oldUserId', oldInternalUserId)
+        .input('newUserId', newInternalUserId)
+        .query(`
+          UPDATE query_logs SET user_id = @newUserId WHERE user_id = @oldUserId
+        `);
+    } catch (e) {
+      // Query logs table might not exist
+    }
+    
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // HELPER METHODS
   // ═══════════════════════════════════════════════════════════════
 

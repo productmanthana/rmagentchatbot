@@ -117,6 +117,7 @@ import {
   CheckCircle,
   Info,
   User,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -870,6 +871,104 @@ function MaximizedTableWithScrollbars({ data }: { data: any[] }) {
       >
         <div ref={vScrollbarContentRef} style={{ width: '1px' }} />
       </div>
+    </div>
+  );
+}
+
+// Embed User ID Display Component - Shows in sidebar footer for embed mode
+function EmbedUserIdDisplay({ 
+  displayId, 
+  onRecover 
+}: { 
+  displayId: string; 
+  onRecover: (newDisplayId: string) => Promise<boolean>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubmit = async () => {
+    if (!inputValue.trim()) {
+      setError('Please enter an ID');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const success = await onRecover(inputValue.trim());
+      if (success) {
+        toast({
+          title: "Session Recovered",
+          description: "Your chat history has been restored.",
+        });
+        setIsEditing(false);
+      } else {
+        setError('ID not found. Please check and try again.');
+      }
+    } catch (e) {
+      setError('Failed to recover session. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="px-3 py-2 mt-3 border-t border-white/10 pt-3 space-y-2">
+        <div className="text-xs text-white/50 mb-1">Enter your previous ID:</div>
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="e.g., admin_k7m2x9"
+            className="flex-1 bg-[#2C3E50] text-white text-xs px-2 py-1 rounded border border-[#4B5563] focus:border-[#8BC34A] focus:outline-none"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSubmit();
+              if (e.key === 'Escape') setIsEditing(false);
+            }}
+            disabled={isLoading}
+            data-testid="input-recover-id"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-[#8BC34A] hover:bg-[#7CB342] text-white text-xs px-2 py-1 rounded disabled:opacity-50"
+            data-testid="button-recover-submit"
+          >
+            {isLoading ? '...' : 'Go'}
+          </button>
+        </div>
+        {error && <div className="text-xs text-red-400">{error}</div>}
+        <button
+          onClick={() => { setIsEditing(false); setError(''); setInputValue(''); }}
+          className="text-xs text-white/40 hover:text-white/60"
+          data-testid="button-recover-cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 mt-3 border-t border-white/10 pt-3">
+      <span className="text-xs text-white/40">ID:</span>
+      <span className="text-xs text-white/50 font-mono" data-testid="text-embed-display-id">
+        {displayId}
+      </span>
+      <button
+        onClick={() => setIsEditing(true)}
+        className="text-xs text-white/30 hover:text-white/60 ml-auto"
+        title="Enter a different ID to recover your previous session"
+        data-testid="button-edit-embed-id"
+      >
+        <RefreshCw className="h-3 w-3" />
+      </button>
     </div>
   );
 }
@@ -3600,6 +3699,14 @@ export default function ChatPage() {
                   </div>
                 )}
               </>
+            )}
+            
+            {/* Embed User ID Display - Only in embed mode */}
+            {isEmbed && embedContext.displayId && (
+              <EmbedUserIdDisplay 
+                displayId={embedContext.displayId}
+                onRecover={embedContext.onRecoverSession}
+              />
             )}
           </div>
         </aside>
