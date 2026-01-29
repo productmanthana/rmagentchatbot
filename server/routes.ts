@@ -1889,23 +1889,9 @@ Please provide a helpful analysis for the follow-up question.`,
         return res.status(403).json({ error: "Domain not authorized" });
       }
 
-      // Generate a token for embed authentication (works without cookies)
-      const token = generateEmbedToken();
-      embedTokenStore.set(token, {
-        embedId,
-        role: link.role,
-        domain: link.allowed_domain,
-        createdAt: Date.now()
-      });
-      
-      // Clean up old tokens (older than 24 hours)
-      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      embedTokenStore.forEach((value, key) => {
-        if (value.createdAt < dayAgo) {
-          embedTokenStore.delete(key);
-        }
-      });
-
+      // ═══════════════════════════════════════════════════════════════
+      // PER-BROWSER SESSION MANAGEMENT (MUST happen BEFORE token creation)
+      // ═══════════════════════════════════════════════════════════════
       // Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
       // Store multiple embed sessions in one browser session (keyed by embedId)
       // IMPORTANT: Don't overwrite main session properties - store embed data separately
@@ -1946,6 +1932,26 @@ Please provide a helpful analysis for the follow-up question.`,
       }
 
       const sessionUserId = embedUserId;
+
+      // Generate a token for embed authentication (works without cookies)
+      // CRITICAL: Store the unique sessionUserId in the token so each browser gets isolated data
+      const token = generateEmbedToken();
+      embedTokenStore.set(token, {
+        embedId,
+        role: link.role,
+        domain: link.allowed_domain,
+        userId: sessionUserId,  // Store the unique per-browser userId in the token
+        userEmail: `embed@${link.allowed_domain}`,
+        createdAt: Date.now()
+      });
+      
+      // Clean up old tokens (older than 24 hours)
+      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      embedTokenStore.forEach((value, key) => {
+        if (value.createdAt < dayAgo) {
+          embedTokenStore.delete(key);
+        }
+      });
       
       // Generate or retrieve display ID (e.g., admin_k7m2x9)
       // Scoped by embed link ID for security isolation

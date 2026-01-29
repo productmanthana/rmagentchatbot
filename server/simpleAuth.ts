@@ -335,7 +335,15 @@ export async function setupAuth(app: Express) {
 }
 
 // Store for embed tokens (shared with routes.ts)
-export const embedTokenStore = new Map<string, { embedId: string; role: string; domain: string; createdAt: number }>();
+// IMPORTANT: userId and userEmail are stored per-token for browser isolation
+export const embedTokenStore = new Map<string, { 
+  embedId: string; 
+  role: string; 
+  domain: string; 
+  userId?: string;      // Unique per browser session
+  userEmail?: string;   // Per browser session
+  createdAt: number 
+}>();
 
 // Check embed token and return user info
 export function checkEmbedToken(req: any): { valid: boolean; embedId?: string; role?: string; userId?: string; userEmail?: string } {
@@ -351,12 +359,14 @@ export function checkEmbedToken(req: any): { valid: boolean; embedId?: string; r
     return { valid: false };
   }
   
+  // CRITICAL: Use the unique userId stored in the token, NOT a constructed one
+  // This ensures each browser gets its own isolated chat history
   return { 
     valid: true, 
     embedId: tokenData.embedId, 
     role: tokenData.role,
-    userId: `embed_${tokenData.embedId}`,
-    userEmail: `embed@${tokenData.domain}`
+    userId: tokenData.userId || `embed_${tokenData.embedId}`,  // Use stored userId, fallback for old tokens
+    userEmail: tokenData.userEmail || `embed@${tokenData.domain}`
   };
 }
 
