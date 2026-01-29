@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import ChatPage from "@/pages/chat";
 import DashboardPage from "@/pages/dashboard";
 import ConversationsPage from "@/pages/conversations";
 import EmbedPage from "@/pages/embed";
-import EmbedWithIdPage from "@/pages/embed-with-id";
+import EmbedWithIdPage, { EmbedContext } from "@/pages/embed-with-id";
 import AuthPage from "@/pages/auth";
 import LogsPage from "@/pages/logs";
 import HelpPage from "@/pages/help";
@@ -84,6 +85,57 @@ function UnauthenticatedRouter() {
   );
 }
 
+// Wrapper to provide embed context for non-embed routes when embed token exists
+function EmbedContextWrapper({ children, user }: { children: React.ReactNode; user: AuthUser | null }) {
+  const [embedData, setEmbedData] = useState<{
+    embedId: string | null;
+    role: 'superadmin' | 'admin' | 'user' | null;
+    displayId: string | null;
+    sessionId: string | null;
+  }>({ embedId: null, role: null, displayId: null, sessionId: null });
+
+  useEffect(() => {
+    // Check if we have embed token (meaning user came from embed)
+    try {
+      const embedToken = sessionStorage.getItem('embedToken');
+      const storedEmbedId = sessionStorage.getItem('currentEmbedId');
+      
+      if (embedToken && storedEmbedId) {
+        // Get display ID from localStorage
+        const storedDisplayId = localStorage.getItem(`embed_display_id_${storedEmbedId}`);
+        
+        setEmbedData({
+          embedId: storedEmbedId,
+          role: (user as any)?.role || 'user',
+          displayId: storedDisplayId,
+          sessionId: user?.id || null,
+        });
+      }
+    } catch {}
+  }, [user]);
+
+  // If we have embed data, provide the context
+  if (embedData.embedId) {
+    const embedContext = {
+      isEmbed: true,
+      embedId: embedData.embedId,
+      role: embedData.role,
+      embedName: null,
+      displayId: embedData.displayId,
+      sessionId: embedData.sessionId,
+      onRecoverSession: async () => false, // Recovery only works on main embed page
+    };
+
+    return (
+      <EmbedContext.Provider value={embedContext}>
+        {children}
+      </EmbedContext.Provider>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function AppContent() {
   // Check if we're on an embed route - skip auth check for embeds
   const isEmbedRoute = window.location.pathname.startsWith('/embed');
@@ -116,7 +168,11 @@ function AppContent() {
   }
 
   if (user) {
-    return <AuthenticatedRouter />;
+    return (
+      <EmbedContextWrapper user={user}>
+        <AuthenticatedRouter />
+      </EmbedContextWrapper>
+    );
   }
 
   return <UnauthenticatedRouter />;

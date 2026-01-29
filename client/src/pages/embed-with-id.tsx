@@ -148,9 +148,10 @@ export default function EmbedWithIdPage() {
         });
         const sessionData = await sessionResponse.json();
         
-        // Store the embed token in sessionStorage for API calls (works without cookies)
+        // Store the embed token and embedId in sessionStorage for API calls (works without cookies)
         if (sessionData.token) {
           sessionStorage.setItem('embedToken', sessionData.token);
+          sessionStorage.setItem('currentEmbedId', params.embedId!);
         }
         
         // Store session ID and display ID
