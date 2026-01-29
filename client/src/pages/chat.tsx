@@ -2641,8 +2641,15 @@ export default function ChatPage() {
     
     // Fetch the first user message to get FAQ status
     try {
+      const headers: Record<string, string> = {};
+      const embedToken = sessionStorage.getItem('embedToken');
+      if (embedToken) {
+        headers['X-Embed-Token'] = embedToken;
+      }
+      
       const response = await fetch(`/api/chats/${chatId}/first-user-message`, {
         credentials: 'include',
+        headers,
         signal: abortController.signal,
       });
       
