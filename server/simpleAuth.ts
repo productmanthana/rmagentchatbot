@@ -430,10 +430,15 @@ export async function getUserRole(req: any): Promise<string> {
   
   // For regular logged-in users, check database
   const userEmail = req.session?.userEmail;
-  if (!userEmail) return 'user';
+  console.log('[getUserRole] Regular user, session email:', userEmail, 'session:', JSON.stringify(req.session));
+  if (!userEmail) {
+    console.log('[getUserRole] No session email, returning user');
+    return 'user';
+  }
   
   try {
     const user = await mssqlStorage.getUserByEmail(userEmail);
+    console.log('[getUserRole] Database lookup for', userEmail, 'returned role:', user?.role);
     return user?.role || 'user';
   } catch (error) {
     console.error('Error getting user role:', error);
