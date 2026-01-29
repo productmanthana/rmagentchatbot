@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 import { 
   MessageSquare, 
   Filter, 
@@ -176,6 +177,8 @@ export default function HelpPage() {
         } catch {}
         setCurrentDisplayId(editedId.trim());
         setIsEditingId(false);
+        // Invalidate chats cache so it refetches with the new user ID
+        await queryClient.invalidateQueries({ queryKey: ["/api/chats"] });
         toast({
           title: "ID Updated",
           description: `Your ID is now: ${editedId.trim()}`,
@@ -208,6 +211,8 @@ export default function HelpPage() {
           } catch {}
           setCurrentDisplayId(editedId.trim());
           setIsEditingId(false);
+          // Invalidate chats cache so it refetches with the merged user ID
+          await queryClient.invalidateQueries({ queryKey: ["/api/chats"] });
           toast({
             title: "Session Merged",
             description: "Your data has been merged with the existing session.",
