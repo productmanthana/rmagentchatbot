@@ -104,11 +104,6 @@ export default function IntegrationPage() {
 
   const getIframeCode = (embedId: string) => {
     const url = getEmbedUrl(embedId);
-    return `<iframe src="${url}" width="100%" height="600" frameborder="0" style="border: none; min-height: 600px;"></iframe>`;
-  };
-  
-  const getFullPageIframeCode = (embedId: string) => {
-    const url = getEmbedUrl(embedId);
     return `<iframe src="${url}" width="100%" height="100vh" frameborder="0" style="border: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;"></iframe>`;
   };
 
