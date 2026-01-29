@@ -5,6 +5,21 @@ import type { ErrorLog, ErrorLogStatus } from "@shared/schema";
 import { ERROR_LOG_STATUSES } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { useEmbedContext } from "./embed-with-id";
+
+// Parse embed context from URL params (for iframe third-party context)
+function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null } {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmbedId = urlParams.get('embed');
+    const urlToken = urlParams.get('token');
+    
+    if (urlEmbedId && urlToken) {
+      return { isEmbed: true, embedId: urlEmbedId };
+    }
+  } catch {}
+  return { isEmbed: false, embedId: null };
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,6 +132,13 @@ export default function LogsPage() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const { user, isLoading: authLoading } = useAuth();
   
+  // Get embed context for navigation
+  const contextEmbed = useEmbedContext();
+  const urlEmbed = getEmbedContextFromUrl();
+  const isEmbed = contextEmbed.isEmbed || urlEmbed.isEmbed;
+  const embedId = contextEmbed.embedId || urlEmbed.embedId;
+  const backUrl = isEmbed && embedId ? `/embed/${embedId}` : "/";
+  
   // All hooks MUST be called before any conditional returns (React rules of hooks)
   const { data: errorLogsData, isLoading, refetch } = useQuery<{ success: boolean; data: ErrorLog[] }>({
     queryKey: ["/api/error-logs"],
@@ -220,7 +242,7 @@ export default function LogsPage() {
         <Lock className="h-16 w-16 text-gray-400 mb-4" />
         <h2 className="text-xl font-semibold text-gray-700 mb-2">Access Denied</h2>
         <p className="text-gray-500 mb-4">Only admin and superadmin users can access Query Logs.</p>
-        <Link href="/">
+        <Link href={backUrl}>
           <Button variant="outline" className="text-[#3B82F6]">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Chat
@@ -286,7 +308,7 @@ export default function LogsPage() {
     <div className="min-h-screen bg-[#F9FAFB]">
       <div className="max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
-          <Link href="/">
+          <Link href={backUrl}>
             <Button
               variant="ghost"
               size="icon"
@@ -351,7 +373,7 @@ export default function LogsPage() {
                   When you want to log a query for review, use the "Log Query" button.
                   Logged queries will appear here.
                 </p>
-                <Link href="/">
+                <Link href={backUrl}>
                   <Button
                     className="mt-4 bg-[#8BC34A] hover:bg-[#689F38] text-white"
                     data-testid="button-go-to-chat"

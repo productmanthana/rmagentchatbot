@@ -10,6 +10,21 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
 import { Link as WouterLink } from "wouter";
+import { useEmbedContext } from "./embed-with-id";
+
+// Parse embed context from URL params (for iframe third-party context)
+function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null } {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEmbedId = urlParams.get('embed');
+    const urlToken = urlParams.get('token');
+    
+    if (urlEmbedId && urlToken) {
+      return { isEmbed: true, embedId: urlEmbedId };
+    }
+  } catch {}
+  return { isEmbed: false, embedId: null };
+}
 
 interface EmbedLink {
   id: string;
@@ -36,6 +51,13 @@ export default function IntegrationPage() {
   const [domain, setDomain] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedType, setCopiedType] = useState<'url' | 'iframe' | null>(null);
+
+  // Get embed context for navigation
+  const contextEmbed = useEmbedContext();
+  const urlEmbed = getEmbedContextFromUrl();
+  const isEmbed = contextEmbed.isEmbed || urlEmbed.isEmbed;
+  const embedId = contextEmbed.embedId || urlEmbed.embedId;
+  const backUrl = isEmbed && embedId ? `/embed/${embedId}` : "/";
 
   const { data: embedLinks = [], isLoading } = useQuery<EmbedLink[]>({
     queryKey: ["/api/embed-links"],
@@ -143,7 +165,7 @@ export default function IntegrationPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-8">
-          <WouterLink href="/">
+          <WouterLink href={backUrl}>
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ArrowLeft className="h-5 w-5" />
             </Button>
