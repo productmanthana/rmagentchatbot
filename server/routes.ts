@@ -1908,10 +1908,14 @@ Please provide a helpful analysis for the follow-up question.`,
 
       // Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
       // Store multiple embed sessions in one browser session (keyed by embedId)
+      // IMPORTANT: Don't overwrite main session properties - store embed data separately
       // This ensures:
       // 1. Same embed in same browser = same session (chat history preserved)
       // 2. Different embeds in same browser = different sessions (separate chat history)
       // 3. Same embed in different browser = different session (per browser)
+      // 4. Main site login is NOT affected by embed usage
+      
+      let embedUserId = `embed_${embedId}`;
       
       if (req.session) {
         // Initialize embed sessions map if not exists
@@ -1924,18 +1928,22 @@ Please provide a helpful analysis for the follow-up question.`,
         // Check if this embed already has a userId in this browser
         if (!embedSessions[embedId]) {
           // Create new unique userId for this embed + browser combination
-          embedSessions[embedId] = `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+          embedSessions[embedId] = {
+            userId: `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            userEmail: `embed@${link.allowed_domain}`,
+            role: link.role,
+          };
         }
         
-        // Set current session to this embed's userId
-        req.session.userId = embedSessions[embedId];
-        req.session.userEmail = `embed@${link.allowed_domain}`;
-        (req.session as any).embedId = embedId;
-        (req.session as any).embedRole = link.role;
-        (req.session as any).isEmbed = true;
+        embedUserId = embedSessions[embedId].userId;
+        
+        // DO NOT overwrite main session properties (userId, userEmail)
+        // This preserves logged-in user data on main site
+        // Only set embed-specific flags that can be checked later
+        (req.session as any).lastEmbedId = embedId;
       }
 
-      const sessionUserId = req.session?.userId || `embed_${embedId}`;
+      const sessionUserId = embedUserId;
       
       res.json({ 
         success: true, 

@@ -248,9 +248,12 @@ export async function setupAuth(app: Express) {
   // Get current user
   app.get("/api/auth/user", async (req, res) => {
     try {
+      // Check if request is explicitly marked as embed (via header or query param)
+      const isEmbedRequest = req.headers['x-embed-token'] || req.query.embed === 'true';
+      
       // First check for embed token (works without cookies)
       const embedCheck = checkEmbedToken(req);
-      if (embedCheck.valid) {
+      if (embedCheck.valid && isEmbedRequest) {
         return res.json({
           id: embedCheck.userId,
           email: embedCheck.userEmail || `embed@domain`,
@@ -266,7 +269,8 @@ export async function setupAuth(app: Express) {
       }
 
       // Check if this is an embed session (cookie-based fallback)
-      if ((req.session as any).isEmbed) {
+      // Only return embed data if the request is explicitly from embed page
+      if ((req.session as any).isEmbed && isEmbedRequest) {
         const embedId = (req.session as any).embedId;
         const embedRole = (req.session as any).embedRole || 'user';
         return res.json({
@@ -278,6 +282,9 @@ export async function setupAuth(app: Express) {
           isEmbed: true,
         });
       }
+      
+      // For non-embed requests with embed session, try to find the real user
+      // This happens when user was using embed but then visits main site
 
       // Find user in MS SQL
       const user = await mssqlStorage.getUserById(req.session.userId);
@@ -357,14 +364,14 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   // First check for embed token (works without cookies)
   const embedCheck = checkEmbedToken(req);
   if (embedCheck.valid) {
-    // Set session-like data for embed users
-    if (!req.session.userId) {
-      req.session.userId = embedCheck.userId;
-      req.session.userEmail = embedCheck.userEmail;
-      (req.session as any).embedId = embedCheck.embedId;
-      (req.session as any).embedRole = embedCheck.role;
-      (req.session as any).isEmbed = true;
-    }
+    // Store embed data on request object (NOT session) to avoid overwriting main session
+    (req as any).embedData = {
+      userId: embedCheck.userId,
+      userEmail: embedCheck.userEmail,
+      embedId: embedCheck.embedId,
+      role: embedCheck.role,
+      isEmbed: true,
+    };
     return next();
   }
   
@@ -375,25 +382,33 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   next();
 };
 
-// Helper to get user ID from session
+// Helper to get user ID from session or embed data
 export function getUserId(req: any): string | null {
+  // Embed token takes priority for embed requests
+  if (req.embedData?.userId) {
+    return req.embedData.userId;
+  }
   return req.session?.userId || null;
 }
 
-// Helper to get user email from session
+// Helper to get user email from session or embed data
 export function getUserEmail(req: any): string | null {
+  // Embed token takes priority for embed requests
+  if (req.embedData?.userEmail) {
+    return req.embedData.userEmail;
+  }
   return req.session?.userEmail || null;
 }
 
-// Helper to get user role from database or embed session
+// Helper to get user role from database or embed data
 export async function getUserRole(req: any): Promise<string> {
-  // First check if this is an embed user - use embed role directly
-  if (req.session?.isEmbed && req.session?.embedRole) {
-    console.log('[getUserRole] Embed user detected, role:', req.session.embedRole);
-    return req.session.embedRole;
+  // First check if this request has embed data (set by isAuthenticated middleware)
+  if (req.embedData?.role) {
+    console.log('[getUserRole] Embed request, role:', req.embedData.role);
+    return req.embedData.role;
   }
   
-  // Also check embed token for role (for API calls with X-Embed-Token header)
+  // Also check embed token directly for role (for API calls with X-Embed-Token header)
   const embedToken = req.headers['x-embed-token'] as string;
   if (embedToken && embedTokenStore.has(embedToken)) {
     const embedData = embedTokenStore.get(embedToken);
