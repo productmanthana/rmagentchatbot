@@ -2158,6 +2158,17 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Debug endpoint to see all embed users for an embed link
+  app.get("/api/embed/debug-users/:embedId", async (req, res) => {
+    try {
+      const embedId = req.params.embedId;
+      const users = await mssqlStorage.debugGetAllEmbedUsers(embedId);
+      res.json({ embedId, users, count: users.length });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Update embed user's display ID
   app.post("/api/embed/update-display-id", async (req, res) => {
     try {

@@ -138,7 +138,6 @@ export default function HelpPage() {
     if (!editedId.trim() || !embedContext.embedId) return;
     
     try {
-      // Get token from sessionStorage (where embed page stores it) or URL params as fallback
       let token = sessionStorage.getItem('embedToken');
       if (!token) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -157,7 +156,8 @@ export default function HelpPage() {
       
       console.log('[HelpPage] Updating ID from', currentDisplayId, 'to', editedId.trim());
       
-      const response = await fetch('/api/embed/update-display-id', {
+      // First try to update (for new IDs)
+      const updateResponse = await fetch('/api/embed/update-display-id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -168,27 +168,63 @@ export default function HelpPage() {
         })
       });
       
-      if (response.ok) {
-        const data = await response.json();
+      if (updateResponse.ok) {
+        const data = await updateResponse.json();
         console.log('[HelpPage] Update successful:', data);
         try {
           localStorage.setItem(`embed_display_id_${embedContext.embedId}`, editedId.trim());
         } catch {}
-        // Update state for immediate UI update
         setCurrentDisplayId(editedId.trim());
         setIsEditingId(false);
         toast({
           title: "ID Updated",
           description: `Your ID is now: ${editedId.trim()}`,
         });
+        return;
+      }
+      
+      // If update failed because ID exists, automatically try recovery/merge
+      const updateError = await updateResponse.json();
+      console.log('[HelpPage] Update failed, trying recovery:', updateError.error);
+      
+      if (updateError.error === "ID already taken or current ID not found") {
+        // Automatically try to recover/merge with the existing ID
+        const recoverResponse = await fetch('/api/embed/recover', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Embed-Token': token
+          },
+          body: JSON.stringify({
+            displayId: editedId.trim()
+          })
+        });
+        
+        if (recoverResponse.ok) {
+          const data = await recoverResponse.json();
+          console.log('[HelpPage] Recovery/merge successful:', data);
+          try {
+            localStorage.setItem(`embed_display_id_${embedContext.embedId}`, editedId.trim());
+          } catch {}
+          setCurrentDisplayId(editedId.trim());
+          setIsEditingId(false);
+          toast({
+            title: "Session Merged",
+            description: "Your data has been merged with the existing session.",
+          });
+        } else {
+          const recoverError = await recoverResponse.json();
+          console.error('Failed to recover/merge:', recoverError.error);
+          toast({
+            title: "Update Failed",
+            description: recoverError.error,
+            variant: "destructive",
+          });
+        }
       } else {
-        const errorData = await response.json();
-        console.error('Failed to update ID:', errorData.error);
         toast({
           title: "Update Failed",
-          description: errorData.error === "ID already taken or current ID not found" 
-            ? "This ID is already taken. Please try another." 
-            : errorData.error,
+          description: updateError.error,
           variant: "destructive",
         });
       }
@@ -230,7 +266,7 @@ export default function HelpPage() {
 
         {/* Session identifier for embed users - with edit option */}
         {embedContext.isEmbed && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {isLoadingId ? (
               <span className="text-sm text-muted-foreground">Loading ID...</span>
             ) : currentDisplayId ? (
