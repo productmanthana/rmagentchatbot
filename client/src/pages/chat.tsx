@@ -878,7 +878,10 @@ export default function ChatPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const embedContext = useEmbedContext();
-  const isEmbed = embedContext?.isEmbed || false;
+  // Check if in embed mode via context OR if URL contains /embed/ OR if in iframe
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const isEmbedUrl = typeof window !== 'undefined' && window.location.pathname.includes('/embed/');
+  const isEmbed = embedContext?.isEmbed || isEmbedUrl || isInIframe;
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
   const [input, setInput] = useState("");
