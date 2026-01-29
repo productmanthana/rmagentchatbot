@@ -1801,7 +1801,9 @@ export default function ChatPage() {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     refetchOnMount: "always", // Always refetch on page load to get fresh role data
   });
-  const userRole = currentUserData?.role || 'user';
+  
+  // Use embed role if in embed mode, otherwise use user role from auth
+  const userRole = isEmbed && embedContext?.role ? embedContext.role : (currentUserData?.role || 'user');
   const isSuperadmin = userRole === 'superadmin';
   const isAdminOrAbove = userRole === 'superadmin' || userRole === 'admin';
   const canViewQueryLogs = isAdminOrAbove; // Superadmin sees all logs, admin sees only their own logs
