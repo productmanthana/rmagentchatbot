@@ -1906,26 +1906,41 @@ Please provide a helpful analysis for the follow-up question.`,
         }
       });
 
-      // Also try cookie-based session as fallback
-      // Generate UNIQUE user ID per browser session (not per embed token)
-      // This ensures each browser has its own chat history
+      // Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
+      // Store multiple embed sessions in one browser session (keyed by embedId)
+      // This ensures:
+      // 1. Same embed in same browser = same session (chat history preserved)
+      // 2. Different embeds in same browser = different sessions (separate chat history)
+      // 3. Same embed in different browser = different session (per browser)
+      
       if (req.session) {
-        // Only create new unique ID if this session doesn't have one yet
-        if (!req.session.userId || !req.session.userId.startsWith('embed_user_')) {
-          // Generate unique user ID for this browser session
-          const uniqueUserId = `embed_user_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-          req.session.userId = uniqueUserId;
+        // Initialize embed sessions map if not exists
+        if (!(req.session as any).embedSessions) {
+          (req.session as any).embedSessions = {};
         }
+        
+        const embedSessions = (req.session as any).embedSessions;
+        
+        // Check if this embed already has a userId in this browser
+        if (!embedSessions[embedId]) {
+          // Create new unique userId for this embed + browser combination
+          embedSessions[embedId] = `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        }
+        
+        // Set current session to this embed's userId
+        req.session.userId = embedSessions[embedId];
         req.session.userEmail = `embed@${link.allowed_domain}`;
         (req.session as any).embedId = embedId;
         (req.session as any).embedRole = link.role;
         (req.session as any).isEmbed = true;
       }
 
+      const sessionUserId = req.session?.userId || `embed_${embedId}`;
+      
       res.json({ 
         success: true, 
         token, // Return the token for client to use
-        sessionId: req.session?.userId || `embed_${embedId}`,
+        sessionId: sessionUserId,
         role: link.role 
       });
     } catch (error: any) {
