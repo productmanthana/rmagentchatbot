@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,51 @@ export default function HelpPage() {
   const [isEditingId, setIsEditingId] = useState(false);
   const [editedId, setEditedId] = useState(embedContext.displayId || "");
   const [currentDisplayId, setCurrentDisplayId] = useState(embedContext.displayId || "");
+  const [isLoadingId, setIsLoadingId] = useState(false);
+
+  // Fetch displayId from server if we have embed params but no displayId
+  useEffect(() => {
+    const fetchDisplayId = async () => {
+      if (embedContext.isEmbed && !currentDisplayId && embedContext.embedId) {
+        setIsLoadingId(true);
+        try {
+          // Get token from sessionStorage or URL
+          let token = sessionStorage.getItem('embedToken');
+          if (!token) {
+            const urlParams = new URLSearchParams(window.location.search);
+            token = urlParams.get('token');
+          }
+          
+          if (token) {
+            // Store token in sessionStorage for later use
+            sessionStorage.setItem('embedToken', token);
+            
+            const response = await fetch('/api/embed/user-id', {
+              headers: { 'X-Embed-Token': token }
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.displayId) {
+                setCurrentDisplayId(data.displayId);
+                setEditedId(data.displayId);
+                // Also store in localStorage for future use
+                try {
+                  localStorage.setItem(`embed_display_id_${embedContext.embedId}`, data.displayId);
+                } catch {}
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[HelpPage] Error fetching displayId:', error);
+        } finally {
+          setIsLoadingId(false);
+        }
+      }
+    };
+    
+    fetchDisplayId();
+  }, [embedContext.isEmbed, embedContext.embedId, currentDisplayId]);
 
   const handleSaveId = async () => {
     if (!editedId.trim() || !embedContext.embedId) return;
@@ -140,7 +185,7 @@ export default function HelpPage() {
         </div>
 
         {/* Session identifier for embed users - with edit option */}
-        {embedContext.isEmbed && embedContext.displayId && (
+        {embedContext.isEmbed && currentDisplayId && (
           <div className="flex items-center gap-2">
             {isEditingId ? (
               <>
