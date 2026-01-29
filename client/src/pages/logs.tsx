@@ -115,41 +115,15 @@ export default function LogsPage() {
   const [editingCommentText, setEditingCommentText] = useState<string>("");
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   
-  const userRole = (user as any)?.role || 'user';
-  const isSuperadmin = userRole === 'superadmin';
-  const isAdmin = userRole === 'admin';
-  const canAccessQueryLogs = isSuperadmin || isAdmin;
-  
-  if (!canAccessQueryLogs) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <Lock className="h-16 w-16 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">Access Denied</h2>
-        <p className="text-gray-500 mb-4">Only admin and superadmin users can access Query Logs.</p>
-        <Link href="/">
-          <Button variant="outline" className="text-[#3B82F6]">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Chat
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
+  // All hooks MUST be called before any conditional returns (React rules of hooks)
   const { data: errorLogsData, isLoading, refetch } = useQuery<{ success: boolean; data: ErrorLog[] }>({
     queryKey: ["/api/error-logs"],
     refetchOnMount: "always",
     staleTime: 0,
+    enabled: !!user, // Only fetch when user is authenticated
   });
-
-  const errorLogs = errorLogsData?.data || [];
-  
-  const canViewChat = (log: ErrorLog) => {
-    if (!log.user_id) return true;
-    return user?.id && user.id === log.user_id;
-  };
 
   const deleteLogMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -217,6 +191,44 @@ export default function LogsPage() {
       });
     },
   });
+
+  // Derive computed values after hooks
+  const userRole = (user as any)?.role || 'user';
+  const isSuperadmin = userRole === 'superadmin';
+  const isAdmin = userRole === 'admin';
+  const canAccessQueryLogs = isSuperadmin || isAdmin;
+  const errorLogs = errorLogsData?.data || [];
+  
+  const canViewChat = (log: ErrorLog) => {
+    if (!log.user_id) return true;
+    return user?.id && user.id === log.user_id;
+  };
+
+  // Show loading while auth is checking
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3B82F6]"></div>
+      </div>
+    );
+  }
+
+  // Show access denied for non-admin users
+  if (!canAccessQueryLogs) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <Lock className="h-16 w-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Access Denied</h2>
+        <p className="text-gray-500 mb-4">Only admin and superadmin users can access Query Logs.</p>
+        <Link href="/">
+          <Button variant="outline" className="text-[#3B82F6]">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Chat
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   const handleDeleteLog = (id: string) => {
     setDeleteLogId(id);
