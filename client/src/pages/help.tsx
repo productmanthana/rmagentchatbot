@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
 import { 
@@ -17,18 +18,44 @@ import {
   Table2,
   MousePointerClick,
   Copy,
-  Check
+  Check,
+  Key,
+  RefreshCw
 } from "lucide-react";
 
 export default function HelpPage() {
   const embedContext = useEmbedContext();
   const [copied, setCopied] = useState(false);
+  const [recoveryId, setRecoveryId] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [showRecovery, setShowRecovery] = useState(false);
   
   const handleCopyId = () => {
     if (embedContext.displayId) {
       navigator.clipboard.writeText(embedContext.displayId);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleRecover = async () => {
+    if (!recoveryId.trim()) {
+      setRecoveryError("Please enter your ID");
+      return;
+    }
+    
+    setRecovering(true);
+    setRecoveryError("");
+    
+    try {
+      if (embedContext.onRecoverSession) {
+        await embedContext.onRecoverSession(recoveryId.trim());
+      }
+    } catch (err) {
+      setRecoveryError("Recovery failed. Please check your ID and try again.");
+    } finally {
+      setRecovering(false);
     }
   };
 
@@ -44,23 +71,6 @@ export default function HelpPage() {
               </Button>
             </Link>
             
-            {/* Show User ID for embed users */}
-            {embedContext.isEmbed && embedContext.displayId && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md">
-                <span className="text-xs text-muted-foreground">Your ID:</span>
-                <span className="text-xs font-mono font-medium" data-testid="text-embed-display-id">
-                  {embedContext.displayId}
-                </span>
-                <button
-                  onClick={handleCopyId}
-                  className="text-muted-foreground hover:text-foreground ml-1"
-                  title="Copy ID"
-                  data-testid="button-copy-id"
-                >
-                  {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                </button>
-              </div>
-            )}
           </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-bold" data-testid="text-help-title">Help & Guidelines</h1>
@@ -69,6 +79,85 @@ export default function HelpPage() {
             </p>
           </div>
         </div>
+
+        {/* Session ID Card for embed users */}
+        {embedContext.isEmbed && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Key className="h-5 w-5 text-primary" />
+                Your Session ID
+              </CardTitle>
+              <CardDescription>
+                Save this ID to recover your chat history if you clear cookies or use a different browser.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {embedContext.displayId && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 px-4 py-2 bg-background rounded-md border font-mono text-sm" data-testid="text-embed-display-id">
+                    {embedContext.displayId}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyId}
+                    className="gap-2"
+                    data-testid="button-copy-id"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    {copied ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+              )}
+              
+              <Separator />
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Recover Previous Session</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowRecovery(!showRecovery)}
+                    data-testid="button-toggle-recovery"
+                  >
+                    {showRecovery ? "Hide" : "Show Recovery"}
+                  </Button>
+                </div>
+                
+                {showRecovery && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      If you saved your ID from a previous session, enter it here to recover your chat history.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Enter your previous ID (e.g., admin_k7m2x9)"
+                        value={recoveryId}
+                        onChange={(e) => setRecoveryId(e.target.value)}
+                        className="flex-1 font-mono text-sm"
+                        data-testid="input-recovery-id"
+                      />
+                      <Button
+                        onClick={handleRecover}
+                        disabled={recovering}
+                        className="gap-2"
+                        data-testid="button-recover"
+                      >
+                        {recovering ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        Recover
+                      </Button>
+                    </div>
+                    {recoveryError && (
+                      <p className="text-xs text-destructive">{recoveryError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Separator />
 
