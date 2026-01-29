@@ -3660,8 +3660,8 @@ export default function ChatPage() {
                 </Button>
               </Link>
             )}
-            {/* Hide Integration in embed mode - only for main app */}
-            {isSuperadmin && !isEmbed && (
+            {/* Show Integration for superadmin (including in embed mode) */}
+            {isSuperadmin && (
               <Link href="/integration">
                 <Button
                   variant="ghost"
