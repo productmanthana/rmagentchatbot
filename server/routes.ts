@@ -1016,6 +1016,10 @@ Sample Data (first 3 rows): ${JSON.stringify(response.data.slice(0, 3), null, 2)
       const userRole = await getUserRole(req);
       
       console.log('[error-logs] Request - userId:', userId, 'userEmail:', userEmail, 'role:', userRole, 'embedData:', (req as any).embedData);
+      // Write to file for debugging
+      const fs = await import('fs');
+      const debugLog = `[${new Date().toISOString()}] error-logs - userId: ${userId}, userEmail: ${userEmail}, role: ${userRole}, embedData: ${JSON.stringify((req as any).embedData)}\n`;
+      fs.appendFileSync('/tmp/debug-logs.txt', debugLog);
       
       if (!userId) {
         return res.status(401).json({
