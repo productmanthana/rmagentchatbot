@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,10 +14,7 @@ import {
   XCircle,
   Lightbulb,
   Table2,
-  MousePointerClick,
-  Copy,
-  Check,
-  Key
+  MousePointerClick
 } from "lucide-react";
 
 // Parse embed context from URL params (for iframe third-party context)
@@ -65,15 +61,6 @@ export default function HelpPage() {
   };
   
   console.log('[HelpPage] embedContext:', embedContext, 'urlEmbed:', urlEmbed);
-  const [copied, setCopied] = useState(false);
-  
-  const handleCopyId = () => {
-    if (embedContext.displayId) {
-      navigator.clipboard.writeText(embedContext.displayId);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-auto p-6">
@@ -96,29 +83,11 @@ export default function HelpPage() {
           </div>
         </div>
 
-        {/* Session ID for embed users - simple display */}
+        {/* Session identifier for embed users - subtle display */}
         {embedContext.isEmbed && embedContext.displayId && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-2">
-                <Key className="h-4 w-4 text-primary" />
-                <span className="text-sm text-muted-foreground">Your ID:</span>
-                <span className="font-mono text-sm font-medium" data-testid="text-embed-display-id">
-                  {embedContext.displayId}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCopyId}
-                className="gap-1 h-7"
-                data-testid="button-copy-id"
-              >
-                {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </CardContent>
-          </Card>
+          <p className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
+            {embedContext.displayId}
+          </p>
         )}
 
         <Separator />
