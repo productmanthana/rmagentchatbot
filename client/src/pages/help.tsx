@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
@@ -14,7 +16,10 @@ import {
   XCircle,
   Lightbulb,
   Table2,
-  MousePointerClick
+  MousePointerClick,
+  Pencil,
+  Check,
+  X
 } from "lucide-react";
 
 // Parse embed context from URL params (for iframe third-party context)
@@ -62,6 +67,43 @@ export default function HelpPage() {
   
   console.log('[HelpPage] embedContext:', embedContext, 'urlEmbed:', urlEmbed);
 
+  const [isEditingId, setIsEditingId] = useState(false);
+  const [editedId, setEditedId] = useState(embedContext.displayId || "");
+
+  const handleSaveId = async () => {
+    if (!editedId.trim() || !embedContext.embedId) return;
+    
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      
+      const response = await fetch('/api/embed/update-display-id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embedId: embedContext.embedId,
+          token: token,
+          newDisplayId: editedId.trim()
+        })
+      });
+      
+      if (response.ok) {
+        try {
+          localStorage.setItem(`embed_display_id_${embedContext.embedId}`, editedId.trim());
+        } catch {}
+        setIsEditingId(false);
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Failed to update ID:', error);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedId(embedContext.displayId || "");
+    setIsEditingId(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-auto p-6">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -83,11 +125,48 @@ export default function HelpPage() {
           </div>
         </div>
 
-        {/* Session identifier for embed users - subtle display */}
+        {/* Session identifier for embed users - with edit option */}
         {embedContext.isEmbed && embedContext.displayId && (
-          <p className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
-            {embedContext.displayId}
-          </p>
+          <div className="flex items-center gap-2">
+            {isEditingId ? (
+              <>
+                <Input
+                  value={editedId}
+                  onChange={(e) => setEditedId(e.target.value)}
+                  className="h-7 w-40 text-sm"
+                  data-testid="input-edit-display-id"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveId}
+                  className="text-green-600 hover:text-green-700 p-1"
+                  data-testid="button-save-id"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                  data-testid="button-cancel-edit"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground" data-testid="text-embed-display-id">
+                  {embedContext.displayId}
+                </span>
+                <button
+                  onClick={() => setIsEditingId(true)}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                  data-testid="button-edit-id"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </>
+            )}
+          </div>
         )}
 
         <Separator />

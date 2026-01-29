@@ -913,6 +913,37 @@ export class MssqlStorage {
     return true;
   }
 
+  // Update the display ID for an embed user (allows custom ID)
+  async updateEmbedUserDisplayId(internalUserId: string, newDisplayId: string, embedLinkId: string): Promise<boolean> {
+    const pool = this.ensurePool();
+    await this.ensureEmbedUserIdsTable();
+    
+    // Check if the new display ID is already taken by another user in this embed link
+    const existing = await pool.request()
+      .input('displayId', newDisplayId.toLowerCase())
+      .input('embedLinkId', embedLinkId)
+      .query('SELECT internal_user_id FROM embed_user_ids WHERE LOWER(display_id) = @displayId AND embed_link_id = @embedLinkId');
+    
+    if (existing.recordset.length > 0 && existing.recordset[0].internal_user_id !== internalUserId) {
+      // Display ID is already taken by a different user
+      return false;
+    }
+    
+    // Update the display ID
+    const result = await pool.request()
+      .input('internalUserId', internalUserId)
+      .input('embedLinkId', embedLinkId)
+      .input('newDisplayId', newDisplayId.toLowerCase())
+      .input('now', new Date())
+      .query(`
+        UPDATE embed_user_ids 
+        SET display_id = @newDisplayId, last_used_at = @now
+        WHERE internal_user_id = @internalUserId AND embed_link_id = @embedLinkId
+      `);
+    
+    return result.rowsAffected[0] > 0;
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // HELPER METHODS
   // ═══════════════════════════════════════════════════════════════

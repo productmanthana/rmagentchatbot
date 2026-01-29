@@ -2158,5 +2158,47 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Update embed user's display ID
+  app.post("/api/embed/update-display-id", async (req, res) => {
+    try {
+      const { embedId, token, newDisplayId } = req.body;
+      
+      if (!embedId || !token || !newDisplayId) {
+        return res.status(400).json({ success: false, error: "Missing required fields" });
+      }
+
+      // Validate token
+      const tokenData = embedTokenStore.get(token);
+      if (!tokenData || tokenData.embedId !== embedId) {
+        return res.status(401).json({ success: false, error: "Invalid token" });
+      }
+
+      // Get internal user ID from session
+      let internalUserId: string | null = null;
+      if (req.session && (req.session as any).embedSessions) {
+        const embedSessions = (req.session as any).embedSessions;
+        if (embedSessions[embedId]) {
+          internalUserId = embedSessions[embedId].userId;
+        }
+      }
+
+      if (!internalUserId) {
+        return res.status(400).json({ success: false, error: "No active session found" });
+      }
+
+      // Update the display ID
+      const success = await mssqlStorage.updateEmbedUserDisplayId(internalUserId, newDisplayId.trim(), embedId);
+      
+      if (!success) {
+        return res.status(400).json({ success: false, error: "ID already taken or update failed" });
+      }
+
+      res.json({ success: true, displayId: newDisplayId.trim() });
+    } catch (error: any) {
+      console.error("Error updating display ID:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   return app;
 }
