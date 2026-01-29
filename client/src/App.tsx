@@ -23,6 +23,9 @@ interface AuthUser {
 }
 
 function useAuth() {
+  // Skip auth check for embed routes - they use token-based auth
+  const isEmbedRoute = window.location.pathname.startsWith('/embed');
+  
   return useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
     queryFn: async () => {
@@ -39,6 +42,7 @@ function useAuth() {
     },
     retry: false,
     staleTime: 5 * 60 * 1000,
+    enabled: !isEmbedRoute, // Don't fetch for embed routes
   });
 }
 
@@ -71,7 +75,20 @@ function UnauthenticatedRouter() {
 }
 
 function AppContent() {
+  // Check if we're on an embed route - skip auth check for embeds
+  const isEmbedRoute = window.location.pathname.startsWith('/embed');
+  
   const { data: user, isLoading, error } = useAuth();
+
+  // For embed routes, render directly without auth check (embed has its own auth)
+  if (isEmbedRoute) {
+    return (
+      <Switch>
+        <Route path="/embed/:embedId" component={EmbedWithIdPage} />
+        <Route path="/embed" component={EmbedPage} />
+      </Switch>
+    );
+  }
 
   if (isLoading) {
     return (
