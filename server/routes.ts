@@ -1905,8 +1905,15 @@ Please provide a helpful analysis for the follow-up question.`,
       });
 
       // Also try cookie-based session as fallback
+      // Generate UNIQUE user ID per browser session (not per embed token)
+      // This ensures each browser has its own chat history
       if (req.session) {
-        req.session.userId = `embed_${embedId}`;
+        // Only create new unique ID if this session doesn't have one yet
+        if (!req.session.userId || !req.session.userId.startsWith('embed_user_')) {
+          // Generate unique user ID for this browser session
+          const uniqueUserId = `embed_user_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+          req.session.userId = uniqueUserId;
+        }
         req.session.userEmail = `embed@${link.allowed_domain}`;
         (req.session as any).embedId = embedId;
         (req.session as any).embedRole = link.role;
@@ -1916,7 +1923,7 @@ Please provide a helpful analysis for the follow-up question.`,
       res.json({ 
         success: true, 
         token, // Return the token for client to use
-        sessionId: `embed_${embedId}`,
+        sessionId: req.session?.userId || `embed_${embedId}`,
         role: link.role 
       });
     } catch (error: any) {
