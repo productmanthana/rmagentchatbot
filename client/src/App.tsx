@@ -27,8 +27,15 @@ function useAuth() {
   // Skip auth check for embed routes - they use token-based auth
   const isEmbedRoute = window.location.pathname.startsWith('/embed');
   
+  // Check if user has embed token (came from embed page)
+  let hasEmbedToken = false;
+  try {
+    hasEmbedToken = !!sessionStorage.getItem('embedToken');
+  } catch {}
+  
   return useQuery<AuthUser | null>({
-    queryKey: ["/api/auth/user"],
+    // Use different query key for embed token auth to avoid cache conflicts
+    queryKey: hasEmbedToken ? ["/api/auth/user", "embed"] : ["/api/auth/user"],
     queryFn: async () => {
       // Include embed token if available (for embed users navigating to other pages)
       const headers: Record<string, string> = {};
@@ -73,7 +80,70 @@ function AuthenticatedRouter() {
   );
 }
 
+function EmbedAwareRouter() {
+  // Get embed context data from storage
+  const [embedContextData, setEmbedContextData] = useState<{
+    embedId: string | null;
+    role: 'superadmin' | 'admin' | 'user' | null;
+    displayId: string | null;
+  }>({ embedId: null, role: null, displayId: null });
+
+  useEffect(() => {
+    try {
+      const storedEmbedId = sessionStorage.getItem('currentEmbedId');
+      const embedToken = sessionStorage.getItem('embedToken');
+      
+      if (storedEmbedId && embedToken) {
+        // Parse token to get role
+        const tokenData = JSON.parse(atob(embedToken.split('.')[1] || '{}'));
+        const displayId = localStorage.getItem(`embed_display_id_${storedEmbedId}`);
+        
+        setEmbedContextData({
+          embedId: storedEmbedId,
+          role: tokenData.role || 'user',
+          displayId: displayId,
+        });
+      }
+    } catch {}
+  }, []);
+
+  const embedContext = {
+    isEmbed: true,
+    embedId: embedContextData.embedId,
+    role: embedContextData.role,
+    embedName: null,
+    displayId: embedContextData.displayId,
+    sessionId: null,
+    onRecoverSession: async () => false,
+  };
+
+  return (
+    <EmbedContext.Provider value={embedContext}>
+      <Switch>
+        <Route path="/" component={ChatPage} />
+        <Route path="/logs" component={LogsPage} />
+        <Route path="/help" component={HelpPage} />
+        <Route path="/integration" component={IntegrationPage} />
+        <Route path="/embed/:embedId" component={EmbedWithIdPage} />
+        <Route path="/embed" component={EmbedPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </EmbedContext.Provider>
+  );
+}
+
 function UnauthenticatedRouter() {
+  // Check if user has embed token - if so, show embed-aware routes
+  let hasEmbedToken = false;
+  try {
+    hasEmbedToken = !!sessionStorage.getItem('embedToken');
+  } catch {}
+  
+  // If user has embed token, show all routes with embed context
+  if (hasEmbedToken) {
+    return <EmbedAwareRouter />;
+  }
+  
   return (
     <Switch>
       <Route path="/" component={AuthPage} />
