@@ -29,8 +29,18 @@ function useAuth() {
   return useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
     queryFn: async () => {
+      // Include embed token if available (for embed users navigating to other pages)
+      const headers: Record<string, string> = {};
+      try {
+        const embedToken = sessionStorage.getItem('embedToken');
+        if (embedToken) {
+          headers['X-Embed-Token'] = embedToken;
+        }
+      } catch {}
+      
       const response = await fetch("/api/auth/user", {
         credentials: "include",
+        headers,
       });
       if (response.status === 401) {
         return null;
