@@ -385,8 +385,25 @@ export function getUserEmail(req: any): string | null {
   return req.session?.userEmail || null;
 }
 
-// Helper to get user role from database
+// Helper to get user role from database or embed session
 export async function getUserRole(req: any): Promise<string> {
+  // First check if this is an embed user - use embed role directly
+  if (req.session?.isEmbed && req.session?.embedRole) {
+    console.log('[getUserRole] Embed user detected, role:', req.session.embedRole);
+    return req.session.embedRole;
+  }
+  
+  // Also check embed token for role (for API calls with X-Embed-Token header)
+  const embedToken = req.headers['x-embed-token'] as string;
+  if (embedToken && embedTokenStore.has(embedToken)) {
+    const embedData = embedTokenStore.get(embedToken);
+    if (embedData?.role) {
+      console.log('[getUserRole] Embed token found, role:', embedData.role);
+      return embedData.role;
+    }
+  }
+  
+  // For regular logged-in users, check database
   const userEmail = req.session?.userEmail;
   if (!userEmail) return 'user';
   
