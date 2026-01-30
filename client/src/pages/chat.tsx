@@ -355,6 +355,7 @@ interface Message {
   response?: QueryResponse;
   aiAnalysisMessages?: AIAnalysisMessage[];
   originalQuestion?: string; // Preserve the original question for display
+  _tempId?: string; // Original temp ID for follow-up lookups after ID changes
 }
 
 const exampleQueries = [
@@ -2416,6 +2417,7 @@ export default function ChatPage() {
           timestamp: new Date(),
           response: responseWithQuestion,
           originalQuestion: variables.question, // Store original question separately
+          _tempId: tempBotMessageId, // Store temp ID for follow-up lookups after ID changes
         };
 
         setMessages((prev) => [...prev, botMessage]);
@@ -3197,8 +3199,12 @@ export default function ChatPage() {
       return;
     }
 
-    const message = messages.find(m => m.id === messageId);
+    // Find message by ID or by _tempId (handles race condition when ID changes after save)
+    const message = messages.find(m => m.id === messageId || m._tempId === messageId);
     if (!message || !message.response) return;
+    
+    // Use the current message ID (may have changed from temp to server ID)
+    const currentMessageId = message.id;
 
     // GUARD: Ensure response is fully ready (has function_name and arguments)
     // This prevents race conditions when user asks follow-up immediately after original response
@@ -3230,17 +3236,17 @@ export default function ChatPage() {
       content: question,
     };
     
-    console.log(`[Follow-up] Adding user message with ID:`, userMsgId, `for parent message:`, messageId);
+    console.log(`[Follow-up] Adding user message with ID:`, userMsgId, `for parent message:`, currentMessageId, `(original:`, messageId, `)`);
 
     setMessages(prev => prev.map(m => 
-      m.id === messageId 
+      (m.id === currentMessageId || m._tempId === messageId)
         ? { ...m, aiAnalysisMessages: [...(m.aiAnalysisMessages || []), userMsg] }
         : m
     ));
 
-    // Clear input for this message
-    setAiAnalysisInputs(prev => ({ ...prev, [messageId]: "" }));
-    setAiAnalysisLoading(prev => ({ ...prev, [messageId]: true }));
+    // Clear input for this message (use both old and new IDs for state cleanup)
+    setAiAnalysisInputs(prev => ({ ...prev, [messageId]: "", [currentMessageId]: "" }));
+    setAiAnalysisLoading(prev => ({ ...prev, [messageId]: true, [currentMessageId]: true }));
 
     try {
       // Check if this is an AI Analysis response (extraction-only mode)
@@ -3320,14 +3326,15 @@ export default function ChatPage() {
         response: data,
       };
 
-      console.log(`[Follow-up] Adding assistant message with ID:`, assistantMsgId);
+      console.log(`[Follow-up] Adding assistant message with ID:`, assistantMsgId, `to parent:`, currentMessageId);
 
       setMessages(prev => prev.map(m => {
-        if (m.id === messageId) {
+        // Match by current ID or original temp ID (handles race condition)
+        if (m.id === currentMessageId || m._tempId === messageId) {
           // STAR PATTERN: DO NOT mutate the parent message's response
           // Keep the original context unchanged so all follow-ups reference the root query
           const updatedMessages = [...(m.aiAnalysisMessages || []), assistantMsg];
-          console.log(`[Follow-up] Updated aiAnalysisMessages count:`, updatedMessages.length);
+          console.log(`[Follow-up] Updated aiAnalysisMessages count:`, updatedMessages.length, `for message:`, m.id);
 
           const updatedMessage = {
             ...m,
@@ -3447,7 +3454,8 @@ export default function ChatPage() {
         return m;
       }));
     } finally {
-      setAiAnalysisLoading(prev => ({ ...prev, [messageId]: false }));
+      // Clear loading state for both old and new IDs
+      setAiAnalysisLoading(prev => ({ ...prev, [messageId]: false, [currentMessageId]: false }));
     }
   };
 
