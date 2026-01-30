@@ -45,6 +45,7 @@ export default function EmbedWithIdPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [jwtUsername, setJwtUsername] = useState<string | null>(null);
   const [jwtTenant, setJwtTenant] = useState<string | null>(null);
+  const [jwtRole, setJwtRole] = useState<'superadmin' | 'admin' | 'user'>('user');
   
   // Extract JWT token from URL query parameter or sessionStorage
   const getJwtTokenFromUrl = (): string | null => {
@@ -117,12 +118,19 @@ export default function EmbedWithIdPage() {
     }
   };
 
-  // Hydrate displayId from localStorage on mount
+  // Hydrate displayId and role from storage on mount
   useEffect(() => {
     if (params.embedId) {
       const storedDisplayId = localStorage.getItem(`embed_display_id_${params.embedId}`);
       if (storedDisplayId) {
         setDisplayId(storedDisplayId);
+      }
+      
+      // Restore role from sessionStorage (for page refreshes)
+      const storedRole = sessionStorage.getItem('embedRole') as 'superadmin' | 'admin' | 'user' | null;
+      if (storedRole) {
+        setJwtRole(storedRole);
+        console.log('[EmbedWithId] Role restored from sessionStorage:', storedRole);
       }
     }
   }, [params.embedId]);
@@ -227,6 +235,14 @@ export default function EmbedWithIdPage() {
         if (sessionData.jwtTenant) {
           setJwtTenant(sessionData.jwtTenant);
         }
+        
+        // Store role from JWT (critical for admin/superadmin features)
+        if (sessionData.role) {
+          const role = sessionData.role as 'superadmin' | 'admin' | 'user';
+          setJwtRole(role);
+          sessionStorage.setItem('embedRole', role);
+          console.log('[EmbedSession] Role from JWT:', role);
+        }
 
         setValidation(validateData);
       } catch (error) {
@@ -272,7 +288,7 @@ export default function EmbedWithIdPage() {
   const embedContext: EmbedContextType = {
     isEmbed: true,
     embedId: params.embedId || null,
-    role: validation.role || null,
+    role: jwtRole,  // Use role from JWT, not from validation
     embedName: validation.name || null,
     displayId: displayId,
     sessionId: sessionId,
@@ -281,9 +297,11 @@ export default function EmbedWithIdPage() {
     onRecoverSession: handleRecoverSession,
   };
 
+  console.log('[EmbedWithId] Context role:', jwtRole, 'validation.role:', validation.role);
+
   return (
     <EmbedContext.Provider value={embedContext}>
-      <div className="h-screen w-full" data-embed-mode="true" data-embed-role={validation.role} data-embed-id={params.embedId}>
+      <div className="h-screen w-full" data-embed-mode="true" data-embed-role={jwtRole} data-embed-id={params.embedId}>
         <ChatPage />
       </div>
     </EmbedContext.Provider>
