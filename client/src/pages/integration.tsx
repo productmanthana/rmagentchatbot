@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
@@ -38,16 +37,10 @@ interface EmbedLink {
   last_used_at: string | null;
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  superadmin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  admin: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  user: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-};
 
 export default function IntegrationPage() {
   const { toast } = useToast();
   const [name, setName] = useState("");
-  const [role, setRole] = useState<'superadmin' | 'admin' | 'user'>("user");
   const [domain, setDomain] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedType, setCopiedType] = useState<'url' | 'iframe' | null>(null);
@@ -64,7 +57,7 @@ export default function IntegrationPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; role: string; allowed_domain: string }) => {
+    mutationFn: async (data: { name: string; allowed_domain: string }) => {
       const response = await apiRequest("POST", "/api/embed-links", data);
       return response.json();
     },
@@ -116,7 +109,7 @@ export default function IntegrationPage() {
       });
       return;
     }
-    createMutation.mutate({ name, role, allowed_domain: domain });
+    createMutation.mutate({ name, allowed_domain: domain });
   };
 
   const getEmbedUrl = (embedId: string) => {
@@ -188,7 +181,7 @@ export default function IntegrationPage() {
                 Generate Embed Link
               </CardTitle>
               <CardDescription>
-                Create a new embed link with domain restriction and role-based access
+                Create a new embed link with domain restriction. User roles are determined by JWT token.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -201,23 +194,6 @@ export default function IntegrationPage() {
                   onChange={(e) => setName(e.target.value)}
                   data-testid="input-link-name"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="role">Access Role</Label>
-                <Select value={role} onValueChange={(v: any) => setRole(v)}>
-                  <SelectTrigger data-testid="select-role">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="superadmin">Superadmin</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="user">User</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  Users accessing this embed link will have this role
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -260,7 +236,7 @@ export default function IntegrationPage() {
                 <div>
                   <p className="font-medium">Generate Link</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Select a role and enter the domain that will use this embed
+                    Enter a name and the domain that will use this embed
                   </p>
                 </div>
               </div>
@@ -335,8 +311,8 @@ export default function IntegrationPage() {
                           <h3 className="font-semibold text-gray-900 dark:text-white">
                             {link.name}
                           </h3>
-                          <Badge className={ROLE_COLORS[link.role]}>
-                            {link.role}
+                          <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                            JWT Auth
                           </Badge>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">

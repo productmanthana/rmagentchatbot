@@ -405,7 +405,7 @@ export interface InsertEmbedLink {
 }
 
 export const insertEmbedLinkSchema = z.object({
-  role: z.enum(USER_ROLES),
+  role: z.enum(USER_ROLES).optional().default('user'), // Role now comes from JWT, this is for backward compatibility
   allowed_domain: z.string().min(1, "Domain is required"),
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
 });
