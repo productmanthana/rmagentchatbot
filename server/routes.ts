@@ -1949,8 +1949,11 @@ Please provide a helpful analysis for the follow-up question.`,
       
       const sessionUserId = `jwt_${jwtData.uniqueUserId}`;
       const effectiveRole = jwtData.mappedRole;
+      // Use username as-is if it's already an email, otherwise construct email
       const userEmail = jwtData.username 
-        ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
+        ? (jwtData.username.includes('@') 
+            ? jwtData.username  // Already an email, use as-is
+            : `${jwtData.username}@${jwtData.tenant || link.allowed_domain}`)
         : `embed@${link.allowed_domain}`;
       
       // Track embed session in browser session (for debugging/analytics)
