@@ -208,7 +208,10 @@ export default function EmbedWithIdPage() {
           status: sessionResponse.status,
           success: sessionData.success,
           error: sessionData.error,
-          hasUser: !!sessionData.user,
+          clientRole: sessionData.clientRole,  // Original role from JWT
+          mappedRole: sessionData.role,  // Mapped role (admin, user, superadmin)
+          jwtRoleExtracted: sessionData.jwtRoleExtracted,
+          displayId: sessionData.displayId,
         });
         
         // Store the embed token and embedId in sessionStorage for API calls (works without cookies)

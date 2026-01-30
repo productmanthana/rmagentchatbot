@@ -1930,11 +1930,14 @@ Please provide a helpful analysis for the follow-up question.`,
       
       const jwtData = {
         username: jwtResult.data.username,
+        clientRole: jwtResult.data.clientRole,  // Original role from JWT
         mappedRole: jwtResult.data.mappedRole,
         tenant: jwtResult.data.tenant,
         uniqueUserId: jwtResult.data.uniqueUserId,
       };
-      console.log(`[JWT] Extracted user: ${jwtData.uniqueUserId}, role: ${jwtData.mappedRole}, tenant: ${jwtData.tenant}`);
+      console.log(`[JWT] Extracted user: ${jwtData.uniqueUserId}, clientRole: "${jwtData.clientRole}" -> mappedRole: "${jwtData.mappedRole}", tenant: ${jwtData.tenant}`);
+      console.log(`[JWT] Raw payload keys:`, Object.keys(jwtResult.data.rawPayload));
+      console.log(`[JWT] Raw payload:`, JSON.stringify(jwtResult.data.rawPayload, null, 2));
 
       // ═══════════════════════════════════════════════════════════════
       // ═══════════════════════════════════════════════════════════════
@@ -1996,7 +1999,8 @@ Please provide a helpful analysis for the follow-up question.`,
         token, // Return the token for client to use
         sessionId: sessionUserId,
         displayId, // User-friendly ID for display and recovery
-        role: effectiveRole,  // Role from JWT
+        role: effectiveRole,  // Role from JWT (mapped)
+        clientRole: jwtData.clientRole,  // Original role from JWT (for debugging)
         isNewSession: isNewDisplayId, // New display ID = new session
         // JWT-extracted data
         jwtUsername: jwtData.username,
