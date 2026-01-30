@@ -3342,12 +3342,23 @@ export default function ChatPage() {
             // CRITICAL: Do NOT update m.response - keep it as the original/root context
           };
 
-          // Persist follow-up messages to database
+          // Persist follow-up messages to database AND update React Query cache
           if (currentChatId) {
             updateMessageAIAnalysisMutation.mutate({
               chatId: currentChatId,
               messageId: m.id,
               aiAnalysisMessages: updatedMessages,
+            });
+            
+            // Also update the React Query cache directly so changes persist when navigating
+            queryClient.setQueryData(['/api/chats', currentChatId, 'messages'], (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((msg: any) => {
+                if (msg.id === m.id || msg.id === currentMessageId) {
+                  return { ...msg, aiAnalysisMessages: updatedMessages };
+                }
+                return msg;
+              });
             });
           }
 
