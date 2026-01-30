@@ -45,7 +45,12 @@ export default function EmbedWithIdPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [jwtUsername, setJwtUsername] = useState<string | null>(null);
   const [jwtTenant, setJwtTenant] = useState<string | null>(null);
-  const [jwtRole, setJwtRole] = useState<'superadmin' | 'admin' | 'user'>('user');
+  // Initialize role from sessionStorage immediately to prevent stale context during navigation
+  const [jwtRole, setJwtRole] = useState<'superadmin' | 'admin' | 'user'>(() => {
+    const storedRole = sessionStorage.getItem('embedRole') as 'superadmin' | 'admin' | 'user' | null;
+    console.log('[EmbedWithId] Initial role from sessionStorage:', storedRole);
+    return storedRole || 'user';
+  });
   
   // Extract JWT token from URL query parameter or sessionStorage
   const getJwtTokenFromUrl = (): string | null => {
@@ -118,20 +123,14 @@ export default function EmbedWithIdPage() {
     }
   };
 
-  // Hydrate displayId and role from storage on mount
+  // Hydrate displayId from localStorage on mount
   useEffect(() => {
     if (params.embedId) {
       const storedDisplayId = localStorage.getItem(`embed_display_id_${params.embedId}`);
       if (storedDisplayId) {
         setDisplayId(storedDisplayId);
       }
-      
-      // Restore role from sessionStorage (for page refreshes)
-      const storedRole = sessionStorage.getItem('embedRole') as 'superadmin' | 'admin' | 'user' | null;
-      if (storedRole) {
-        setJwtRole(storedRole);
-        console.log('[EmbedWithId] Role restored from sessionStorage:', storedRole);
-      }
+      // Role is now initialized directly from sessionStorage in useState
     }
   }, [params.embedId]);
 
