@@ -375,7 +375,25 @@ export function checkEmbedToken(req: any): { valid: boolean; embedId?: string; r
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   // First check for embed token (works without cookies)
   const embedCheck = checkEmbedToken(req);
-  if (embedCheck.valid) {
+  if (embedCheck.valid && embedCheck.embedId) {
+    // SECURITY: Re-verify the embed link is still active in the database
+    // This prevents access when an embed link has been disabled
+    try {
+      const link = await mssqlStorage.getEmbedLinkByEmbedId(embedCheck.embedId);
+      if (!link) {
+        // Embed link was disabled or deleted - invalidate the token
+        const token = req.headers['x-embed-token'] as string;
+        if (token) {
+          embedTokenStore.delete(token);
+        }
+        console.log(`[Auth] Embed link ${embedCheck.embedId} is no longer active, rejecting request`);
+        return res.status(401).json({ message: "Embed link expired or disabled" });
+      }
+    } catch (error) {
+      console.error('[Auth] Error checking embed link status:', error);
+      // On error, allow the request (fail open for availability)
+    }
+    
     // Store embed data on request object (NOT session) to avoid overwriting main session
     (req as any).embedData = {
       userId: embedCheck.userId,
