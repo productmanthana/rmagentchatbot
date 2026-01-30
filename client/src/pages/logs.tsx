@@ -139,12 +139,23 @@ export default function LogsPage() {
   const embedId = contextEmbed.embedId || urlEmbed.embedId;
   const backUrl = isEmbed && embedId ? `/embed/${embedId}` : "/";
   
+  // For embed users, check embed context role; for regular users, check auth user
+  // Also check sessionStorage for role (urlEmbed doesn't have role property)
+  let embedRole = contextEmbed.role;
+  if (!embedRole && isEmbed) {
+    try {
+      embedRole = sessionStorage.getItem('embedRole') as 'superadmin' | 'admin' | 'user' | null;
+    } catch {}
+  }
+  const effectiveRole = isEmbed ? (embedRole || 'user') : ((user as any)?.role || 'user');
+  const hasEmbedAuth = isEmbed && !!sessionStorage.getItem('embedToken');
+  
   // All hooks MUST be called before any conditional returns (React rules of hooks)
   const { data: errorLogsData, isLoading, refetch } = useQuery<{ success: boolean; data: ErrorLog[] }>({
     queryKey: ["/api/error-logs"],
     refetchOnMount: "always",
     staleTime: 0,
-    enabled: !!user, // Only fetch when user is authenticated
+    enabled: !!user || hasEmbedAuth, // Fetch when user OR embed is authenticated
   });
 
   const deleteLogMutation = useMutation({
@@ -214,10 +225,9 @@ export default function LogsPage() {
     },
   });
 
-  // Derive computed values after hooks
-  const userRole = (user as any)?.role || 'user';
-  const isSuperadmin = userRole === 'superadmin';
-  const isAdmin = userRole === 'admin';
+  // Derive computed values after hooks - use effectiveRole (from embed context OR auth)
+  const isSuperadmin = effectiveRole === 'superadmin';
+  const isAdmin = effectiveRole === 'admin';
   const canAccessQueryLogs = isSuperadmin || isAdmin;
   const errorLogs = errorLogsData?.data || [];
   
@@ -226,8 +236,8 @@ export default function LogsPage() {
     return user?.id && user.id === log.user_id;
   };
 
-  // Show loading while auth is checking
-  if (authLoading) {
+  // Show loading while auth is checking (skip for embed users who have embedToken)
+  if (authLoading && !hasEmbedAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3B82F6]"></div>
