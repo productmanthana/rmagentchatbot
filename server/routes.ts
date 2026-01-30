@@ -1900,115 +1900,83 @@ Please provide a helpful analysis for the follow-up question.`,
       }
 
       // ═══════════════════════════════════════════════════════════════
-      // JWT TOKEN EXTRACTION (if provided by client)
+      // JWT TOKEN EXTRACTION (REQUIRED)
       // ═══════════════════════════════════════════════════════════════
-      // Client can pass JWT token via iframe URL for user identification
+      // Client MUST pass JWT token via iframe URL for user identification
       // This enables consistent user ID across browsers/devices
       // JWT provides: username, role (mapped), tenant
-      let jwtData: { 
-        username: string | null; 
-        mappedRole: 'user' | 'admin' | 'superadmin';
-        tenant: string | null;
-        uniqueUserId: string;
-      } | null = null;
+      // NO FALLBACK: JWT is required for embed users
       
-      if (jwtToken) {
-        const jwtResult = decodeAndExtractJWT(jwtToken);
-        if (jwtResult.success && jwtResult.data) {
-          // Check if token is expired
-          if (jwtResult.data.isExpired) {
-            return res.status(401).json({ error: "JWT token has expired" });
-          }
-          jwtData = {
-            username: jwtResult.data.username,
-            mappedRole: jwtResult.data.mappedRole,
-            tenant: jwtResult.data.tenant,
-            uniqueUserId: jwtResult.data.uniqueUserId,
-          };
-          console.log(`[JWT] Extracted user: ${jwtData.uniqueUserId}, role: ${jwtData.mappedRole}, tenant: ${jwtData.tenant}`);
-        } else {
-          console.warn(`[JWT] Failed to decode token: ${jwtResult.error}`);
-          // Continue without JWT - fall back to browser-based session
-        }
+      if (!jwtToken) {
+        return res.status(401).json({ 
+          error: "JWT token is required",
+          message: "Please provide a valid JWT token via URL parameter (token, jwt, or auth)"
+        });
       }
+      
+      const jwtResult = decodeAndExtractJWT(jwtToken);
+      
+      if (!jwtResult.success || !jwtResult.data) {
+        return res.status(401).json({ 
+          error: "Invalid JWT token",
+          message: jwtResult.error || "Failed to decode JWT token"
+        });
+      }
+      
+      // Check if token is expired
+      if (jwtResult.data.isExpired) {
+        return res.status(401).json({ error: "JWT token has expired" });
+      }
+      
+      const jwtData = {
+        username: jwtResult.data.username,
+        mappedRole: jwtResult.data.mappedRole,
+        tenant: jwtResult.data.tenant,
+        uniqueUserId: jwtResult.data.uniqueUserId,
+      };
+      console.log(`[JWT] Extracted user: ${jwtData.uniqueUserId}, role: ${jwtData.mappedRole}, tenant: ${jwtData.tenant}`);
 
       // ═══════════════════════════════════════════════════════════════
-      // PER-BROWSER SESSION MANAGEMENT (MUST happen BEFORE token creation)
       // ═══════════════════════════════════════════════════════════════
-      // If JWT provided: Use JWT's unique user ID (tenant_username) - CONSISTENT across browsers
-      // If no JWT: Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
-      // Store multiple embed sessions in one browser session (keyed by embedId)
-      // IMPORTANT: Don't overwrite main session properties - store embed data separately
-      // This ensures:
-      // 1. With JWT: Same user = same session across any browser/device
-      // 2. Without JWT: Same embed in same browser = same session (chat history preserved)
-      // 3. Without JWT: Different embeds in same browser = different sessions (separate chat history)
-      // 4. Without JWT: Same embed in different browser = different session (per browser)
-      // 5. Main site login is NOT affected by embed usage
+      // JWT-BASED SESSION MANAGEMENT
+      // ═══════════════════════════════════════════════════════════════
+      // JWT provides consistent user ID across browsers/devices
+      // Same user = same session = same chat history (regardless of browser)
+      // Main site login is NOT affected by embed usage
       
-      let embedUserId = jwtData ? `jwt_${jwtData.uniqueUserId}` : `embed_${embedId}`;
-      let isNewSession = false;
+      const sessionUserId = `jwt_${jwtData.uniqueUserId}`;
+      const effectiveRole = jwtData.mappedRole;
+      const userEmail = jwtData.username 
+        ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
+        : `embed@${link.allowed_domain}`;
       
-      // Determine role: JWT role (if provided) takes precedence, otherwise use embed link role
-      const effectiveRole = jwtData ? jwtData.mappedRole : link.role;
-      
+      // Track embed session in browser session (for debugging/analytics)
       if (req.session) {
-        // Initialize embed sessions map if not exists
         if (!(req.session as any).embedSessions) {
           (req.session as any).embedSessions = {};
         }
-        
-        const embedSessions = (req.session as any).embedSessions;
-        
-        // Session key: Use JWT unique user ID if available, otherwise embed ID
-        const sessionKey = jwtData ? `jwt_${jwtData.uniqueUserId}` : embedId;
-        
-        // Check if this session key already exists
-        if (!embedSessions[sessionKey]) {
-          // Create new session
-          embedSessions[sessionKey] = {
-            userId: jwtData 
-              ? `jwt_${jwtData.uniqueUserId}` 
-              : `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-            userEmail: jwtData?.username 
-              ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
-              : `embed@${link.allowed_domain}`,
-            role: effectiveRole,
-            jwtUsername: jwtData?.username || null,
-            jwtTenant: jwtData?.tenant || null,
-          };
-          isNewSession = true;
-        } else if (jwtData) {
-          // Update existing session with latest JWT role (in case role changed)
-          embedSessions[sessionKey].role = effectiveRole;
-          embedSessions[sessionKey].jwtUsername = jwtData.username;
-          embedSessions[sessionKey].jwtTenant = jwtData.tenant;
-        }
-        
-        embedUserId = embedSessions[sessionKey].userId;
-        
-        // DO NOT overwrite main session properties (userId, userEmail)
-        // This preserves logged-in user data on main site
-        // Only set embed-specific flags that can be checked later
+        const sessionKey = `jwt_${jwtData.uniqueUserId}`;
+        (req.session as any).embedSessions[sessionKey] = {
+          userId: sessionUserId,
+          userEmail,
+          role: effectiveRole,
+          jwtUsername: jwtData.username,
+          jwtTenant: jwtData.tenant,
+        };
         (req.session as any).lastEmbedId = embedId;
       }
 
-      const sessionUserId = embedUserId;
-
       // Generate a token for embed authentication (works without cookies)
-      // CRITICAL: Store the unique sessionUserId in the token so each browser gets isolated data
       const token = generateEmbedToken();
       embedTokenStore.set(token, {
         embedId,
-        role: effectiveRole,  // Use effective role (JWT role if provided, otherwise link role)
+        role: effectiveRole,
         domain: link.allowed_domain,
-        userId: sessionUserId,  // Store the unique per-browser userId in the token
-        userEmail: jwtData?.username 
-          ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
-          : `embed@${link.allowed_domain}`,
+        userId: sessionUserId,
+        userEmail,
         createdAt: Date.now(),
-        jwtUsername: jwtData?.username || null,
-        jwtTenant: jwtData?.tenant || null,
+        jwtUsername: jwtData.username,
+        jwtTenant: jwtData.tenant,
       });
       
       // Clean up old tokens (older than 24 hours)
@@ -2028,12 +1996,12 @@ Please provide a helpful analysis for the follow-up question.`,
         token, // Return the token for client to use
         sessionId: sessionUserId,
         displayId, // User-friendly ID for display and recovery
-        role: effectiveRole,  // Effective role (JWT or link)
-        isNewSession: isNewSession || isNewDisplayId,
-        // JWT-extracted data (if available)
-        jwtUsername: jwtData?.username || null,
-        jwtTenant: jwtData?.tenant || null,
-        jwtRoleExtracted: jwtData ? true : false,
+        role: effectiveRole,  // Role from JWT
+        isNewSession: isNewDisplayId, // New display ID = new session
+        // JWT-extracted data
+        jwtUsername: jwtData.username,
+        jwtTenant: jwtData.tenant,
+        jwtRoleExtracted: true,
       });
     } catch (error: any) {
       console.error("Error creating embed session:", error);
