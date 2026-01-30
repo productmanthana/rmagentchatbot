@@ -213,6 +213,22 @@ export default function EmbedWithIdPage() {
           displayId: sessionData.displayId,
         });
         
+        // CRITICAL: Handle session creation failure (e.g., JWT expired)
+        if (!sessionResponse.ok || sessionData.error) {
+          // Clear all cached session data - don't allow access with stale data
+          sessionStorage.removeItem('embedToken');
+          sessionStorage.removeItem('embedRole');
+          sessionStorage.removeItem('jwtToken');
+          sessionStorage.removeItem('currentEmbedId');
+          localStorage.removeItem(`embed_display_id_${params.embedId}`);
+          
+          const errorMsg = sessionData.error || sessionData.message || 'Session creation failed';
+          console.log('[EmbedSession] Session creation failed, cleared cached data:', errorMsg);
+          setValidation({ valid: false, error: errorMsg });
+          setLoading(false);
+          return; // Don't continue
+        }
+        
         // Store the embed token and embedId in sessionStorage for API calls (works without cookies)
         if (sessionData.token) {
           sessionStorage.setItem('embedToken', sessionData.token);
