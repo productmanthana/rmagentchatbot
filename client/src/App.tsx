@@ -107,11 +107,13 @@ function getEmbedContextFromUrl(): { embedId: string | null; role: 'superadmin' 
     }
     
     if (embedId && embedToken) {
-      // Parse token to get role
+      // Get role from sessionStorage (NOT from token - embedToken is not a JWT)
       let role: 'superadmin' | 'admin' | 'user' = 'user';
       try {
-        const tokenData = JSON.parse(atob(embedToken.split('.')[1] || '{}'));
-        role = tokenData.role || 'user';
+        const storedRole = sessionStorage.getItem('embedRole');
+        if (storedRole === 'superadmin' || storedRole === 'admin' || storedRole === 'user') {
+          role = storedRole;
+        }
       } catch {}
       
       let displayId: string | null = null;
@@ -136,6 +138,8 @@ function EmbedAwareRouter() {
     embedName: null,
     displayId: contextData.displayId,
     sessionId: null,
+    jwtUsername: null,
+    jwtTenant: null,
     onRecoverSession: async () => false,
   };
   
@@ -251,6 +255,8 @@ function EmbedContextWrapper({ children, user }: { children: React.ReactNode; us
       embedName: null,
       displayId: embedData.displayId,
       sessionId: embedData.sessionId,
+      jwtUsername: null,
+      jwtTenant: null,
       onRecoverSession: async () => false, // Recovery only works on main embed page
     };
 
