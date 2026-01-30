@@ -16,6 +16,7 @@ import * as XLSX from "xlsx";
 import { generateIntegrationPDF } from "./generate-pdf";
 import { generateTechnicalArchitecturePDF } from "./generate-tech-pdf";
 import { generateTechnicalArchitectureDOCX } from "./generate-tech-docx";
+import { decodeAndExtractJWT } from "./utils/jwt-extractor";
 
 let queryEngine: QueryEngine | null = null;
 let ragStore: RAGVectorStore | null = null;
@@ -1866,9 +1867,10 @@ Please provide a helpful analysis for the follow-up question.`,
   }
 
   // Create embed session (public - creates a session for embed users)
+  // Supports JWT token for user identification (optional)
   app.post("/api/embed/session", async (req, res) => {
     try {
-      const { embedId, parentOrigin } = req.body;
+      const { embedId, parentOrigin, jwtToken } = req.body;
       
       if (!embedId) {
         return res.status(400).json({ error: "Embed ID required" });
@@ -1898,19 +1900,57 @@ Please provide a helpful analysis for the follow-up question.`,
       }
 
       // ═══════════════════════════════════════════════════════════════
+      // JWT TOKEN EXTRACTION (if provided by client)
+      // ═══════════════════════════════════════════════════════════════
+      // Client can pass JWT token via iframe URL for user identification
+      // This enables consistent user ID across browsers/devices
+      // JWT provides: username, role (mapped), tenant
+      let jwtData: { 
+        username: string | null; 
+        mappedRole: 'user' | 'admin' | 'superadmin';
+        tenant: string | null;
+        uniqueUserId: string;
+      } | null = null;
+      
+      if (jwtToken) {
+        const jwtResult = decodeAndExtractJWT(jwtToken);
+        if (jwtResult.success && jwtResult.data) {
+          // Check if token is expired
+          if (jwtResult.data.isExpired) {
+            return res.status(401).json({ error: "JWT token has expired" });
+          }
+          jwtData = {
+            username: jwtResult.data.username,
+            mappedRole: jwtResult.data.mappedRole,
+            tenant: jwtResult.data.tenant,
+            uniqueUserId: jwtResult.data.uniqueUserId,
+          };
+          console.log(`[JWT] Extracted user: ${jwtData.uniqueUserId}, role: ${jwtData.mappedRole}, tenant: ${jwtData.tenant}`);
+        } else {
+          console.warn(`[JWT] Failed to decode token: ${jwtResult.error}`);
+          // Continue without JWT - fall back to browser-based session
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════
       // PER-BROWSER SESSION MANAGEMENT (MUST happen BEFORE token creation)
       // ═══════════════════════════════════════════════════════════════
-      // Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
+      // If JWT provided: Use JWT's unique user ID (tenant_username) - CONSISTENT across browsers
+      // If no JWT: Generate UNIQUE user ID per EMBED TOKEN + BROWSER combination
       // Store multiple embed sessions in one browser session (keyed by embedId)
       // IMPORTANT: Don't overwrite main session properties - store embed data separately
       // This ensures:
-      // 1. Same embed in same browser = same session (chat history preserved)
-      // 2. Different embeds in same browser = different sessions (separate chat history)
-      // 3. Same embed in different browser = different session (per browser)
-      // 4. Main site login is NOT affected by embed usage
+      // 1. With JWT: Same user = same session across any browser/device
+      // 2. Without JWT: Same embed in same browser = same session (chat history preserved)
+      // 3. Without JWT: Different embeds in same browser = different sessions (separate chat history)
+      // 4. Without JWT: Same embed in different browser = different session (per browser)
+      // 5. Main site login is NOT affected by embed usage
       
-      let embedUserId = `embed_${embedId}`;
+      let embedUserId = jwtData ? `jwt_${jwtData.uniqueUserId}` : `embed_${embedId}`;
       let isNewSession = false;
+      
+      // Determine role: JWT role (if provided) takes precedence, otherwise use embed link role
+      const effectiveRole = jwtData ? jwtData.mappedRole : link.role;
       
       if (req.session) {
         // Initialize embed sessions map if not exists
@@ -1920,18 +1960,32 @@ Please provide a helpful analysis for the follow-up question.`,
         
         const embedSessions = (req.session as any).embedSessions;
         
-        // Check if this embed already has a userId in this browser
-        if (!embedSessions[embedId]) {
-          // Create new unique userId for this embed + browser combination
-          embedSessions[embedId] = {
-            userId: `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-            userEmail: `embed@${link.allowed_domain}`,
-            role: link.role,
+        // Session key: Use JWT unique user ID if available, otherwise embed ID
+        const sessionKey = jwtData ? `jwt_${jwtData.uniqueUserId}` : embedId;
+        
+        // Check if this session key already exists
+        if (!embedSessions[sessionKey]) {
+          // Create new session
+          embedSessions[sessionKey] = {
+            userId: jwtData 
+              ? `jwt_${jwtData.uniqueUserId}` 
+              : `embed_user_${embedId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            userEmail: jwtData?.username 
+              ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
+              : `embed@${link.allowed_domain}`,
+            role: effectiveRole,
+            jwtUsername: jwtData?.username || null,
+            jwtTenant: jwtData?.tenant || null,
           };
           isNewSession = true;
+        } else if (jwtData) {
+          // Update existing session with latest JWT role (in case role changed)
+          embedSessions[sessionKey].role = effectiveRole;
+          embedSessions[sessionKey].jwtUsername = jwtData.username;
+          embedSessions[sessionKey].jwtTenant = jwtData.tenant;
         }
         
-        embedUserId = embedSessions[embedId].userId;
+        embedUserId = embedSessions[sessionKey].userId;
         
         // DO NOT overwrite main session properties (userId, userEmail)
         // This preserves logged-in user data on main site
@@ -1946,11 +2000,15 @@ Please provide a helpful analysis for the follow-up question.`,
       const token = generateEmbedToken();
       embedTokenStore.set(token, {
         embedId,
-        role: link.role,
+        role: effectiveRole,  // Use effective role (JWT role if provided, otherwise link role)
         domain: link.allowed_domain,
         userId: sessionUserId,  // Store the unique per-browser userId in the token
-        userEmail: `embed@${link.allowed_domain}`,
-        createdAt: Date.now()
+        userEmail: jwtData?.username 
+          ? `${jwtData.username}@${jwtData.tenant || link.allowed_domain}` 
+          : `embed@${link.allowed_domain}`,
+        createdAt: Date.now(),
+        jwtUsername: jwtData?.username || null,
+        jwtTenant: jwtData?.tenant || null,
       });
       
       // Clean up old tokens (older than 24 hours)
@@ -1963,15 +2021,19 @@ Please provide a helpful analysis for the follow-up question.`,
       
       // Generate or retrieve display ID (e.g., admin_k7m2x9)
       // Scoped by embed link ID for security isolation
-      const { displayId, isNew: isNewDisplayId } = await mssqlStorage.getOrCreateEmbedUserId(sessionUserId, link.role, embedId);
+      const { displayId, isNew: isNewDisplayId } = await mssqlStorage.getOrCreateEmbedUserId(sessionUserId, effectiveRole, embedId);
       
       res.json({ 
         success: true, 
         token, // Return the token for client to use
         sessionId: sessionUserId,
         displayId, // User-friendly ID for display and recovery
-        role: link.role,
+        role: effectiveRole,  // Effective role (JWT or link)
         isNewSession: isNewSession || isNewDisplayId,
+        // JWT-extracted data (if available)
+        jwtUsername: jwtData?.username || null,
+        jwtTenant: jwtData?.tenant || null,
+        jwtRoleExtracted: jwtData ? true : false,
       });
     } catch (error: any) {
       console.error("Error creating embed session:", error);

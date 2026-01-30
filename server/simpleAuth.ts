@@ -342,7 +342,9 @@ export const embedTokenStore = new Map<string, {
   domain: string; 
   userId?: string;      // Unique per browser session
   userEmail?: string;   // Per browser session
-  createdAt: number 
+  createdAt: number;
+  jwtUsername?: string | null;  // JWT-extracted username
+  jwtTenant?: string | null;    // JWT-extracted tenant
 }>();
 
 // Check embed token and return user info

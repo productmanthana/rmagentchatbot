@@ -16,6 +16,8 @@ interface EmbedContextType {
   embedName: string | null;
   displayId: string | null;
   sessionId: string | null;
+  jwtUsername: string | null;
+  jwtTenant: string | null;
   onRecoverSession: (newDisplayId: string) => Promise<boolean>;
 }
 
@@ -26,6 +28,8 @@ export const EmbedContext = createContext<EmbedContextType>({
   embedName: null,
   displayId: null,
   sessionId: null,
+  jwtUsername: null,
+  jwtTenant: null,
   onRecoverSession: async () => false,
 });
 
@@ -39,6 +43,18 @@ export default function EmbedWithIdPage() {
   const [loading, setLoading] = useState(true);
   const [displayId, setDisplayId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [jwtUsername, setJwtUsername] = useState<string | null>(null);
+  const [jwtTenant, setJwtTenant] = useState<string | null>(null);
+  
+  // Extract JWT token from URL query parameter
+  const getJwtTokenFromUrl = (): string | null => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+    } catch {
+      return null;
+    }
+  };
 
   // Recovery function to link current session to an old display ID
   const handleRecoverSession = async (newDisplayId: string): Promise<boolean> => {
@@ -139,12 +155,19 @@ export default function EmbedWithIdPage() {
           return;
         }
 
+        // Get JWT token from URL if provided by client
+        const jwtToken = getJwtTokenFromUrl();
+        
         // Create an embed session on the server for authentication
         const sessionResponse = await fetch(`/api/embed/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ embedId: params.embedId, parentOrigin }),
+          body: JSON.stringify({ 
+            embedId: params.embedId, 
+            parentOrigin,
+            jwtToken, // Send JWT token if available
+          }),
         });
         const sessionData = await sessionResponse.json();
         
@@ -163,6 +186,14 @@ export default function EmbedWithIdPage() {
           setDisplayId(sessionData.displayId);
           // Store in localStorage for persistence across refreshes
           localStorage.setItem(`embed_display_id_${params.embedId}`, sessionData.displayId);
+        }
+        
+        // Store JWT-extracted user info if available
+        if (sessionData.jwtUsername) {
+          setJwtUsername(sessionData.jwtUsername);
+        }
+        if (sessionData.jwtTenant) {
+          setJwtTenant(sessionData.jwtTenant);
         }
 
         setValidation(validateData);
@@ -213,6 +244,8 @@ export default function EmbedWithIdPage() {
     embedName: validation.name || null,
     displayId: displayId,
     sessionId: sessionId,
+    jwtUsername: jwtUsername,
+    jwtTenant: jwtTenant,
     onRecoverSession: handleRecoverSession,
   };
 
