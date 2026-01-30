@@ -114,7 +114,7 @@ export default function IntegrationPage() {
 
   const getEmbedUrl = (embedId: string) => {
     const baseUrl = window.location.origin;
-    return `${baseUrl}/embed/${embedId}`;
+    return `${baseUrl}/embed/${embedId}?token=YOUR_JWT_TOKEN`;
   };
 
   const getIframeCode = (embedId: string) => {
@@ -388,6 +388,9 @@ export default function IntegrationPage() {
                             )}
                           </Button>
                         </div>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                          ⚠️ Replace <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">YOUR_JWT_TOKEN</code> with the actual JWT token from your authentication system.
+                        </p>
                       </div>
                     </div>
                   </div>
