@@ -180,7 +180,28 @@ export default function EmbedWithIdPage() {
           return;
         }
 
-        // Get JWT token from URL if provided by client
+        // CRITICAL: Detect if this is a NEW JWT token (different from stored one)
+        // If so, clear all cached session data to prevent role mixing
+        // Must check BEFORE getJwtTokenFromUrl() which stores the token
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+        const storedJwtToken = sessionStorage.getItem('jwtToken');
+        
+        if (urlToken && storedJwtToken && urlToken !== storedJwtToken) {
+          console.log('[EmbedSession] New JWT token detected - clearing old session data');
+          sessionStorage.removeItem('embedToken');
+          sessionStorage.removeItem('embedRole');
+          sessionStorage.removeItem('currentEmbedId');
+          localStorage.removeItem(`embed_display_id_${params.embedId}`);
+        } else if (urlToken && !storedJwtToken) {
+          // First time with this token - also clear old data
+          console.log('[EmbedSession] First JWT token - clearing any old session data');
+          sessionStorage.removeItem('embedToken');
+          sessionStorage.removeItem('embedRole');
+          sessionStorage.removeItem('currentEmbedId');
+        }
+        
+        // Get JWT token from URL if provided by client (this will store it in sessionStorage)
         const jwtToken = getJwtTokenFromUrl();
         
         console.log('[EmbedSession] Creating session with:', {
