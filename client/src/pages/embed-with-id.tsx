@@ -46,11 +46,29 @@ export default function EmbedWithIdPage() {
   const [jwtUsername, setJwtUsername] = useState<string | null>(null);
   const [jwtTenant, setJwtTenant] = useState<string | null>(null);
   
-  // Extract JWT token from URL query parameter
+  // Extract JWT token from URL query parameter or sessionStorage
   const getJwtTokenFromUrl = (): string | null => {
     try {
+      // First check URL parameters
       const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+      const urlToken = urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+      
+      if (urlToken) {
+        // Store in sessionStorage for subsequent requests (token is lost on navigation)
+        sessionStorage.setItem('jwtToken', urlToken);
+        console.log('[JWT] Token found in URL and stored in sessionStorage');
+        return urlToken;
+      }
+      
+      // Fallback to sessionStorage (for after navigation)
+      const storedToken = sessionStorage.getItem('jwtToken');
+      if (storedToken) {
+        console.log('[JWT] Token retrieved from sessionStorage');
+        return storedToken;
+      }
+      
+      console.log('[JWT] No token found in URL or sessionStorage');
+      return null;
     } catch {
       return null;
     }
@@ -158,6 +176,13 @@ export default function EmbedWithIdPage() {
         // Get JWT token from URL if provided by client
         const jwtToken = getJwtTokenFromUrl();
         
+        console.log('[EmbedSession] Creating session with:', {
+          embedId: params.embedId,
+          parentOrigin,
+          hasJwtToken: !!jwtToken,
+          jwtTokenLength: jwtToken?.length || 0,
+        });
+        
         // Create an embed session on the server for authentication
         const sessionResponse = await fetch(`/api/embed/session`, {
           method: 'POST',
@@ -170,6 +195,13 @@ export default function EmbedWithIdPage() {
           }),
         });
         const sessionData = await sessionResponse.json();
+        
+        console.log('[EmbedSession] Response:', {
+          status: sessionResponse.status,
+          success: sessionData.success,
+          error: sessionData.error,
+          hasUser: !!sessionData.user,
+        });
         
         // Store the embed token and embedId in sessionStorage for API calls (works without cookies)
         if (sessionData.token) {
