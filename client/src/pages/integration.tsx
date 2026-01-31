@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
+import { Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
 import { Link as WouterLink } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
 
@@ -365,28 +365,16 @@ export default function IntegrationPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2">
-                          <Label htmlFor={`toggle-${link.id}`} className="text-xs text-gray-500">
-                            {link.is_active ? "Enabled" : "Disabled"}
-                          </Label>
-                          <Switch
-                            id={`toggle-${link.id}`}
-                            checked={link.is_active}
-                            onCheckedChange={(checked) => toggleMutation.mutate({ id: link.id, is_active: checked })}
-                            disabled={toggleMutation.isPending}
-                            data-testid={`switch-toggle-${link.id}`}
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteMutation.mutate(link.id)}
-                          disabled={deleteMutation.isPending}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          data-testid={`button-delete-${link.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <Label htmlFor={`toggle-${link.id}`} className="text-xs text-gray-500">
+                          {link.is_active ? "Enabled" : "Disabled"}
+                        </Label>
+                        <Switch
+                          id={`toggle-${link.id}`}
+                          checked={link.is_active}
+                          onCheckedChange={(checked) => toggleMutation.mutate({ id: link.id, is_active: checked })}
+                          disabled={toggleMutation.isPending}
+                          data-testid={`switch-toggle-${link.id}`}
+                        />
                       </div>
                     </div>
 
