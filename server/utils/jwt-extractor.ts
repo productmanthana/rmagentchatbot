@@ -119,7 +119,7 @@ const ROLE_MAPPING: Record<string, 'user' | 'admin' | 'superadmin'> = {
   "poc members": "user",
   "pocmembers": "user",
   "poradmingroup": "admin",
-  "pormanagers": "admin",
+  "pormanagers": "user",
   
   // Common role names (fallback)
   "administrator": "admin",
