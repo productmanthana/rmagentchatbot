@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
 import { Link as WouterLink } from "wouter";
@@ -96,6 +97,29 @@ export default function IntegrationPage() {
         variant: "destructive",
         title: "Error",
         description: error.message || "Failed to delete embed link",
+      });
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/embed-links/${id}/toggle`, { is_active });
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/embed-links"] });
+      toast({
+        title: variables.is_active ? "Embed Link Enabled" : "Embed Link Disabled",
+        description: variables.is_active 
+          ? "The embed link is now active and can be used." 
+          : "The embed link is now disabled and won't work until re-enabled.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to toggle embed link",
       });
     },
   });
@@ -314,6 +338,15 @@ export default function IntegrationPage() {
                           <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
                             JWT Auth
                           </Badge>
+                          {link.is_active ? (
+                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                              Disabled
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <span className="flex items-center gap-1">
@@ -331,16 +364,30 @@ export default function IntegrationPage() {
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(link.id)}
-                        disabled={deleteMutation.isPending}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        data-testid={`button-delete-${link.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`toggle-${link.id}`} className="text-xs text-gray-500">
+                            {link.is_active ? "Enabled" : "Disabled"}
+                          </Label>
+                          <Switch
+                            id={`toggle-${link.id}`}
+                            checked={link.is_active}
+                            onCheckedChange={(checked) => toggleMutation.mutate({ id: link.id, is_active: checked })}
+                            disabled={toggleMutation.isPending}
+                            data-testid={`switch-toggle-${link.id}`}
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteMutation.mutate(link.id)}
+                          disabled={deleteMutation.isPending}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          data-testid={`button-delete-${link.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-3">

@@ -710,6 +710,18 @@ export class MssqlStorage {
       .query('DELETE FROM embed_links WHERE id = @id');
   }
 
+  async toggleEmbedLinkActive(id: string, isActive: boolean): Promise<void> {
+    const pool = this.ensurePool();
+    await pool.request()
+      .input('id', id)
+      .input('isActive', isActive ? 1 : 0)
+      .query(`
+        UPDATE embed_links
+        SET is_active = @isActive
+        WHERE id = @id
+      `);
+  }
+
   async updateEmbedLinkLastUsed(embedId: string): Promise<void> {
     const pool = this.ensurePool();
     const now = new Date();

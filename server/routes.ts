@@ -1861,6 +1861,27 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Toggle embed link active status (superadmin only)
+  app.patch("/api/embed-links/:id/toggle", isAuthenticated, async (req, res) => {
+    try {
+      const role = await getUserRole(req);
+      if (role !== 'superadmin') {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+
+      const { is_active } = req.body;
+      if (typeof is_active !== 'boolean') {
+        return res.status(400).json({ error: "is_active must be a boolean" });
+      }
+
+      await mssqlStorage.toggleEmbedLinkActive(req.params.id, is_active);
+      res.json({ success: true, is_active });
+    } catch (error: any) {
+      console.error("Error toggling embed link:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Helper to generate a simple token
   function generateEmbedToken(): string {
     return `emb_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
