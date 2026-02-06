@@ -1917,20 +1917,32 @@ export default function ChatPage() {
   });
   
   // Check if current user is admin (for activity page access)
-  const { data: adminCheckData } = useQuery<{ isAdmin: boolean }>({
+  const { data: adminCheckData } = useQuery<{ isAdmin: boolean } | null>({
     queryKey: ['/api/admin/check'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/check', { credentials: 'include' });
+      if (res.status === 401) return null;
+      if (!res.ok) return null;
+      return res.json();
+    },
     retry: false,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-    refetchOnMount: "always", // Always refetch on page load to get fresh role data
+    staleTime: 1000 * 60 * 5,
+    refetchOnMount: "always",
   });
   const isAdmin = adminCheckData?.isAdmin === true;
   
   // Fetch current user data for role-based access control
-  const { data: currentUserData } = useQuery<{ id: string; email: string; role?: string }>({
+  const { data: currentUserData } = useQuery<{ id: string; email: string; role?: string } | null>({
     queryKey: ['/api/auth/user'],
+    queryFn: async () => {
+      const res = await fetch('/api/auth/user', { credentials: 'include' });
+      if (res.status === 401) return null;
+      if (!res.ok) return null;
+      return res.json();
+    },
     retry: false,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-    refetchOnMount: "always", // Always refetch on page load to get fresh role data
+    staleTime: 1000 * 60 * 5,
+    refetchOnMount: "always",
   });
   
   // Use embed role if in embed mode, otherwise use user role from auth
