@@ -69,6 +69,9 @@ async function getQueryEngine(): Promise<QueryEngine> {
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
+      const allEnvKeys = Object.keys(process.env).filter(k => k.toUpperCase().includes('OPENAI'));
+      console.log('[QueryEngine] Available OPENAI env vars:', allEnvKeys.length > 0 ? allEnvKeys.join(', ') : 'NONE FOUND');
+      console.log('[QueryEngine] All env var names:', Object.keys(process.env).slice(0, 30).join(', '));
       throw new Error("OpenAI API key is required. Please set OPENAI_API_KEY in environment secrets.");
     }
 
