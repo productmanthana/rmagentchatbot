@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initAppMssqlPool, isAppMssqlConfigured } from "./mssql-app-db";
 import { initUnifiedStorage } from "./unified-storage";
+import 'dotenv/config';
 
 const app = express();
 
