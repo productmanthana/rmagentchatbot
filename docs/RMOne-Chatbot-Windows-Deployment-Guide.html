@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RMOne AI Chatbot - Windows Server Deployment Guide</title>
+<style>
+  body { font-family: Calibri, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; line-height: 1.6; }
+  h1 { color: #1a365d; border-bottom: 3px solid #1a365d; padding-bottom: 10px; font-size: 28px; }
+  h2 { color: #2c5282; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 40px; font-size: 22px; }
+  h3 { color: #2d3748; margin-top: 25px; font-size: 18px; }
+  pre { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-family: Consolas, monospace; font-size: 14px; }
+  code { background: #edf2f7; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; font-size: 14px; }
+  .note { background: #ebf8ff; border-left: 4px solid #3182ce; padding: 12px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; }
+  .warning { background: #fff5f5; border-left: 4px solid #e53e3e; padding: 12px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; }
+  .success { background: #f0fff4; border-left: 4px solid #38a169; padding: 12px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+  th, td { border: 1px solid #e2e8f0; padding: 10px 14px; text-align: left; }
+  th { background: #edf2f7; font-weight: 600; }
+  ol > li { margin-bottom: 8px; }
+  .header-info { color: #718096; font-size: 14px; margin-top: -5px; }
+  .step-number { display: inline-block; background: #2c5282; color: white; width: 28px; height: 28px; border-radius: 50%; text-align: center; line-height: 28px; font-weight: bold; font-size: 14px; margin-right: 8px; }
+  .toc { background: #f7fafc; border: 1px solid #e2e8f0; padding: 20px 30px; border-radius: 6px; margin: 20px 0; }
+  .toc a { text-decoration: none; color: #2c5282; }
+  .toc a:hover { text-decoration: underline; }
+  .toc li { margin: 6px 0; }
+  @media print { body { margin: 20px; } pre { white-space: pre-wrap; } }
+</style>
+</head>
+<body>
+
+<h1>RMOne AI Chatbot - Windows Server Deployment Guide</h1>
+<p class="header-info">Version 1.0 | Last Updated: February 2026 | Confidential</p>
+
+<div class="toc">
+<h3>Table of Contents</h3>
+<ol>
+  <li><a href="#prerequisites">Prerequisites</a></li>
+  <li><a href="#step1">Install NVM for Windows</a></li>
+  <li><a href="#step2">Install Node.js via NVM</a></li>
+  <li><a href="#step3">Install Git</a></li>
+  <li><a href="#step4">Clone the Repository</a></li>
+  <li><a href="#step5">Create the Environment File (.env)</a></li>
+  <li><a href="#step6">Install Dependencies and Build</a></li>
+  <li><a href="#step7">Test the Application (Manual Run)</a></li>
+  <li><a href="#step8">Install PM2 Process Manager</a></li>
+  <li><a href="#step9">Start the Application with PM2</a></li>
+  <li><a href="#step10">Configure PM2 Log Rotation</a></li>
+  <li><a href="#step11">Create Update Batch File</a></li>
+  <li><a href="#step12">PM2 Useful Commands</a></li>
+  <li><a href="#step13">Switching Node.js Versions</a></li>
+  <li><a href="#step14">Troubleshooting</a></li>
+</ol>
+</div>
+
+<!-- ============================================ -->
+<h2 id="prerequisites">Prerequisites</h2>
+<!-- ============================================ -->
+
+<table>
+  <tr><th>Requirement</th><th>Details</th></tr>
+  <tr><td>Operating System</td><td>Windows Server 2019 or later</td></tr>
+  <tr><td>Node.js Version</td><td>20.x or higher (minimum 20.18.0)</td></tr>
+  <tr><td>PowerShell Access</td><td>Administrator privileges required</td></tr>
+  <tr><td>Internet Access</td><td>Required for downloading packages</td></tr>
+  <tr><td>MS SQL Server</td><td>Application and client database connection strings</td></tr>
+  <tr><td>OpenAI API Key</td><td>For GPT-5 LLM integration</td></tr>
+</table>
+
+<div class="warning">
+<strong>Important:</strong> All PowerShell commands and batch files must be run <strong>as Administrator</strong>. Right-click PowerShell and select "Run as Administrator".
+</div>
+
+<div class="warning">
+<strong>Important:</strong> Minimum Node.js version is <strong>20+</strong> because the application uses <code>import.meta.dirname</code> which is only available in Node.js 20 and above. Node.js 18.x will NOT work.
+</div>
+
+<!-- ============================================ -->
+<h2 id="step1"><span class="step-number">1</span> Install NVM for Windows</h2>
+<!-- ============================================ -->
+
+<p>NVM (Node Version Manager) allows you to install and switch between multiple Node.js versions.</p>
+
+<ol>
+  <li>Open your browser and go to:<br>
+    <code>https://github.com/coreybutler/nvm-windows/releases</code></li>
+  <li>Scroll down to the latest release and download <strong>nvm-setup.exe</strong></li>
+  <li>Run the installer and accept all default settings</li>
+  <li>Close and reopen PowerShell as Administrator</li>
+  <li>Verify installation:
+    <pre>nvm version</pre>
+    You should see the NVM version number (e.g., 1.1.12)
+  </li>
+</ol>
+
+<!-- ============================================ -->
+<h2 id="step2"><span class="step-number">2</span> Install Node.js via NVM</h2>
+<!-- ============================================ -->
+
+<p>Open <strong>Administrator PowerShell</strong> and run the following commands:</p>
+
+<pre>nvm install 20.18.0
+nvm use 20.18.0</pre>
+
+<p>Verify the installation:</p>
+
+<pre>node -v
+npm -v</pre>
+
+<div class="success">
+<strong>Expected Output:</strong><br>
+<code>node -v</code> should show <code>v20.18.0</code><br>
+<code>npm -v</code> should show a version number (e.g., 10.8.2)
+</div>
+
+<!-- ============================================ -->
+<h2 id="step3"><span class="step-number">3</span> Install Git</h2>
+<!-- ============================================ -->
+
+<p>If Git is not already installed on the server:</p>
+
+<ol>
+  <li>Open your browser and go to:<br>
+    <code>https://git-scm.com/download/win</code></li>
+  <li>Download the Windows installer (64-bit)</li>
+  <li>Run the installer and accept all default settings</li>
+  <li>Close and reopen PowerShell</li>
+  <li>Verify installation:
+    <pre>git --version</pre>
+    You should see the Git version number
+  </li>
+</ol>
+
+<!-- ============================================ -->
+<h2 id="step4"><span class="step-number">4</span> Clone the Repository</h2>
+<!-- ============================================ -->
+
+<p>Open <strong>Administrator PowerShell</strong> and run:</p>
+
+<pre>cd C:\UGIT\RMOneAgent
+git clone https://github.com/productmanthana/rmagentchatbot.git
+cd rmagentchatbot</pre>
+
+<div class="note">
+<strong>Note:</strong> If the folder <code>C:\UGIT\RMOneAgent</code> does not exist, create it first:
+<pre>mkdir C:\UGIT\RMOneAgent</pre>
+</div>
+
+<!-- ============================================ -->
+<h2 id="step5"><span class="step-number">5</span> Create the Environment File (.env)</h2>
+<!-- ============================================ -->
+
+<p>Create a file named <code>.env</code> in the project root folder <code>C:\UGIT\RMOneAgent\rmagentchatbot\.env</code></p>
+
+<p>Open Notepad and add the following content (replace the placeholder values with your actual credentials):</p>
+
+<pre>APP_MSSQL_URL=your_app_database_connection_string
+CLIENT_MSSQL_URL=your_client_database_connection_string
+CLIENT_TABLE_NAME=your_table_name
+OPENAI_API_KEY=your_openai_api_key</pre>
+
+<div class="warning">
+<strong>Important:</strong> Never share or commit the <code>.env</code> file. It contains sensitive credentials. When saving in Notepad, use "Save As", change file type to "All Files (*.*)", and name it <code>.env</code> (with the dot at the beginning).
+</div>
+
+<!-- ============================================ -->
+<h2 id="step6"><span class="step-number">6</span> Install Dependencies and Build</h2>
+<!-- ============================================ -->
+
+<p>In <strong>Administrator PowerShell</strong>, navigate to the project folder and run:</p>
+
+<pre>cd C:\UGIT\RMOneAgent\rmagentchatbot
+npm install
+npm run build</pre>
+
+<div class="note">
+<strong>Note:</strong> <code>npm install</code> downloads all required packages. <code>npm run build</code> compiles the frontend and backend code into the <code>dist</code> folder. This may take 1-2 minutes.
+</div>
+
+<!-- ============================================ -->
+<h2 id="step7"><span class="step-number">7</span> Test the Application (Manual Run)</h2>
+<!-- ============================================ -->
+
+<p>Before setting up PM2, test that the application runs correctly:</p>
+
+<pre>cd C:\UGIT\RMOneAgent\rmagentchatbot
+node dist/index.js</pre>
+
+<ol>
+  <li>Open your browser and go to <code>http://localhost:5000</code></li>
+  <li>Verify the chatbot loads correctly</li>
+  <li>Once verified, press <strong>Ctrl+C</strong> in PowerShell to stop the application</li>
+</ol>
+
+<!-- ============================================ -->
+<h2 id="step8"><span class="step-number">8</span> Install PM2 Process Manager</h2>
+<!-- ============================================ -->
+
+<p>PM2 keeps the application running in the background and automatically restarts it if it crashes or the server reboots.</p>
+
+<p>In <strong>Administrator PowerShell</strong>, run:</p>
+
+<pre>npm install -g pm2
+npm install -g pm2-windows-startup
+pm2-startup install</pre>
+
+<div class="note">
+<strong>What each command does:</strong><br>
+- <code>npm install -g pm2</code> - Installs PM2 globally<br>
+- <code>npm install -g pm2-windows-startup</code> - Enables PM2 to start automatically when Windows boots<br>
+- <code>pm2-startup install</code> - Registers PM2 as a Windows service
+</div>
+
+<!-- ============================================ -->
+<h2 id="step9"><span class="step-number">9</span> Start the Application with PM2</h2>
+<!-- ============================================ -->
+
+<pre>cd C:\UGIT\RMOneAgent\rmagentchatbot
+pm2 start dist/index.js --name rmone-chatbot
+pm2 save</pre>
+
+<p>Verify the application is running:</p>
+
+<pre>pm2 status</pre>
+
+<div class="success">
+<strong>Expected Output:</strong> You should see <code>rmone-chatbot</code> with status <strong>online</strong>. The application is now accessible at <code>http://localhost:5000</code>.
+</div>
+
+<!-- ============================================ -->
+<h2 id="step10"><span class="step-number">10</span> Configure PM2 Log Rotation</h2>
+<!-- ============================================ -->
+
+<p>Log rotation prevents log files from growing indefinitely and consuming disk space.</p>
+
+<pre>pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 3</pre>
+
+<table>
+  <tr><th>Setting</th><th>Value</th><th>Description</th></tr>
+  <tr><td>max_size</td><td>10M</td><td>Rotate logs when they reach 10 MB</td></tr>
+  <tr><td>retain</td><td>3</td><td>Keep only the last 3 log files</td></tr>
+</table>
+
+<!-- ============================================ -->
+<h2 id="step11"><span class="step-number">11</span> Create Update Batch File</h2>
+<!-- ============================================ -->
+
+<p>Create this batch file to simplify future code updates. Save it as <code>C:\UGIT\RMOneAgent\update-chatbot.bat</code></p>
+
+<p>Open Notepad, paste the following content, and save as <code>update-chatbot.bat</code> (file type: All Files):</p>
+
+<pre>@echo off
+echo ========================================
+echo   RMOne Chatbot - Full Update
+echo ========================================
+echo.
+cd /d C:\UGIT\RMOneAgent\rmagentchatbot
+echo Stopping PM2...
+call pm2 stop rmone-chatbot
+echo.
+echo Pulling latest code...
+git pull
+echo.
+echo Installing dependencies...
+call npm install
+echo.
+echo Building frontend...
+call npm run build
+echo.
+echo Starting PM2...
+call pm2 start rmone-chatbot
+echo.
+echo ========================================
+echo   Update Complete!
+echo ========================================
+pause</pre>
+
+<h3>How to Use the Update Batch File</h3>
+<ol>
+  <li>Navigate to <code>C:\UGIT\RMOneAgent\</code></li>
+  <li>Right-click on <code>update-chatbot.bat</code></li>
+  <li>Select <strong>"Run as administrator"</strong></li>
+  <li>Wait for it to complete</li>
+</ol>
+
+<div class="warning">
+<strong>Important:</strong> Always right-click and select <strong>"Run as administrator"</strong>. Running without admin privileges will cause permission errors.
+</div>
+
+<!-- ============================================ -->
+<h2 id="step12"><span class="step-number">12</span> PM2 Useful Commands</h2>
+<!-- ============================================ -->
+
+<p>Run these commands in <strong>Administrator PowerShell</strong>:</p>
+
+<table>
+  <tr><th>Command</th><th>Description</th></tr>
+  <tr><td><code>pm2 status</code></td><td>Check if the application is running</td></tr>
+  <tr><td><code>pm2 logs rmone-chatbot</code></td><td>View live application logs</td></tr>
+  <tr><td><code>pm2 logs rmone-chatbot --lines 100</code></td><td>View last 100 lines of logs</td></tr>
+  <tr><td><code>pm2 restart rmone-chatbot</code></td><td>Restart the application</td></tr>
+  <tr><td><code>pm2 stop rmone-chatbot</code></td><td>Stop the application</td></tr>
+  <tr><td><code>pm2 start rmone-chatbot</code></td><td>Start the application</td></tr>
+  <tr><td><code>pm2 kill</code></td><td>Kill all PM2 processes (use if PM2 is stuck)</td></tr>
+  <tr><td><code>pm2 save</code></td><td>Save current PM2 process list for auto-restart on reboot</td></tr>
+</table>
+
+<!-- ============================================ -->
+<h2 id="step13"><span class="step-number">13</span> Switching Node.js Versions</h2>
+<!-- ============================================ -->
+
+<p>If you need to use a different Node.js version in the future, follow these steps in <strong>Administrator PowerShell</strong>:</p>
+
+<pre>nvm install 22.0.0
+nvm use 22.0.0
+node -v</pre>
+
+<div class="warning">
+<strong>Important:</strong> After switching Node.js versions, you must reinstall PM2 and rebuild the application:
+</div>
+
+<pre>npm install -g pm2
+npm install -g pm2-windows-startup
+pm2-startup install
+
+cd C:\UGIT\RMOneAgent\rmagentchatbot
+npm install
+npm run build
+
+pm2 start dist/index.js --name rmone-chatbot
+pm2 save</pre>
+
+<p>To see all installed Node.js versions:</p>
+<pre>nvm list</pre>
+
+<p>To switch back to a previously installed version:</p>
+<pre>nvm use 20.18.0</pre>
+
+<!-- ============================================ -->
+<h2 id="step14"><span class="step-number">14</span> Troubleshooting</h2>
+<!-- ============================================ -->
+
+<h3>Problem: PM2 shows "connect EPERM" error</h3>
+<p><strong>Cause:</strong> PowerShell is not running as Administrator, or PM2 daemon is stuck.</p>
+<p><strong>Solution:</strong></p>
+<pre>pm2 kill
+Remove-Item -Recurse -Force $env:USERPROFILE\.pm2
+npm install -g pm2
+cd C:\UGIT\RMOneAgent\rmagentchatbot
+pm2 start dist/index.js --name rmone-chatbot
+pm2 save</pre>
+
+<h3>Problem: Build fails with "EPERM: operation not permitted, unlink"</h3>
+<p><strong>Cause:</strong> PM2 is still running and has locked the files in the <code>dist</code> folder.</p>
+<p><strong>Solution:</strong></p>
+<pre>pm2 stop rmone-chatbot
+Remove-Item -Recurse -Force C:\UGIT\RMOneAgent\rmagentchatbot\dist
+npm run build
+pm2 start rmone-chatbot</pre>
+
+<h3>Problem: "import.meta.dirname is not defined" error</h3>
+<p><strong>Cause:</strong> You are using a Node.js version below 20.</p>
+<p><strong>Solution:</strong></p>
+<pre>nvm use 20.18.0
+node -v</pre>
+
+<h3>Problem: Application not accessible after server reboot</h3>
+<p><strong>Cause:</strong> PM2 auto-startup may not have been configured properly.</p>
+<p><strong>Solution:</strong></p>
+<pre>npm install -g pm2-windows-startup
+pm2-startup install
+pm2 start dist/index.js --name rmone-chatbot
+pm2 save</pre>
+
+<h3>Problem: Git pull shows "Permission denied"</h3>
+<p><strong>Cause:</strong> PowerShell is not running as Administrator.</p>
+<p><strong>Solution:</strong> Close PowerShell, right-click it, and select "Run as Administrator". Then try again.</p>
+
+<h3>Problem: Application shows errors in logs</h3>
+<p><strong>How to check:</strong></p>
+<pre>pm2 logs rmone-chatbot --lines 50</pre>
+
+<hr style="margin-top: 50px;">
+<p style="text-align: center; color: #999; font-size: 12px;">
+RMOne AI Chatbot - Deployment Guide v1.0 | February 2026 | Confidential
+</p>
+
+</body>
+</html>
