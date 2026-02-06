@@ -3271,12 +3271,13 @@ export class QueryEngine {
               {date_filter}
               {additional_filters}
               GROUP BY "Division"
-              ORDER BY total_value DESC`,
+              ORDER BY total_value DESC
+              {limit_clause}`,
         params: [],
         param_types: [],
         optional_params: ["start_date", "end_date", "start_year", "end_year", "size", "status", "state_code", "company",
           "client",
-          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "department", "year"],
+          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "department", "year", "limit"],
         chart_type: "pie",
         chart_field: "project_count",
       },
@@ -3290,12 +3291,13 @@ export class QueryEngine {
               {date_filter}
               {additional_filters}
               GROUP BY "Department"
-              ORDER BY total_value DESC`,
+              ORDER BY total_value DESC
+              {limit_clause}`,
         params: [],
         param_types: [],
         optional_params: ["start_date", "end_date", "start_year", "end_year", "size", "status", "state_code", "company",
           "client",
-          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "division", "year"],
+          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "division", "year", "limit"],
         chart_type: "pie",
         chart_field: "project_count",
       },
@@ -3309,12 +3311,13 @@ export class QueryEngine {
               {date_filter}
               {additional_filters}
               GROUP BY "ModuleName"
-              ORDER BY total_value DESC`,
+              ORDER BY total_value DESC
+              {limit_clause}`,
         params: [],
         param_types: [],
         optional_params: ["start_date", "end_date", "start_year", "end_year", "size", "status", "state_code", "company",
           "client",
-          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "modules", "year"],
+          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win", "modules", "year", "limit"],
         chart_type: "pie",
         chart_field: "project_count",
       },
@@ -4742,12 +4745,13 @@ export class QueryEngine {
               {status_filter}
               {additional_filters}
               GROUP BY COALESCE(NULLIF(NULLIF("Region", ''), 'NULL'), 'Unknown')
-              ORDER BY total_value DESC`,
+              ORDER BY total_value DESC
+              {limit_clause}`,
         params: [],
         param_types: [],
         optional_params: ["project_type", "client", "company",
           "client",
-          "organization", "start_date", "end_date", "status", "categories"],
+          "organization", "start_date", "end_date", "status", "categories", "limit"],
         chart_type: "bar",
         chart_field: "total_value",
       },
@@ -4766,12 +4770,13 @@ export class QueryEngine {
               {status_filter}
               {additional_filters}
               GROUP BY COALESCE(NULLIF(NULLIF("Country", ''), 'NULL'), 'Unknown')
-              ORDER BY total_value DESC`,
+              ORDER BY total_value DESC
+              {limit_clause}`,
         params: [],
         param_types: [],
         optional_params: ["project_type", "client", "company",
           "client",
-          "organization", "start_date", "end_date", "status", "categories", "region"],
+          "organization", "start_date", "end_date", "status", "categories", "region", "limit"],
         chart_type: "bar",
         chart_field: "total_value",
       },
