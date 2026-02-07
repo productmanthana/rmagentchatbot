@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import { createServer as createHttpsServer } from "https";
+import { readFileSync, existsSync } from "fs";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initAppMssqlPool, isAppMssqlConfigured } from "./mssql-app-db";
 import { initUnifiedStorage } from "./unified-storage";
-import 'dotenv/config';
 
 const app = express();
 
@@ -84,18 +85,30 @@ app.use('/api', (req, res, next) => {
 });
 
 (async () => {
-  // Create HTTP server
-  const server = createServer(app);
+  const sslKeyPath = process.env.SSL_KEY_PATH || '';
+  const sslCertPath = process.env.SSL_CERT_PATH || '';
+  const useHttps = sslKeyPath && sslCertPath && existsSync(sslKeyPath) && existsSync(sslCertPath);
 
-  // FIRST: Start listening on the port immediately for health checks
-  // This ensures deployment health checks pass before database init completes
+  let server;
+  if (useHttps) {
+    const httpsOptions = {
+      key: readFileSync(sslKeyPath),
+      cert: readFileSync(sslCertPath),
+    };
+    server = createHttpsServer(httpsOptions, app);
+    log(`HTTPS mode enabled with SSL certificates`);
+  } else {
+    server = createServer(app);
+  }
+
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`Server listening on port ${port} - starting database initialization...`);
+    const protocol = useHttps ? 'https' : 'http';
+    log(`Server listening on ${protocol}://0.0.0.0:${port} - starting database initialization...`);
   });
 
   // THEN: Initialize database and routes asynchronously
