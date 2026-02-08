@@ -205,6 +205,12 @@ function stripHallucinatedGeography(args: Record<string, any>, originalQuestion:
     return args;
   }
   
+  // SKIP stripping when geography params were preserved from follow-up context merge
+  if (args._context_geo_preserved) {
+    console.log(`[StripGeo] ⏭️ SKIPPING - geography preserved from follow-up context merge`);
+    return args;
+  }
+  
   const questionLower = originalQuestion.toLowerCase();
   
   // Full US state names (lowercase for case-insensitive matching)
@@ -8638,7 +8644,7 @@ export class QueryEngine {
       // Other context filters
       'state_name', 'time_reference', 'project_name',
       // Location (preserve if not explicitly changing)
-      'state_code', 'states',
+      'state_code', 'states', 'regions', 'countries',
       // NOTE: 'limit' is NOT cumulative - if user asks for "each" or "all", we shouldn't carry forward limit
     ]);
 
@@ -8846,6 +8852,12 @@ export class QueryEngine {
       console.log(`[SmartMerge] Categories REPLACED: ${JSON.stringify(previousArgs.categories)} → ${JSON.stringify(newArgs.categories)}`);
     }
 
+    // SET _context_geo_preserved flag if geography params were preserved from previous context
+    const SM_GEO = ["states", "state_code", "regions", "countries", "region"];
+    if (SM_GEO.some(p => result[p] !== undefined && previousArgs[p] !== undefined && !(p in newArgs))) {
+      result._context_geo_preserved = true;
+      console.log(`[SmartMerge] 🌍 SET _context_geo_preserved flag (geography from context)`);
+    }
     return result;
   }
 
@@ -14669,7 +14681,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         try {
           // CRITICAL FIX: Build CUMULATIVE arguments from originalContext + previousContext
           // This ensures all filters (dates, fees, etc.) are preserved across follow-up chains
-          const ARRAY_PARAMS = ['states', 'tags', 'categories', 'project_types', 'years', 'exclude_tags', 'divisions', 'departments', 'sectors'];
+          const ARRAY_PARAMS = ['states', 'tags', 'categories', 'project_types', 'years', 'exclude_tags', 'divisions', 'departments', 'sectors', 'regions', 'countries'];
           const SCALAR_PARAMS = ['min_fee', 'max_fee', 'min_win', 'max_win', 'status', 'state_code', 'organization',
                                  'category', 'company', 'client', 'poc', 'start_date', 'end_date', 
                                  'year', 'project_type', '_explicit_category', '_region', '_project_type_explicit',
@@ -14707,6 +14719,11 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             console.log(`[QueryEngine]   Previous args: ${JSON.stringify(previousContext.arguments)}`);
             console.log(`[QueryEngine]   Cumulative result: ${JSON.stringify(cumulativeArgs)}`);
             console.log(`[QueryEngine]   🔍 STATE YEAR DEBUG: orig.year=${originalContext.arguments?.year}, prev.year=${previousContext.arguments?.year}, cumulative.year=${cumulativeArgs?.year}`);
+            // SET geo preservation flag for context-merged geography
+            const CUMUL_GEO_PARAMS = ["states", "state_code", "regions", "countries", "region"];
+            if (CUMUL_GEO_PARAMS.some(p => cumulativeArgs[p] !== undefined)) {
+              cumulativeArgs._context_geo_preserved = true;
+            }
           } else {
             // Single context - use whichever is available
             const baseContext = previousContext || originalContext;
@@ -14758,7 +14775,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       
       const ARRAY_FILTER_PARAMS = new Set([
         'states', 'tags', 'exclude_tags', 'categories', 'exclude_categories', 
-        'project_types', 'years', 'divisions', 'departments', 'sectors'
+        'project_types', 'years', 'divisions', 'departments', 'sectors', 'regions', 'countries'
       ]);
       const SCALAR_FILTER_PARAMS = new Set([
         'min_fee', 'max_fee', 'min_win', 'max_win',
@@ -14818,6 +14835,11 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         console.log(`[QueryEngine]   Previous filters: ${JSON.stringify(previousContext.arguments)}`);
         console.log(`[QueryEngine]   Cumulative result: ${JSON.stringify(cumulativeArgs)}`);
         console.log(`[QueryEngine]   🔍 YEAR DEBUG: orig.year=${originalContext.arguments?.year}, prev.year=${previousContext.arguments?.year}, cumulative.year=${cumulativeArgs?.year}`);
+        // SET geo preservation flag for context-merged geography
+        const CUMUL_GEO_PARAMS_2 = ["states", "state_code", "regions", "countries", "region"];
+        if (CUMUL_GEO_PARAMS_2.some(p => cumulativeArgs[p] !== undefined)) {
+          cumulativeArgs._context_geo_preserved = true;
+        }
       } else {
         // Single context - use whichever is available
         contextForMerge = originalContext || previousContext;
@@ -14851,7 +14873,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         const contextFilters = ['min_fee', 'max_fee', 'min_win', 'max_win', 'status', 'state_code', 'states', 
                                 'categories', 'tags', 'company', 'client', 'poc', 'pocs', 'start_date', 'end_date',
                                 'project_type', 'project_types', 'year', 'years', 'quarter', 'category',
-                                'division', 'divisions', 'department', 'departments', 'sector', 'sectors'];
+                                'division', 'divisions', 'department', 'departments', 'sector', 'sectors', 'regions', 'countries'];
         for (const filter of contextFilters) {
           if (contextForMerge.arguments[filter] !== undefined && classification.arguments[filter] === undefined) {
             // GUARD: Skip categories re-injection when project_type is explicitly set
@@ -14890,7 +14912,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           const preserveFilters = ['poc', 'pocs', 'company', 'client', 'clients', 'states', 'state_code',
                                    'categories', 'category', 'tags', 'project_type', 'project_types',
                                    'min_fee', 'max_fee', 'min_win', 'max_win', 'status', 'start_date', 'end_date',
-                                   'year', 'years', 'division', 'divisions', 'department', 'departments', 'sector', 'sectors'];
+                                   'year', 'years', 'division', 'divisions', 'department', 'departments', 'sector', 'sectors', 'regions', 'countries'];
           for (const filter of preserveFilters) {
             if (contextForMerge.arguments[filter] !== undefined && classification.arguments[filter] === undefined) {
             // GUARD: Skip categories re-injection when project_type is explicitly set
@@ -14903,6 +14925,13 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             }
           }
           
+          // SET _context_geo_preserved flag if any geography params were preserved from context
+          const GEO_PARAMS = ["states", "state_code", "regions", "countries", "region"];
+          const hasContextGeo = GEO_PARAMS.some(p => classification.arguments[p] !== undefined && contextForMerge.arguments[p] !== undefined);
+          if (hasContextGeo) {
+            classification.arguments._context_geo_preserved = true;
+            console.log(`[QueryEngine]   🌍 SET _context_geo_preserved flag (geography from context merge)`);
+          }
           // CRITICAL: Reset internal "_already_applied" flags for follow-up queries
           // These flags are set during the ORIGINAL query execution and prevent re-application
           // But for follow-ups with different template functions, we MUST re-apply the filters
@@ -15046,7 +15075,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             'min_fee', 'max_fee', 'min_win', 'max_win',
             'start_date', 'end_date', 'year', 'quarter', 'years',
             'status', 'state_name', 'time_reference', 'project_name',
-            'state_code', 'states',
+            'state_code', 'states', 'regions', 'countries',
           ];
           
           const contexts = [previousContext, originalContext].filter(Boolean);
@@ -15064,6 +15093,11 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             }
           }
           
+          // SET _context_geo_preserved flag if geography was preserved from context
+          const FALLBACK_GEO = ["states", "state_code", "regions", "countries", "region"];
+          if (FALLBACK_GEO.some(p => classification.arguments[p] !== undefined)) {
+            classification.arguments._context_geo_preserved = true;
+          }
           console.log(`[QueryEngine] After preserving cumulative filters:`, JSON.stringify(classification.arguments, null, 2));
           classification.arguments = normalizeClassificationArguments(classification.arguments, userQuestion);
       console.log(`[QueryEngine] 🔍 DEBUG PRE-EXECUTE: classification.arguments.category="${classification?.arguments?.category}", _category_already_applied=${classification?.arguments?._category_already_applied}`);
