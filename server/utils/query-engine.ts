@@ -11489,11 +11489,16 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       // Pattern 4: "... title VALUE" - keyword in middle of query (e.g., "provide details of title 1200 CPP Assessment")
       const generalTermPattern4 = /(?:details?|info|information|projects?|with|for)\s+(?:of|about|on|for)?\s*(?:title|client|company|module|sector|category|division|department|region|state|country|poc|point\s+of\s+contact|service\s+type|servicetype|project\s+type|projecttype)\s+(.+)$/i;
       
-      // BREAKDOWN BYPASS: If query contains "by division/department/etc.", skip general term detection
-      // "Projects by division" should be a GROUP BY query, not a search for "Projects by" in Division column
-      const isBreakdownQuery = /\b(?:by|per|grouped\s+by)\s+(?:the\s+)?(?:division|department|region|state|category|sector|company|client|type|status|country|year|month|opco)s?\s*$/i.test(userQuestion);
-      
-      const generalTermMatch = isBreakdownQuery ? null : (userQuestion.match(generalTermPattern1) || userQuestion.match(generalTermPattern2) || userQuestion.match(generalTermPattern3) || userQuestion.match(generalTermPattern4));
+      // BREAKDOWN BYPASS: Check if extracted value ends with "by" - this means user wants
+      // a GROUP BY breakdown (e.g., "Projects by division", "Revenue by category")
+      // not a search for "Projects by" in the Division column. Works for ANY column.
+      const generalTermMatchRaw = userQuestion.match(generalTermPattern1) || userQuestion.match(generalTermPattern2) || userQuestion.match(generalTermPattern3) || userQuestion.match(generalTermPattern4);
+      const extractedValue = generalTermMatchRaw ? generalTermMatchRaw[1].trim() : '';
+      const isBreakdownQuery = /\b(?:by|per|grouped\s+by)\s*$/i.test(extractedValue);
+      if (isBreakdownQuery) {
+        console.log('[QueryEngine] BREAKDOWN BYPASS: Extracted value "' + extractedValue + '" ends with "by" - skipping general term detection, letting LLM handle as GROUP BY');
+      }
+      const generalTermMatch = isBreakdownQuery ? null : generalTermMatchRaw;
       if (generalTermMatch && generalTermMatch[1]) {
         const generalTerm = generalTermMatch[1].trim();
         // Skip known keywords that should go to specific handlers
