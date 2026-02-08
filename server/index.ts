@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import { createServer as createHttpsServer } from "https";
+import fs from "fs";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initAppMssqlPool, isAppMssqlConfigured } from "./mssql-app-db";
@@ -83,7 +85,46 @@ app.use('/api', (req, res, next) => {
 });
 
 (async () => {
-  const server = createServer(app);
+  const sslCertPath = process.env.SSL_CERT_PATH;
+  const sslKeyPath = process.env.SSL_KEY_PATH;
+  const sslPfxPath = process.env.SSL_PFX_PATH;
+  const sslPfxPassphrase = process.env.SSL_PFX_PASSPHRASE;
+
+  let server;
+  let isHttps = false;
+
+  if (sslPfxPath && !fs.existsSync(sslPfxPath)) {
+    log(`WARNING: SSL_PFX_PATH is set to "${sslPfxPath}" but file not found - falling back to HTTP`);
+  }
+  if (sslCertPath && !fs.existsSync(sslCertPath)) {
+    log(`WARNING: SSL_CERT_PATH is set to "${sslCertPath}" but file not found`);
+  }
+  if (sslKeyPath && !fs.existsSync(sslKeyPath)) {
+    log(`WARNING: SSL_KEY_PATH is set to "${sslKeyPath}" but file not found`);
+  }
+
+  if (sslPfxPath && fs.existsSync(sslPfxPath)) {
+    const sslOptions: any = {
+      pfx: fs.readFileSync(sslPfxPath),
+    };
+    if (sslPfxPassphrase) {
+      sslOptions.passphrase = sslPfxPassphrase;
+    }
+    server = createHttpsServer(sslOptions, app);
+    isHttps = true;
+    log("HTTPS mode enabled with PFX certificate");
+  } else if (sslCertPath && sslKeyPath && fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+    const sslOptions = {
+      cert: fs.readFileSync(sslCertPath),
+      key: fs.readFileSync(sslKeyPath),
+    };
+    server = createHttpsServer(sslOptions, app);
+    isHttps = true;
+    log("HTTPS mode enabled with cert/key files");
+  } else {
+    server = createServer(app);
+    log("HTTP mode (no SSL certificate configured)");
+  }
 
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
@@ -91,7 +132,8 @@ app.use('/api', (req, res, next) => {
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`Server listening on port ${port} - starting database initialization...`);
+    const protocol = isHttps ? 'https' : 'http';
+    log(`Server listening on ${protocol}://0.0.0.0:${port} - starting database initialization...`);
   });
 
   // THEN: Initialize database and routes asynchronously
