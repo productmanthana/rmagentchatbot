@@ -13339,31 +13339,31 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         // When user explicitly chose a column to search, remove conflicting inferred filters
         const disambColumn = preAppliedFilters._disambiguation_column;
         console.log(`[QueryEngine] 🔍 CONFLICT CLEANUP DEBUG: disambColumn = "${disambColumn}"`);
-        const conflictMap: Record<string, string[]> = {
-          'Service Type': ['project_type', 'category', 'categories', 'division', 'department'],
-          'Client': ['company', 'poc', 'title'],
-          'Company': ['client', 'poc', 'title'],
-          'Point of Contact': ['client', 'company'],
-          'Project Type': ['category', 'categories', 'service_type'],
-          'Division': ['department', 'service_type'],
-          'Department': ['division', 'service_type'],
-          'Project Title': ['client', 'company', 'keyword'],
-          'Category': ['project_type', 'service_type'],
-          'City': ['state', 'region'],
-        };
-        
-        const conflictingArgs = conflictMap[disambColumn] || [];
-        for (const conflictArg of conflictingArgs) {
-          if (classification.arguments[conflictArg] && !classification.arguments[`_${conflictArg}_already_applied`]) {
-            console.log(`[QueryEngine] 🧹 DISAMBIGUATION CONFLICT CLEANUP: Removing LLM-derived "${conflictArg}" = "${classification.arguments[conflictArg]}" (conflicts with user's ${disambColumn} choice)`);
-            delete classification.arguments[conflictArg];
+        // UNIVERSAL ENTITY CLEANUP: When user selects a disambiguation column,
+          // ALL other entity-related args from the LLM should be removed.
+          // The user's disambiguation selection IS the only entity filter.
+          const allEntityArgs = [
+            'keyword', 'project_name', 'title', 'client', 'company', 'poc', 'organization',
+            'division', 'department', 'category', 'categories', 'project_type', 'service_type',
+            'city', 'states', 'regions', 'countries', 'sector'
+          ];
+          // Get the param name that the user selected (don't remove that one)
+          const selectedParamName = Object.keys(preAppliedFilters).find(k => !k.startsWith('_'));
+          
+          for (const entityArg of allEntityArgs) {
+            // Skip the param that the user selected via disambiguation
+            if (entityArg === selectedParamName) continue;
+            
+            if (classification.arguments[entityArg] && !classification.arguments[`_${entityArg}_already_applied`]) {
+              console.log(`[QueryEngine] 🧹 DISAMBIGUATION ENTITY CLEANUP: Removing LLM-derived "${entityArg}" = "${classification.arguments[entityArg]}" (user chose ${disambColumn})`);
+              delete classification.arguments[entityArg];
+            }
+            // ALSO clear from extractedHints to prevent HINT MERGE from re-adding
+            if (extractedHints[entityArg]) {
+              console.log(`[QueryEngine] 🧹 DISAMBIGUATION ENTITY CLEANUP: Also removing "${entityArg}" from extractedHints`);
+              delete extractedHints[entityArg];
+            }
           }
-          // ALSO clear from extractedHints to prevent HINT MERGE from re-adding
-          if (extractedHints[conflictArg]) {
-            console.log(`[QueryEngine] 🧹 DISAMBIGUATION CONFLICT CLEANUP: Also removing "${conflictArg}" from extractedHints to prevent re-merge`);
-            delete extractedHints[conflictArg];
-          }
-        }
         
         // Apply all non-underscore filters to classification.arguments
         for (const [key, value] of Object.entries(preAppliedFilters)) {
