@@ -3379,6 +3379,12 @@ export default function ChatPage() {
         return m;
       }));
 
+      // Detect follow-up filter loss: when follow-up returns significantly more records than original
+      const originalRecordCount = message.response?.row_count || message.response?.summary?.total_records || message.response?.data?.length || 0;
+      const followUpRecordCount = data.row_count || data.summary?.total_records || data.data?.length || 0;
+      const isFilterLoss = data.success && originalRecordCount > 0 && followUpRecordCount > 0 && 
+        followUpRecordCount > originalRecordCount * 1.5 && followUpRecordCount > originalRecordCount + 50;
+
       // Auto-log follow-up questions that fail or get AI Analysis responses
       const shouldAutoLog = !data.success || 
         data.function_name === 'ai_fallback' || 
@@ -3386,7 +3392,8 @@ export default function ChatPage() {
         data.function_name === 'ai_data_analysis' ||
         data.data?.[0]?.type === 'ai_analysis' ||
         data.data?.[0]?.is_fallback === true ||
-        (data.data && data.data.length === 0);
+        (data.data && data.data.length === 0) ||
+        isFilterLoss;
       
       // Don't auto-log user input errors (off_topic, restricted, rate_limit)
       const isUserInputError = data.function_name === 'off_topic' || 
@@ -3403,7 +3410,9 @@ export default function ChatPage() {
           
           // Determine auto-log reason
           let logReason = '[Auto-logged] Follow-up query failed';
-          if (data.function_name === 'ai_fallback' || data.data?.[0]?.is_fallback) {
+          if (isFilterLoss) {
+            logReason = `[Auto-logged] Follow-up likely lost filters - original: ${originalRecordCount} records, follow-up: ${followUpRecordCount} records`;
+          } else if (data.function_name === 'ai_fallback' || data.data?.[0]?.is_fallback) {
             logReason = '[Auto-logged] Follow-up handled by AI fallback';
           } else if (data.function_name === 'provide_simple_answer' || data.function_name === 'ai_data_analysis' || data.data?.[0]?.type === 'ai_analysis') {
             logReason = '[Auto-logged] Follow-up required AI analysis (no direct data)';
@@ -3415,7 +3424,9 @@ export default function ChatPage() {
           
           // Get a clean, short error message (not JSON)
           let cleanErrorMsg = "Follow-up query required AI assistance";
-          if (data.message && typeof data.message === 'string' && data.message.length < 200 && !data.message.startsWith('{')) {
+          if (isFilterLoss) {
+            cleanErrorMsg = `Follow-up lost filters: ${originalRecordCount} → ${followUpRecordCount} records`;
+          } else if (data.message && typeof data.message === 'string' && data.message.length < 200 && !data.message.startsWith('{')) {
             cleanErrorMsg = data.message;
           } else if (data.data?.[0]?.message && typeof data.data[0].message === 'string' && data.data[0].message.length < 200) {
             cleanErrorMsg = data.data[0].message;
