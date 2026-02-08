@@ -14094,6 +14094,50 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           classification.arguments.category = prevArgs.category;
           console.log(`[QueryEngine] 🔗 DIRECT PRESERVE: category="${prevArgs.category}"`);
         }
+        // Preserve geographic filters from previous context
+        if (prevArgs.states && !classification.arguments.states) {
+          classification.arguments.states = prevArgs.states;
+          console.log(`[QueryEngine] DIRECT PRESERVE: states=${JSON.stringify(prevArgs.states)}`);
+        }
+        if (prevArgs.regions && !classification.arguments.regions) {
+          classification.arguments.regions = prevArgs.regions;
+          console.log(`[QueryEngine] DIRECT PRESERVE: regions=${JSON.stringify(prevArgs.regions)}`);
+        }
+        if (prevArgs.countries && !classification.arguments.countries) {
+          classification.arguments.countries = prevArgs.countries;
+          console.log(`[QueryEngine] DIRECT PRESERVE: countries=${JSON.stringify(prevArgs.countries)}`);
+        }
+        if ((classification.arguments.states && prevArgs.states) || (classification.arguments.regions && prevArgs.regions) || (classification.arguments.countries && prevArgs.countries)) {
+          classification.arguments._context_geo_preserved = true;
+          console.log(`[QueryEngine] DIRECT PRESERVE: Set _context_geo_preserved=true to protect from stripHallucinatedGeography`);
+        }
+        // Preserve categories array alongside singular category
+        if (prevArgs.categories && !classification.arguments.categories) {
+          classification.arguments.categories = prevArgs.categories;
+        }
+        // Preserve status from previous context
+        if (prevArgs.status && !classification.arguments.status) {
+          classification.arguments.status = prevArgs.status;
+          console.log(`[QueryEngine] DIRECT PRESERVE: status=${JSON.stringify(prevArgs.status)}`);
+        }
+        // Preserve date filters from previous context
+        if (prevArgs.start_date && !classification.arguments.start_date) {
+          classification.arguments.start_date = prevArgs.start_date;
+        }
+        if (prevArgs.end_date && !classification.arguments.end_date) {
+          classification.arguments.end_date = prevArgs.end_date;
+        }
+        if (prevArgs.year && !classification.arguments.year) {
+          classification.arguments.year = prevArgs.year;
+        }
+        // Preserve project_type from previous context
+        if (prevArgs.project_type && !classification.arguments.project_type) {
+          classification.arguments.project_type = prevArgs.project_type;
+        }
+        // Preserve organization from previous context
+        if (prevArgs.organization && !classification.arguments.organization) {
+          classification.arguments.organization = prevArgs.organization;
+        }
         // Directly copy entity flags
         if (prevArgs._client_already_applied) classification.arguments._client_already_applied = true;
         if (prevArgs._company_already_applied) classification.arguments._company_already_applied = true;
@@ -16081,6 +16125,7 @@ Response (JSON only):`;
 
       // DEBUG: Log state right before preprocessQuery
       console.log(`[QueryEngine] 🔍 PRE-PREPROCESS: classification.arguments.company = "${classification.arguments?.company}", _company_already_applied = ${classification.arguments?._company_already_applied}`);
+      console.log(`[QueryEngine] 🔍 PRE-PREPROCESS: states=${JSON.stringify(classification.arguments?.states)}, regions=${JSON.stringify(classification.arguments?.regions)}, poc="${classification.arguments?.poc}", keyword="${classification.arguments?.keyword}"`);
       
       // Step 2: Preprocess to handle ALL calculations (dates, numbers, limits)
       const processedClassification = await this.preprocessQuery(
@@ -16133,15 +16178,18 @@ Response (JSON only):`;
       
       // DEBUG: Log args right after preprocessQuery
       console.log(`[QueryEngine] 🔍 POST-PREPROCESS args: company="${args.company}", keyword="${args.keyword}", _company_already_applied=${args._company_already_applied}`);
-      args._debug_post_preprocess = { company: args.company, keyword: args.keyword, category: args.category, _company_already_applied: args._company_already_applied };
+      args._debug_post_preprocess = { company: args.company, keyword: args.keyword, category: args.category, poc: args.poc, states: args.states, regions: args.regions, _company_already_applied: args._company_already_applied };
 
       // ═══════════════════════════════════════════════════════════════
       // HEAD CHEF: Unified entity resolution (replaces scattered logic)
       // Only run if no entity is already locked AND no disambiguation pre-applied
       // ═══════════════════════════════════════════════════════════════
-      const hasLockedEntity = args._client_already_applied || args._company_already_applied || args._poc_already_applied || args._title_already_applied;
+      args._debug_pre_headchef = { poc: args.poc, _marker: "MAIN_FLOW", _head_chef_done: args._head_chef_done, company: args.company, _company_already_applied: args._company_already_applied, _poc_already_applied: args._poc_already_applied };
+      const hasLockedEntity = args._client_already_applied || args._company_already_applied || args._poc_already_applied || args._title_already_applied || args._category_already_applied || args._keyword_already_applied;
+      args._poc_trace_0 = args.poc;
       const hasPreAppliedDisambiguation = Object.keys(preAppliedFilters).some(k => !k.startsWith('_'));
       
+      args._poc_trace_skip = { hasLockedEntity, hasPreAppliedDisambiguation, head_chef_done: args._head_chef_done, will_enter_headchef: (!hasLockedEntity && !hasPreAppliedDisambiguation && !args._head_chef_done) };
       if (!hasLockedEntity && !hasPreAppliedDisambiguation && !args._head_chef_done) {
         console.log(`[QueryEngine] 🧑‍🍳 Calling HEAD CHEF for unified entity resolution`);
         
@@ -16210,6 +16258,52 @@ Response (JSON only):`;
             args.status = headChefResult.status;
           }
           
+          // FOLLOW-UP FILTER RESTORATION: When HeadChef enters during a follow-up,
+          // restore non-entity filters (category, status, dates) from previous context
+          // that HeadChef's entity resolution doesn't carry forward
+          if (previousContext?.arguments) {
+            const prev = previousContext.arguments;
+            if (prev.category && !args.category && prev._category_already_applied) {
+              args.category = prev.category;
+              args.categories = prev.categories || [prev.category];
+              args._category_already_applied = true;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: category="${prev.category}" from previous context`);
+            }
+            if (prev.status && !args.status) {
+              args.status = prev.status;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: status from previous context`);
+            }
+            if (prev.start_date && !args.start_date) {
+              args.start_date = prev.start_date;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: start_date="${prev.start_date}" from previous context`);
+            }
+            if (prev.end_date && !args.end_date) {
+              args.end_date = prev.end_date;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: end_date="${prev.end_date}" from previous context`);
+            }
+            if (prev.year && !args.year) {
+              args.year = prev.year;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: year="${prev.year}" from previous context`);
+            }
+            if (prev.keyword && !args.keyword && prev._keyword_already_applied) {
+              args.keyword = prev.keyword;
+              args._keyword_already_applied = true;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: keyword="${prev.keyword}" from previous context`);
+            }
+            if (prev.regions && !args.regions) {
+              args.regions = prev.regions;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: regions from previous context`);
+            }
+            if (prev.states && !args.states) {
+              args.states = prev.states;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: states from previous context`);
+            }
+            if (prev.countries && !args.countries) {
+              args.countries = prev.countries;
+              console.log(`[QueryEngine] HEAD CHEF RESTORE: countries from previous context`);
+            }
+          }
+          
           // Mark head chef as done to skip scattered logic
           args._head_chef_done = true;
           args._smart_detection_done = true;
@@ -16271,6 +16365,7 @@ Response (JSON only):`;
         }
       }
 
+      args._poc_trace_1 = args.poc;
       // ═══════════════════════════════════════════════════════════════
       // EARLY MERGE: Apply disambiguation pre-filters BEFORE any guards run
       // This ensures title filter is set before organization routing guards
@@ -16348,6 +16443,7 @@ Response (JSON only):`;
         }
       }
 
+      args._poc_trace_2 = args.poc;
       // ═══════════════════════════════════════════════════════════════
       // DISAMBIGUATION ENFORCEMENT GUARD
       // After LLM classification, restore pre-applied filters that were overwritten
@@ -16370,6 +16466,7 @@ Response (JSON only):`;
       // ═══════════════════════════════════════════════════════════════
       // POST-PREPROCESS STATUS OPEN/CLOSED GUARD
       // Detects when user says "open"/"closed" but LLM returned a single status
+      args._poc_trace_3 = args.poc;
       // Expands to all open/closed statuses as user intended
       // ═══════════════════════════════════════════════════════════════
       const OPEN_KEYWORDS = /\b(?:which\s+are\s+open|that\s+are\s+open|are\s+open|open\s+projects?|open\s+opportunities?|active\s+projects?|ongoing\s+projects?|current\s+projects?|currently\s+open|still\s+open)\b/i;
@@ -16449,6 +16546,7 @@ Response (JSON only):`;
       // GENERALIZED DISAMBIGUATION CHECK (EARLY - before any handler)
       // When AI sets ANY singular entity filter (city, client, company, poc, etc.)
       // Check if that entity could match multiple columns and offer disambiguation
+      args._poc_trace_4 = args.poc;
       // ═══════════════════════════════════════════════════════════════
       
       // DEBUG: Log args state before alreadyDisambiguated check
@@ -16649,6 +16747,7 @@ Response (JSON only):`;
       console.log(`[QueryEngine] 🔍 POST-PREPROCESS GUARD DEBUG: functionName=${functionName}, orgPatternMatchPost=${!!orgPatternMatchPost}, simpleOrgMatchPost=${!!simpleOrgMatchPost}`);
       if (functionName === 'ai_fallback' && (orgPatternMatchPost || simpleOrgMatchPost)) {
         const extractedOrgPost = (orgPatternMatchPost ? orgPatternMatchPost[1] : simpleOrgMatchPost ? simpleOrgMatchPost[1] : '').trim();
+      args._poc_trace_5 = args.poc;
         const excludeWordsPost = ['all', 'the', 'my', 'our', 'your', 'their', 'some', 'any', 'recent', 'latest', 'new', 'old', 'current', 'previous', 'last', 'first', 'top', 'best', 'largest', 'smallest', 'submitted', 'won', 'lost', 'pending'];
         if (extractedOrgPost && extractedOrgPost.length >= 2 && !excludeWordsPost.includes(extractedOrgPost.toLowerCase())) {
           // SMART COLUMN DETECTION: Check which column has the most matches for this term
@@ -22755,7 +22854,7 @@ DATABASE CONTEXT (for reference):
 
     // Category filter (singular) - applies to Request Category column
     // This is used when user explicitly says "request category" or "in the education sector"
-    if (args.category && !args._category_already_applied) {
+    if (args.category && !(args._category_already_applied && excludeParams.includes("category"))) {
       filters.push(`"RequestCategory" LIKE @p${paramIndex}`);
       params.push(`%${args.category}%`);
       paramIndex++;
@@ -22763,7 +22862,7 @@ DATABASE CONTEXT (for reference):
     }
     
     // Categories filter (array) - applies to Request Category column
-    if (args.categories && args.categories.length > 0 && !args._category_already_applied) {
+    if (args.categories && args.categories.length > 0 && !(args._category_already_applied && excludeParams.includes("category"))) {
       const categoryConditions = args.categories.map((c: string) => {
         const condition = `"RequestCategory" LIKE @p${paramIndex}`;
         params.push(`%${c}%`);
