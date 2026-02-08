@@ -590,6 +590,55 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     }
   }
   
+  // 6c. Explicit percentage range extraction: "between 60 and 90%", "60% to 90%", "60 to 90 percent"
+  // Safety net for when the LLM fails to extract explicit numeric win percentage ranges
+  if (originalQuestion && normalized.min_win === undefined && normalized.max_win === undefined) {
+    const qLower = originalQuestion.toLowerCase();
+    const hasWinContext = /\b(chance|probability|likelihood|odds|win\s*%|win\s*rate|chance\s*of\s*success|winning|predicted|opportunities|opportunity|percent|%)\b/i.test(qLower);
+    
+    if (hasWinContext) {
+      // Pattern: "between X and Y%" or "between X% and Y%"
+      const betweenPattern = /\bbetween\s+(\d+)\s*%?\s*(?:and|to|&|-)\s*(\d+)\s*(?:%|percent)/i;
+      // Pattern: "from X to Y%" or "from X% to Y%"
+      const fromToPattern = /\bfrom\s+(\d+)\s*%?\s*(?:to|through|thru|-)\s*(\d+)\s*(?:%|percent)/i;
+      // Pattern: "X to Y percent" or "X to Y%"
+      const rangePattern = /\b(\d+)\s*%?\s*(?:to|-)\s*(\d+)\s*(?:%|percent)/i;
+      // Pattern: "X% or more" / "X% or higher" / "X% or above" / "X% and above"
+      const orMorePattern = /\b(\d+)\s*(?:%|percent)\s*(?:or|and)\s*(?:more|higher|above|greater)\b/i;
+      // Pattern: "at least X%" / "minimum X%" / "more than X%" / "above X%" / "over X%"
+      const atLeastPattern = /\b(?:at\s+least|minimum|more\s+than|above|over|greater\s+than|exceeding)\s+(\d+)\s*(?:%|percent)/i;
+      // Pattern: "X% or less" / "X% or lower" / "under X%" / "below X%" / "less than X%"
+      const orLessPattern = /\b(\d+)\s*(?:%|percent)\s*(?:or|and)\s*(?:less|lower|below|fewer)\b/i;
+      const underPattern = /\b(?:under|below|less\s+than|lower\s+than|at\s+most|maximum|no\s+more\s+than)\s+(\d+)\s*(?:%|percent)/i;
+
+      let betweenMatch = qLower.match(betweenPattern) || qLower.match(fromToPattern) || qLower.match(rangePattern);
+      let orMoreMatch = qLower.match(orMorePattern) || qLower.match(atLeastPattern);
+      let orLessMatch = qLower.match(orLessPattern) || qLower.match(underPattern);
+
+      if (betweenMatch) {
+        const val1 = parseInt(betweenMatch[1]);
+        const val2 = parseInt(betweenMatch[2]);
+        if (val1 >= 0 && val1 <= 100 && val2 >= 0 && val2 <= 100) {
+          normalized.min_win = Math.min(val1, val2);
+          normalized.max_win = Math.max(val1, val2);
+          console.log(`[Normalize] EXPLICIT PERCENTAGE RANGE: "${betweenMatch[0]}" → min_win: ${normalized.min_win}, max_win: ${normalized.max_win}`);
+        }
+      } else if (orMoreMatch) {
+        const val = parseInt(orMoreMatch[1]);
+        if (val >= 0 && val <= 100) {
+          normalized.min_win = val;
+          console.log(`[Normalize] EXPLICIT PERCENTAGE THRESHOLD: "${orMoreMatch[0]}" → min_win: ${val}`);
+        }
+      } else if (orLessMatch) {
+        const val = parseInt(orLessMatch[1]);
+        if (val >= 0 && val <= 100) {
+          normalized.max_win = val;
+          console.log(`[Normalize] EXPLICIT PERCENTAGE THRESHOLD: "${orLessMatch[0]}" → max_win: ${val}`);
+        }
+      }
+    }
+  }
+  
   // 7. Limit normalization: count, top, number → limit
   if (normalized.count && !normalized.limit) {
     normalized.limit = normalized.count;
