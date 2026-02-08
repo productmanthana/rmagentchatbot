@@ -381,9 +381,9 @@ const exampleQueries = [
     icon: Tag,
     category: "Categories",
     queries: [
-      "Projects with sustainability and innovation tags",
       "Transportation related projects",
       "Show all energy sector projects",
+      "Government project type projects",
     ],
   },
   {
@@ -391,7 +391,7 @@ const exampleQueries = [
     category: "Analysis",
     queries: [
       "Compare revenue between OPCOs",
-      "Projects with Rail and Transit tags",
+      "Projects by division",
       "Win rate by company",
     ],
   },
