@@ -279,6 +279,29 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
   // Debug flag removed
   if (!args) return args;
   
+  // COLUMN NAME ECHO GUARD: When LLM echoes the parameter name as the value
+  // e.g., division="division", category="category", client="client"
+  // This happens when user asks "projects on division" - LLM sets division="division"
+  // The actual intent is a breakdown query, not searching for the word "division"
+  const COLUMN_ECHO_PARAMS = ['division', 'department', 'category', 'sector', 'region', 
+    'state', 'country', 'client', 'company', 'status', 'type', 'module', 'title', 'poc'];
+  for (const param of COLUMN_ECHO_PARAMS) {
+    if (args[param] && typeof args[param] === 'string' && args[param].toLowerCase().trim() === param) {
+      console.log(`[Normalize] COLUMN ECHO GUARD: Removing ${param}="${args[param]}" (LLM echoed column name as value)`);
+      delete args[param];
+    }
+  }
+  // Also check array forms (divisions=["division"], categories=["category"])
+  const ARRAY_ECHO_PARAMS: Record<string, string> = { 'divisions': 'division', 'departments': 'department', 
+    'categories': 'category', 'regions': 'region', 'states': 'state', 'countries': 'country' };
+  for (const [arrayParam, singularName] of Object.entries(ARRAY_ECHO_PARAMS)) {
+    if (Array.isArray(args[arrayParam]) && args[arrayParam].length === 1 && 
+        typeof args[arrayParam][0] === 'string' && args[arrayParam][0].toLowerCase().trim() === singularName) {
+      console.log(`[Normalize] COLUMN ECHO GUARD: Removing ${arrayParam}=["${args[arrayParam][0]}"] (LLM echoed column name)`);
+      delete args[arrayParam];
+    }
+  }
+  
   // Single-value column arguments
   const singleColumnArgs = ['sort_field', 'group_by', 'column', 'field', 'metric', 'breakdown_column'];
   // Array column arguments (e.g., columns: ["Fee", "Client"])
@@ -11489,16 +11512,23 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       // Pattern 4: "... title VALUE" - keyword in middle of query (e.g., "provide details of title 1200 CPP Assessment")
       const generalTermPattern4 = /(?:details?|info|information|projects?|with|for)\s+(?:of|about|on|for)?\s*(?:title|client|company|module|sector|category|division|department|region|state|country|poc|point\s+of\s+contact|service\s+type|servicetype|project\s+type|projecttype)\s+(.+)$/i;
       
-      // BREAKDOWN BYPASS: Check if extracted value ends with "by" - this means user wants
-      // a GROUP BY breakdown (e.g., "Projects by division", "Revenue by category")
-      // not a search for "Projects by" in the Division column. Works for ANY column.
+      // FILLER VALUE BYPASS: If the extracted "search value" is just generic filler words
+      // (like "projects by", "show me", "provide on", "list per"), skip pattern matching 
+      // and let the LLM decide. The LLM understands "projects by division", "projects on division",
+      // "division wise projects", etc. much better than regex patterns.
       const generalTermMatchRaw = userQuestion.match(generalTermPattern1) || userQuestion.match(generalTermPattern2) || userQuestion.match(generalTermPattern3) || userQuestion.match(generalTermPattern4);
-      const extractedValue = generalTermMatchRaw ? generalTermMatchRaw[1].trim() : '';
-      const isBreakdownQuery = /\b(?:by|per|grouped\s+by)\s*$/i.test(extractedValue);
-      if (isBreakdownQuery) {
-        console.log('[QueryEngine] BREAKDOWN BYPASS: Extracted value "' + extractedValue + '" ends with "by" - skipping general term detection, letting LLM handle as GROUP BY');
+      const extractedValue = generalTermMatchRaw ? generalTermMatchRaw[1].trim().toLowerCase() : '';
+      const FILLER_WORDS = ['show', 'list', 'get', 'display', 'provide', 'find', 'give', 'pull', 'fetch', 
+        'all', 'me', 'the', 'a', 'an', 'my', 'our', 'projects', 'project', 'data', 'details', 'info',
+        'information', 'report', 'reports', 'breakdown', 'breakdowns', 'summary', 'count', 'counts',
+        'total', 'totals', 'revenue', 'value', 'values', 'number', 'wise',
+        'by', 'per', 'on', 'in', 'of', 'for', 'with', 'from', 'to', 'and', 'or', 'grouped', 'based'];
+      const extractedWords = extractedValue.split(/\s+/).filter(w => w.length > 0);
+      const isAllFillerWords = extractedWords.length > 0 && extractedWords.every(w => FILLER_WORDS.includes(w));
+      if (isAllFillerWords) {
+        console.log('[QueryEngine] FILLER BYPASS: Extracted value "' + extractedValue + '" is all generic/filler words - skipping pattern match, letting LLM handle');
       }
-      const generalTermMatch = isBreakdownQuery ? null : generalTermMatchRaw;
+      const generalTermMatch = isAllFillerWords ? null : generalTermMatchRaw;
       if (generalTermMatch && generalTermMatch[1]) {
         const generalTerm = generalTermMatch[1].trim();
         // Skip known keywords that should go to specific handlers
@@ -12046,6 +12076,20 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             const generalTerm = match[1].trim();
             const generalTermLower = generalTerm.toLowerCase().trim();
             
+            // FILLER VALUE BYPASS: If extracted value is all generic/filler words
+            // (e.g., "projects on", "provide by", "show me"), skip pattern matching and let LLM handle
+            const FILLER_WORDS_HANDLER = ['show', 'list', 'get', 'display', 'provide', 'find', 'give', 'pull', 'fetch',
+              'all', 'me', 'the', 'a', 'an', 'my', 'our', 'projects', 'project', 'data', 'details', 'info',
+              'information', 'report', 'reports', 'breakdown', 'breakdowns', 'summary', 'count', 'counts',
+              'total', 'totals', 'revenue', 'value', 'values', 'number', 'wise',
+              'by', 'per', 'on', 'in', 'of', 'for', 'with', 'from', 'to', 'and', 'or', 'grouped', 'based'];
+            const handlerWords = generalTermLower.split(/\s+/).filter(w => w.length > 0);
+            const isAllFillerHandler = handlerWords.length > 0 && handlerWords.every(w => FILLER_WORDS_HANDLER.includes(w));
+            if (isAllFillerHandler) {
+              console.log('[QueryEngine] FILLER BYPASS (HANDLER): Extracted value "' + generalTerm + '" is all filler words - skipping, letting LLM handle');
+              // Skip this handler - fall through to LLM
+            } else {
+            
             // REGION BYPASS: Skip disambiguation for directional/regional terms
             // These should use Region column filtering, not disambiguation
             const REGIONAL_TERMS_HANDLER = ['east', 'west', 'north', 'south', 'northeast', 'northwest', 'southeast', 'southwest', 'midwest', 'pacific', 'gulf', 'eastern', 'western', 'southern', 'northern', 'midwestern'];
@@ -12095,6 +12139,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
               console.log(`[QueryEngine] 📊 GENERAL TERM "${generalTerm}" not found in any columns - falling through to LLM`);
             }
             } // Close the else block for non-regional terms
+            } // Close the else block for non-filler terms
           }
         }
 
