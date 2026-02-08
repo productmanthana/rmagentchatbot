@@ -404,6 +404,51 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     };
     return next();
   }
+
+  // Fallback: If embed token is invalid but JWT + embedId headers are present,
+  // try to auto-recover the session (handles server restart scenarios)
+  const jwtHeader = req.headers['x-jwt-token'] as string;
+  const embedIdHeader = req.headers['x-embed-id'] as string;
+  if (jwtHeader && embedIdHeader) {
+    try {
+      const { decodeAndExtractJWT } = await import('./utils/jwt-extractor');
+      const jwtResult = decodeAndExtractJWT(jwtHeader);
+      const jwtData = jwtResult.data;
+      if (jwtResult.success && jwtData?.username) {
+        const link = await mssqlStorage.getEmbedLinkByEmbedId(embedIdHeader);
+        if (link) {
+          const sessionUserId = `jwt_${jwtData.tenant || 'default'}_${jwtData.username}`;
+          const userEmail = jwtData.username.includes('@') ? jwtData.username : `${jwtData.username}@jwt.embed`;
+          const effectiveRole = jwtData.mappedRole || 'user';
+          
+          const newToken = `emb_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+          embedTokenStore.set(newToken, {
+            embedId: embedIdHeader,
+            role: effectiveRole,
+            domain: link.allowed_domain,
+            userId: sessionUserId,
+            userEmail,
+            createdAt: Date.now(),
+            jwtUsername: jwtData.username,
+            jwtTenant: jwtData.tenant,
+          });
+          
+          (req as any).embedData = {
+            userId: sessionUserId,
+            userEmail,
+            embedId: embedIdHeader,
+            role: effectiveRole,
+            isEmbed: true,
+          };
+          res.setHeader('X-New-Embed-Token', newToken);
+          console.log(`[Auth] JWT fallback auth successful for ${sessionUserId}, role: ${effectiveRole}`);
+          return next();
+        }
+      }
+    } catch (error) {
+      console.error('[Auth] JWT fallback auth error:', error);
+    }
+  }
   
   // Fall back to session-based auth
   if (!req.session.userId) {

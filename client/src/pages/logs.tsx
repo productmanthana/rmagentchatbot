@@ -20,6 +20,53 @@ function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null } 
   } catch {}
   return { isEmbed: false, embedId: null };
 }
+
+async function recoverEmbedSession(): Promise<string | null> {
+  try {
+    let jwtToken: string | null = null;
+    let embedId: string | null = null;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      jwtToken = urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+      embedId = urlParams.get('embed');
+    } catch {}
+    if (!jwtToken) {
+      try { jwtToken = sessionStorage.getItem('jwtToken'); } catch {}
+    }
+    if (!embedId) {
+      try { embedId = sessionStorage.getItem('currentEmbedId'); } catch {}
+    }
+    if (!jwtToken || !embedId) {
+      console.warn('[QueryLogs] Cannot recover session - missing JWT or embedId');
+      return null;
+    }
+    console.log('[QueryLogs] Recovering session with embedId:', embedId, 'jwtToken length:', jwtToken.length);
+    const res = await fetch('/api/embed/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ embedId, parentOrigin: window.location.origin, jwtToken }),
+    });
+    if (!res.ok) {
+      console.error('[QueryLogs] Session recovery failed:', res.status);
+      return null;
+    }
+    const data = await res.json();
+    if (data.success && data.token) {
+      try {
+        sessionStorage.setItem('embedToken', data.token);
+        sessionStorage.setItem('currentEmbedId', embedId);
+        if (data.role) sessionStorage.setItem('embedRole', data.role);
+      } catch {}
+      console.log('[QueryLogs] Session recovered successfully, role:', data.role);
+      return data.token;
+    }
+    return null;
+  } catch (error) {
+    console.error('[QueryLogs] Session recovery error:', error);
+    return null;
+  }
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -164,25 +211,60 @@ export default function LogsPage() {
   const { data: errorLogsData, isLoading, refetch } = useQuery<{ success: boolean; data: ErrorLog[] }>({
     queryKey: ["/api/error-logs"],
     queryFn: async () => {
-      const headers: Record<string, string> = {};
-      try {
-        const embedToken = sessionStorage.getItem('embedToken');
-        if (embedToken) {
-          headers['X-Embed-Token'] = embedToken;
+      const fetchWithToken = async (token: string | null, includeJwtFallback = false) => {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['X-Embed-Token'] = token;
         }
-      } catch {}
-      const res = await fetch("/api/error-logs", {
-        credentials: "include",
-        headers,
-      });
+        if (includeJwtFallback) {
+          let jwt: string | null = null;
+          let eid: string | null = null;
+          try {
+            const urlParams = new URLSearchParams(window.location.search);
+            jwt = urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
+            eid = urlParams.get('embed');
+          } catch {}
+          if (!jwt) try { jwt = sessionStorage.getItem('jwtToken'); } catch {}
+          if (!eid) try { eid = sessionStorage.getItem('currentEmbedId'); } catch {}
+          if (jwt) headers['X-JWT-Token'] = jwt;
+          if (eid) headers['X-Embed-Id'] = eid;
+        }
+        console.log('[QueryLogs] Fetching /api/error-logs with embedToken:', token ? `${token.substring(0, 8)}...` : 'none', 'jwtFallback:', includeJwtFallback);
+        return fetch("/api/error-logs", { credentials: "include", headers });
+      };
+
+      let embedToken: string | null = null;
+      try { embedToken = sessionStorage.getItem('embedToken'); } catch {}
+
+      let res = await fetchWithToken(embedToken, isEmbed);
+
+      if (res.status === 401 && isEmbed) {
+        console.warn('[QueryLogs] 401 - attempting client-side session recovery...');
+        const newToken = await recoverEmbedSession();
+        if (newToken) {
+          console.log('[QueryLogs] Session recovered, retrying with new token');
+          res = await fetchWithToken(newToken, false);
+        }
+      }
+
+      if (isEmbed) {
+        const newEmbedToken = res.headers.get('X-New-Embed-Token');
+        if (newEmbedToken) {
+          try { sessionStorage.setItem('embedToken', newEmbedToken); } catch {}
+          console.log('[QueryLogs] Got new embed token from server JWT fallback, role preserved');
+        }
+      }
+
       if (!res.ok) {
         if (res.status === 401) {
-          console.warn('[QueryLogs] 401 from /api/error-logs - embed token may be expired');
+          console.warn('[QueryLogs] 401 after recovery attempt - returning empty');
           return { success: true, data: [] };
         }
         throw new Error(`Failed to fetch error logs: ${res.status}`);
       }
-      return res.json();
+      const data = await res.json();
+      console.log('[QueryLogs] Fetched', data?.data?.length || 0, 'logs successfully');
+      return data;
     },
     refetchOnMount: "always",
     staleTime: 0,
