@@ -148,11 +148,42 @@ export default function LogsPage() {
     } catch {}
   }
   const effectiveRole = isEmbed ? (embedRole || 'user') : ((user as any)?.role || 'user');
-  const hasEmbedAuth = isEmbed && !!sessionStorage.getItem('embedToken');
+  
+  // Check multiple signals for embed auth - embedToken in sessionStorage,
+  // OR embed context is active, OR URL has embed params
+  let hasEmbedAuth = false;
+  try {
+    const hasEmbedToken = !!sessionStorage.getItem('embedToken');
+    const hasUrlEmbedParams = !!new URLSearchParams(window.location.search).get('embed');
+    hasEmbedAuth = isEmbed && (hasEmbedToken || hasUrlEmbedParams || contextEmbed.isEmbed);
+  } catch {
+    hasEmbedAuth = isEmbed;
+  }
   
   // All hooks MUST be called before any conditional returns (React rules of hooks)
   const { data: errorLogsData, isLoading, refetch } = useQuery<{ success: boolean; data: ErrorLog[] }>({
     queryKey: ["/api/error-logs"],
+    queryFn: async () => {
+      const headers: Record<string, string> = {};
+      try {
+        const embedToken = sessionStorage.getItem('embedToken');
+        if (embedToken) {
+          headers['X-Embed-Token'] = embedToken;
+        }
+      } catch {}
+      const res = await fetch("/api/error-logs", {
+        credentials: "include",
+        headers,
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          console.warn('[QueryLogs] 401 from /api/error-logs - embed token may be expired');
+          return { success: true, data: [] };
+        }
+        throw new Error(`Failed to fetch error logs: ${res.status}`);
+      }
+      return res.json();
+    },
     refetchOnMount: "always",
     staleTime: 0,
     enabled: !!user || hasEmbedAuth, // Fetch when user OR embed is authenticated
