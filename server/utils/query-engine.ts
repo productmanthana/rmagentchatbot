@@ -9995,17 +9995,24 @@ Return ONLY valid JSON, no explanation.`;
       // This ensures queries like "show projects with title Highway" use the column keyword detection path
       const hasExplicitColumnKeyword = /\b(?:title|client|company|poc|point\s+of\s+contact|service\s+type|project\s+type|division|department|category|sector|region|state|country)\s+\w/i.test(userQuestion);
       if (!hasDisambiguationFilter && !hasExplicitColumnKeyword) {
+      // Pattern 0: "project with name X" / "project named X" / "project called X"
+      // Must come BEFORE earlyDirectMatch to prevent "with" from being treated as a stop word
+      const earlyNameMatch = userQuestion.match(/(?:provide|show|list|get|find|display|give)\s+(?:all\s+)?(?:the\s+)?projects?\s+(?:with\s+)?(?:name(?:d)?|called|titled)\s+(.+)/i);
+      if (earlyNameMatch) {
+        console.log(`[QueryEngine] EARLY NAME PATTERN: "project with name X" detected, extracted name: "${earlyNameMatch[1].trim()}"`);
+      }
       // Pattern 1: "list projects LONG_NAME" 
       // Pattern 2: "list LONG_NAME" (without "projects" - for direct entity names)
       const earlyProjectMatch = userQuestion.match(/(?:provide|show|list|get|find|display)\s+(?:all\s+)?(?:the\s+)?projects?\s+(.{25,})/i);
       // Pattern 2 captures long entity names, stopping at common query modifiers
-      const earlyDirectMatch = userQuestion.match(/^(?:provide|show|list|get|find|display)\s+(?:the\s+)?(.+?)\s+(?:which|that|from|in|for|with|are|is|has|have|since|during|last|open|closed|won|lost|submitted)\b/i);
+      // Skip if earlyNameMatch already captured the entity (prevents "with" stop-word issue)
+      const earlyDirectMatch = !earlyNameMatch ? userQuestion.match(/^(?:provide|show|list|get|find|display)\s+(?:the\s+)?(.+?)\s+(?:which|that|from|in|for|with|are|is|has|have|since|during|last|open|closed|won|lost|submitted)\b/i) : null;
       // Pattern 3: Direct long entity name at end of query (no modifiers)
-      const earlyEndMatch = !earlyDirectMatch ? userQuestion.match(/^(?:provide|show|list|get|find|display)\s+(?:the\s+)?([A-Z].{20,})$/i) : null;
+      const earlyEndMatch = !earlyDirectMatch && !earlyNameMatch ? userQuestion.match(/^(?:provide|show|list|get|find|display)\s+(?:the\s+)?([A-Z].{20,})$/i) : null;
       // Pattern 4: "provide/show/get details of X" - captures entity after "details of"
       const earlyDetailsMatch = userQuestion.match(/(?:provide|show|get|give)\s+(?:the\s+)?details?\s+(?:of|for|on|about)\s+(.+)/i);
       const earlyDirectOrEndMatch = earlyDirectMatch || earlyEndMatch || earlyDetailsMatch;
-      const matchToUse = earlyProjectMatch || earlyDirectOrEndMatch;
+      const matchToUse = earlyNameMatch || earlyProjectMatch || earlyDirectOrEndMatch;
       if (matchToUse && matchToUse[1]) {
         // Clean up the extracted entity - remove common trailing words like "projects", "project"
         let potentialProjectName = matchToUse[1].trim()
@@ -10014,7 +10021,7 @@ Return ONLY valid JSON, no explanation.`;
           .trim();
         console.log(`[QueryEngine] 🧹 ENTITY CLEANUP: "${matchToUse[1].trim()}" → "${potentialProjectName}"`);
         // Check it's not a common query phrase
-        if (!potentialProjectName.match(/^(?:from|in|for|by|with|under|of|where|that|which|starting|ending|before|after|since|during|last|next|this|all|any|every|most|top|bottom|won|lost|submitted|qualified)\b/i)) {
+        if (!potentialProjectName.match(/^(?:from|in|for|by|with|under|of|where|that|which|starting|ending|before|after|since|during|last|next|this|all|any|every|most|top|bottom|won|lost|submitted|qualified|projects?)\b/i)) {
           console.log(`[QueryEngine] 🏷️ EARLY PROJECT NAME DETECTION: Detected specific name: "${potentialProjectName}"`);
           
           // Check which columns have this value
