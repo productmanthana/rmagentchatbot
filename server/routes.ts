@@ -151,7 +151,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
         // Math/calculations (simple) - only pure math like "what is 2+2"
         /^what is \d+[\s]*[\+\-\*\/][\s]*\d+/i,
         // Greetings/chitchat (short non-questions)
-        /^(hi|hello|hey|good morning|good afternoon|good evening|how are you|what's up|sup)\s*[?!.]*$/i,
+        /^(hi|hello|hey|good morning|good afternoon|good evening|how are you|what's up|sup|hi there|hey there|hi how are you|hello how are you|hey how are you|howdy|greetings|thanks|thank you|ok|okay|bye|goodbye|good bye|nice|cool|great|awesome|yo|hola|namaste)\s*[?!.,]*$/i,
+        // Greeting combinations (e.g., "hi how are you", "hello there how are you doing")
+        /^(hi|hello|hey|howdy|yo)\b.*\b(how are you|how's it going|what's up|how do you do|how you doing)\s*[?!.,]*$/i,
         // Generic "what is" for non-data topics
         /\bwhat is (a |an |the )?(love|life|happiness|meaning|universe|god|time|space|atom)\b/i,
         // Technology (general, not RMOne)
