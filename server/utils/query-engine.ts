@@ -10021,7 +10021,9 @@ Return ONLY valid JSON, no explanation.`;
           .trim();
         console.log(`[QueryEngine] 🧹 ENTITY CLEANUP: "${matchToUse[1].trim()}" → "${potentialProjectName}"`);
         // Check it's not a common query phrase
-        if (!potentialProjectName.match(/^(?:from|in|for|by|with|under|of|where|that|which|starting|ending|before|after|since|during|last|next|this|all|any|every|most|top|bottom|won|lost|submitted|qualified|projects?)\b/i)) {
+        // Also skip if the term is a very short common word (less than 3 chars) 
+        // or a generic/command word that the LLM should handle instead
+        if (potentialProjectName.length >= 3 && !potentialProjectName.match(/^(?:from|in|for|by|with|under|of|where|that|which|starting|ending|before|after|since|during|last|next|this|all|any|every|most|top|bottom|won|lost|submitted|qualified|projects?|details?|reports?|results?|data|info|information|summary|overview|analysis|list|total|count|number|average|revenue|fee|status|open|closed|active|how|many|much|what|show|give|me|the|about|their|those|these|some|each|them|its|our|your|my|get|find|display|provide|tell|name|named|called|titled)\b/i)) {
           console.log(`[QueryEngine] 🏷️ EARLY PROJECT NAME DETECTION: Detected specific name: "${potentialProjectName}"`);
           
           // Check which columns have this value
