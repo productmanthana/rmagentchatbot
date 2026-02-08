@@ -2,15 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Iframe/Embed Mode - Ensure full height */
+/* Iframe/Embed Mode - Ensure full height, no gaps */
 html, body {
   height: 100%;
+  width: 100%;
   margin: 0;
   padding: 0;
+  border: none;
+  overflow: hidden;
 }
 
 #root {
   height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* LIGHT MODE - Professional Query Engine Theme */
