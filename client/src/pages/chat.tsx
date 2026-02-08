@@ -391,7 +391,7 @@ const exampleQueries = [
     category: "Analysis",
     queries: [
       "Compare revenue between OPCOs",
-      "Projects by division",
+      "Revenue by division",
       "Win rate by company",
     ],
   },
