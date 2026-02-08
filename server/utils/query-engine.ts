@@ -22665,7 +22665,7 @@ DATABASE CONTEXT (for reference):
     // Point of Contact filter (POC) - skip if already in template's WHERE clause
     // Also skip if the POC value is a substring of the division name (false positive from LLM)
     // Example: "Hill - Saudi Arabia - Projects division" → LLM extracts poc="Hill" but it's part of division name
-    if (args.poc && !excludeParams.includes('poc') && !args._poc_already_applied) {
+    if (args.poc && !excludeParams.includes('poc')) {
       const pocLower = args.poc.toLowerCase();
       const divisionLower = (args.division || '').toLowerCase();
       const isPocPartOfDivision = divisionLower.includes(pocLower);
@@ -23505,7 +23505,7 @@ DATABASE CONTEXT (for reference):
       }
 
       // POC filter - skip if POC value is part of division name (false positive from LLM)
-      if (args.poc && !args._poc_already_applied) {
+      if (args.poc) {
         const pocLower = args.poc.toLowerCase();
         const divisionLower = (args.division || '').toLowerCase();
         const isPocPartOfDivision = divisionLower.includes(pocLower);
@@ -24055,7 +24055,11 @@ DATABASE CONTEXT (for reference):
       // If ORIGINAL sql has {status_filter}, exclude status from additional_filters to prevent duplicate
       if (sql.includes("{status_filter}")) {
         extendedExcludeParams.push('status');
-        console.log(`[buildSql] ✓ Excluding status from additional_filters (template has {status_filter})`);
+      }
+      // If ORIGINAL sql has {poc_condition}, exclude poc from additional_filters to prevent duplicate
+      if (sql.includes("{poc_condition}")) {
+        extendedExcludeParams.push('poc');
+        console.log(`[buildSql] ✓ Excluding poc from additional_filters (template has {poc_condition})`);
       }
       
       // Pass excludeParams to avoid duplicating filters already in WHERE clause
