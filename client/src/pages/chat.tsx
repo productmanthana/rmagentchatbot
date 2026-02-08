@@ -4396,6 +4396,13 @@ export default function ChatPage() {
                                                     </div>
                                                   )}
 
+                                                  {/* Assistant Response - Error/off-topic messages */}
+                                                  {msg.response && !msg.response.success && (
+                                                    <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
+                                                      <p className="text-sm text-[#374151]">{msg.response.message || "I couldn't process that question. Please try asking something about your project data."}</p>
+                                                    </div>
+                                                  )}
+
                                                   {/* Assistant Response - Full tabbed interface */}
                                                   {msg.response && msg.response.success && (
                                                     <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
@@ -4671,6 +4678,11 @@ export default function ChatPage() {
                                                       </div>
                                                     </div>
                                                   )}
+                                                  {msg.response && !msg.response.success && (
+                                                    <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
+                                                      <p className="text-sm text-[#374151]">{msg.response.message || "I couldn't process that question. Please try asking something about your project data."}</p>
+                                                    </div>
+                                                  )}
                                                   {msg.response && msg.response.success && (
                                                     <>
                                                       {msg.response.summary && (
@@ -4926,6 +4938,11 @@ export default function ChatPage() {
                                                         </div>
                                                       </div>
                                                     )}
+                                                    {msg.response && !msg.response.success && (
+                                                      <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
+                                                        <p className="text-sm text-[#374151]">{msg.response.message || "I couldn't process that question. Please try asking something about your project data."}</p>
+                                                      </div>
+                                                    )}
                                                     {msg.response && msg.response.success && (
                                                       <>
                                                         {/* Summary Stats for Follow-up */}
@@ -5130,6 +5147,11 @@ export default function ChatPage() {
                                                       <div className="bg-[#3B82F6] rounded-lg p-3 max-w-[80%]">
                                                         <p className="text-sm text-white font-medium">{msg.content}</p>
                                                       </div>
+                                                    </div>
+                                                  )}
+                                                  {msg.response && !msg.response.success && (
+                                                    <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
+                                                      <p className="text-sm text-[#374151]">{msg.response.message || "I couldn't process that question. Please try asking something about your project data."}</p>
                                                     </div>
                                                   )}
                                                   {msg.response && msg.response.success && (
