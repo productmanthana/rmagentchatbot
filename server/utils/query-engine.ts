@@ -556,6 +556,40 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     }
   }
   
+  // 6b. Probability qualifier detection: "high chance of winning", "good probability" → min_win threshold
+  // Only triggers when query contains probability/chance/win-related context words
+  if (originalQuestion && normalized.min_win === undefined && normalized.max_win === undefined) {
+    const qLower = originalQuestion.toLowerCase();
+    const hasProbContext = /\b(chance|probability|likelihood|odds|prospect|win\s*%|win\s*rate|chance\s*of\s*success|winning|predicted)\b/i.test(qLower);
+    
+    if (hasProbContext) {
+      const highProbPatterns = /\b(high|good|strong|great|excellent|solid|favorable|promising)\s+(chance|probability|likelihood|odds|prospect)/i;
+      const highProbPatterns2 = /\b(chance|probability|likelihood|odds|prospect)\s+(is|are|of)?\s*(high|good|strong|great|excellent|solid|favorable|promising)\b/i;
+      const highProbPatterns3 = /\b(likely|probably|most likely)\s+(to\s+)?(win|succeed|close|convert)\b/i;
+      const highChanceSimple = /\bhigh\s+chance\b/i;
+      const highWinRate = /\b(high|good|strong)\s+(win\s*%|win\s*rate|chance\s*of\s*success)\b/i;
+      
+      const lowProbPatterns = /\b(low|slim|poor|weak|small|little)\s+(chance|probability|likelihood|odds|prospect)/i;
+      const lowProbPatterns2 = /\b(chance|probability|likelihood|odds|prospect)\s+(is|are|of)?\s*(low|slim|poor|weak|small)\b/i;
+      const lowProbPatterns3 = /\b(unlikely|improbable)\s+(to\s+)?(win|succeed|close|convert)\b/i;
+      const lowWinRate = /\b(low|poor|weak)\s+(win\s*%|win\s*rate|chance\s*of\s*success)\b/i;
+      
+      const medProbPatterns = /\b(moderate|medium|average|decent|fair|reasonable)\s+(chance|probability|likelihood|odds|prospect|win\s*%|win\s*rate)/i;
+      
+      if (highProbPatterns.test(qLower) || highProbPatterns2.test(qLower) || highProbPatterns3.test(qLower) || highChanceSimple.test(qLower) || highWinRate.test(qLower)) {
+        normalized.min_win = 70;
+        console.log(`[Normalize] PROBABILITY QUALIFIER: Detected "high chance" language → min_win: 70`);
+      } else if (lowProbPatterns.test(qLower) || lowProbPatterns2.test(qLower) || lowProbPatterns3.test(qLower) || lowWinRate.test(qLower)) {
+        normalized.max_win = 30;
+        console.log(`[Normalize] PROBABILITY QUALIFIER: Detected "low chance" language → max_win: 30`);
+      } else if (medProbPatterns.test(qLower)) {
+        normalized.min_win = 30;
+        normalized.max_win = 70;
+        console.log(`[Normalize] PROBABILITY QUALIFIER: Detected "medium chance" language → min_win: 30, max_win: 70`);
+      }
+    }
+  }
+  
   // 7. Limit normalization: count, top, number → limit
   if (normalized.count && !normalized.limit) {
     normalized.limit = normalized.count;
