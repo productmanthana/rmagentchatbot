@@ -557,8 +557,8 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
   }
   
   // 6b. Probability qualifier detection: "high chance of winning", "good probability" → min_win threshold
-  // Only triggers when query contains probability/chance/win-related context words
-  if (originalQuestion && normalized.min_win === undefined && normalized.max_win === undefined) {
+  // ALWAYS override LLM values - our defined thresholds (70/30) take priority over GPT guesses
+  if (originalQuestion) {
     const qLower = originalQuestion.toLowerCase();
     const hasProbContext = /\b(chance|probability|likelihood|odds|prospect|win\s*%|win\s*rate|chance\s*of\s*success|winning|predicted)\b/i.test(qLower);
     
@@ -578,8 +578,10 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
       
       if (highProbPatterns.test(qLower) || highProbPatterns2.test(qLower) || highProbPatterns3.test(qLower) || highChanceSimple.test(qLower) || highWinRate.test(qLower)) {
         normalized.min_win = 70;
+        normalized.max_win = undefined;
         console.log(`[Normalize] PROBABILITY QUALIFIER: Detected "high chance" language → min_win: 70`);
       } else if (lowProbPatterns.test(qLower) || lowProbPatterns2.test(qLower) || lowProbPatterns3.test(qLower) || lowWinRate.test(qLower)) {
+        normalized.min_win = undefined;
         normalized.max_win = 30;
         console.log(`[Normalize] PROBABILITY QUALIFIER: Detected "low chance" language → max_win: 30`);
       } else if (medProbPatterns.test(qLower)) {
