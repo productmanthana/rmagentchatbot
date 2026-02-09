@@ -18164,7 +18164,7 @@ Response (JSON only):`;
           // SMART SUGGESTION for follow-up queries
           let followUpEntityValue = args.client || args.organization || args.company;
           if (!followUpEntityValue && args.keyword) {
-            const kwCleaned = (args.keyword || '').replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number)\b/gi, '').trim();
+            const kwCleaned = (args.keyword || '').replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number|we|have|do|does|are|is|was|were|can|could|would|should|what|which|where|when|a|an|to|in|on|at|it|me|my|our|give|provide|about|any|some|there|their|them|they|i|you|your|us|has|had|please|tell|want|need)\b/gi, '').replace(/[?!.,:;]+/g, '').replace(/\s+/g, ' ').trim();
             if (kwCleaned.length >= 2) followUpEntityValue = kwCleaned;
           }
           let followUpSuggestion = '';
@@ -18226,7 +18226,7 @@ Response (JSON only):`;
             } else {
               // Try to extract main entity by removing common query words
               const cleaned = userQuestion
-                .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by)\b/gi, '')
+                .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number|we|have|do|does|are|is|was|were|can|could|would|should|what|which|where|when|a|an|to|in|on|at|it|me|my|our|give|provide|about|any|some|there|their|them|they|i|you|your|us|has|had|please|tell|want|need)\b/gi, '').replace(/[?!.,:;]+/g, '')
                 .trim();
               if (cleaned.length > 2) {
                 entityValue = cleaned;
