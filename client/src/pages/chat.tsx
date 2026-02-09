@@ -1097,6 +1097,7 @@ export default function ChatPage() {
 
   // Track which follow-ups are being deleted to prevent race conditions
   const deletingFollowUpsRef = useRef<Set<string>>(new Set());
+  const followUpSubmittingRef = useRef<Set<string>>(new Set());
   
   // Delete a specific follow-up question and its response
   // This allows users to remove failed/unwanted follow-ups and ask new ones
@@ -3207,15 +3208,27 @@ export default function ChatPage() {
   const handleAIAnalysis = async (messageId: string, question: string) => {
     if (!question.trim()) return;
 
+    // SYNCHRONOUS GUARD: Prevent duplicate submissions (ref-based, instant check)
+    if (followUpSubmittingRef.current.has(messageId)) {
+      console.log(`[Follow-up] Synchronous guard: already submitting for message:`, messageId);
+      return;
+    }
+
     // GUARD: Prevent duplicate submissions while loading
     if (aiAnalysisLoading[messageId]) {
       console.log(`[Follow-up] Already loading for message:`, messageId, `- ignoring duplicate submission`);
       return;
     }
 
+    // Mark as submitting IMMEDIATELY (synchronous, before any async setState)
+    followUpSubmittingRef.current.add(messageId);
+
     // Find message by ID or by _tempId (handles race condition when ID changes after save)
     const message = messages.find(m => m.id === messageId || m._tempId === messageId);
-    if (!message || !message.response) return;
+    if (!message || !message.response) {
+      followUpSubmittingRef.current.delete(messageId);
+      return;
+    }
     
     // Use the current message ID (may have changed from temp to server ID)
     const currentMessageId = message.id;
@@ -3224,6 +3237,7 @@ export default function ChatPage() {
     // This prevents race conditions when user asks follow-up immediately after original response
     if (!message.response.function_name || !message.response.arguments) {
       console.log(`[Follow-up] Response not fully ready yet. function_name:`, message.response.function_name, `arguments:`, message.response.arguments);
+      followUpSubmittingRef.current.delete(messageId);
       toast({
         title: "Please wait",
         description: "The response is still loading. Please try again in a moment.",
@@ -3234,6 +3248,7 @@ export default function ChatPage() {
     // Check if we've reached the 3 follow-up question limit
     const userFollowUpCount = (message.aiAnalysisMessages || []).filter(m => m.type === "user").length;
     if (userFollowUpCount >= 3) {
+      followUpSubmittingRef.current.delete(messageId);
       toast({
         variant: "destructive",
         title: "Follow-up Limit Reached",
@@ -3492,6 +3507,9 @@ export default function ChatPage() {
     } finally {
       // Clear loading state for both old and new IDs
       setAiAnalysisLoading(prev => ({ ...prev, [messageId]: false, [currentMessageId]: false }));
+      // Clear synchronous submission guard
+      followUpSubmittingRef.current.delete(messageId);
+      followUpSubmittingRef.current.delete(currentMessageId);
     }
   };
 
