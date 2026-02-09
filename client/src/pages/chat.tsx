@@ -975,14 +975,16 @@ function EmbedUserIdDisplay({
 }
 
 // Helper to safely get embed token for navigation links (handles iframe third-party context)
+// Prefers JWT token (which contains role info) over session token
 function getSafeEmbedToken(): string {
   try {
-    // Check URL params first (for iframe third-party context)
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
     if (urlToken) return urlToken;
     
-    // Fall back to sessionStorage
+    const jwtToken = sessionStorage.getItem('jwtToken');
+    if (jwtToken) return jwtToken;
+    
     return sessionStorage.getItem('embedToken') || '';
   } catch {
     return '';

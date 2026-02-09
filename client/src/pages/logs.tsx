@@ -7,18 +7,81 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmbedContext } from "./embed-with-id";
 
+const CLIENT_ROLE_MAP: Record<string, 'user' | 'admin' | 'superadmin'> = {
+  "admin": "admin",
+  "super admin": "superadmin",
+  "superadmin": "superadmin",
+  "poc members": "user",
+  "pocmembers": "user",
+  "poradmingroup": "admin",
+  "pormanagers": "user",
+  "administrator": "admin",
+  "manager": "admin",
+  "supervisor": "admin",
+  "user": "user",
+  "member": "user",
+  "viewer": "user",
+  "guest": "user",
+  "owner": "superadmin",
+  "root": "superadmin",
+};
+
+function base64UrlDecode(str: string): string {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = base64.length % 4;
+  if (pad) base64 += '='.repeat(4 - pad);
+  return atob(base64);
+}
+
+function decodeJwtRole(token: string): 'superadmin' | 'admin' | 'user' | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(base64UrlDecode(parts[1]));
+    const roleFields = [
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role",
+      "role", "roles", "Role", "Roles", "user_role", "userRole",
+      "UserRole", "user_type", "userType",
+    ];
+    let clientRole: string | null = null;
+    for (const field of roleFields) {
+      if (payload[field]) {
+        const val = payload[field];
+        clientRole = Array.isArray(val) ? val[0] : String(val);
+        break;
+      }
+    }
+    if (!clientRole) return null;
+    const mapped = CLIENT_ROLE_MAP[clientRole.toLowerCase()];
+    return mapped || 'user';
+  } catch {
+    return null;
+  }
+}
+
 // Parse embed context from URL params (for iframe third-party context)
-function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null } {
+function getEmbedContextFromUrl(): { isEmbed: boolean; embedId: string | null; role: 'superadmin' | 'admin' | 'user' | null } {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const urlEmbedId = urlParams.get('embed');
-    const urlToken = urlParams.get('token');
+    const urlToken = urlParams.get('token') || urlParams.get('jwt') || urlParams.get('auth');
     
-    if (urlEmbedId && urlToken) {
-      return { isEmbed: true, embedId: urlEmbedId };
+    if (urlEmbedId) {
+      let role: 'superadmin' | 'admin' | 'user' | null = null;
+      if (urlToken) {
+        role = decodeJwtRole(urlToken);
+      }
+      if (!role) {
+        try {
+          const jwtToken = sessionStorage.getItem('jwtToken');
+          if (jwtToken) role = decodeJwtRole(jwtToken);
+        } catch {}
+      }
+      return { isEmbed: true, embedId: urlEmbedId, role };
     }
   } catch {}
-  return { isEmbed: false, embedId: null };
+  return { isEmbed: false, embedId: null, role: null };
 }
 
 async function recoverEmbedSession(): Promise<string | null> {
@@ -187,8 +250,11 @@ export default function LogsPage() {
   const backUrl = isEmbed && embedId ? `/embed/${embedId}` : "/";
   
   // For embed users, check embed context role; for regular users, check auth user
-  // Also check sessionStorage for role (urlEmbed doesn't have role property)
+  // Priority: EmbedContext role > URL JWT-decoded role > sessionStorage role > default 'user'
   let embedRole = contextEmbed.role;
+  if (!embedRole && urlEmbed.role) {
+    embedRole = urlEmbed.role;
+  }
   if (!embedRole && isEmbed) {
     try {
       embedRole = sessionStorage.getItem('embedRole') as 'superadmin' | 'admin' | 'user' | null;
