@@ -2244,11 +2244,57 @@ export class QueryEngine {
     }
   }
 
+  private detectEntityTypeAndValue(functionName: string, args: any): { entityType: string; entityValue: string } {
+    const preProcess = args._debug_post_preprocess || args._debug_pre_headchef || {};
+    const originalClient = preProcess.client || args.client;
+    const originalOrg = preProcess.organization || args.organization;
+    const originalCompany = preProcess.company || args.company;
+    const originalPoc = preProcess.poc || args.poc;
+    const originalProjectType = preProcess.project_type || args.project_type;
+    
+    const fnTypeMap: Record<string, string> = {
+      'get_projects_by_client': 'client',
+      'get_projects_by_company': 'company',
+      'get_projects_by_poc': 'POC',
+      'get_projects_by_project_type': 'project type',
+      'search_projects_by_keyword': 'keyword',
+      'get_projects_by_combined_filters': 'combined',
+    };
+    let entityType = fnTypeMap[functionName] || '';
+    
+    if (entityType === 'keyword' || entityType === 'combined' || !entityType) {
+      if (originalClient) entityType = 'client';
+      else if (originalOrg) entityType = 'organization';
+      else if (originalCompany) entityType = 'company';
+      else if (originalPoc) entityType = 'POC';
+      else if (originalProjectType) entityType = 'project type';
+      else if (entityType !== 'keyword') entityType = args.keyword ? 'keyword' : 'client';
+    }
+    
+    let entityValue = '';
+    switch (entityType) {
+      case 'client': entityValue = originalClient || originalOrg || ''; break;
+      case 'organization': entityValue = originalOrg || originalClient || ''; break;
+      case 'company': entityValue = originalCompany || ''; break;
+      case 'POC': entityValue = originalPoc || ''; break;
+      case 'project type': entityValue = originalProjectType || ''; break;
+      case 'keyword': entityValue = args.keyword || ''; break;
+      default: entityValue = originalClient || originalOrg || originalCompany || originalPoc || originalProjectType || args.keyword || '';
+    }
+    if (!entityValue) entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.organization || 'specified entity';
+    if (entityType === 'keyword' && entityValue && entityValue.length > 30) {
+      const kwCleaned = entityValue.replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number|we|have|do|does|are|is|was|were|can|could|would|should|what|which|where|when|a|an|to|in|on|at|it|me|my|our|give|provide|about|any|some|there|their|them|they|i|you|your|us|has|had|please|tell|want|need)\b/gi, '').replace(/[?!.,:;]+/g, '').replace(/\s+/g, ' ').trim();
+      if (kwCleaned.length >= 2) entityValue = kwCleaned;
+    }
+    return { entityType, entityValue };
+  }
+
   private async findSimilarEntities(
     searchTerm: string,
     entityType: string,
     externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>,
-    maxSuggestions: number = 5
+    maxSuggestions: number = 5,
+    _noFallback: boolean = false
   ): Promise<string[]> {
     if (!searchTerm || searchTerm.trim().length < 2) return [];
     
@@ -2265,8 +2311,11 @@ export class QueryEngine {
     };
     
     const column = columnMap[entityType] || 'Client';
+    const fallbackColumns: string[] = [];
+    if (entityType === 'company') fallbackColumns.push('Client');
+    else if (entityType === 'client' || entityType === 'organization') fallbackColumns.push('Company');
     const term = searchTerm.trim();
-    console.log(`[SimilarEntities] Searching ${column} for entities similar to: "${term}" (type: ${entityType})`);
+    console.log(`[SimilarEntities] Searching ${column} (fallbacks: ${fallbackColumns.join(',') || 'none'}) for entities similar to: "${term}" (type: ${entityType})`);
 
     try {
       const tokens = term
@@ -2323,6 +2372,21 @@ export class QueryEngine {
       ranked.sort((a: any, b: any) => b.score - a.score);
       const entities = ranked.slice(0, maxSuggestions).map((r: any) => r.entity);
       console.log(`[SimilarEntities] Found ${allEntities.length} candidates in ${column}, returning top ${entities.length} for "${term}":`, entities);
+      
+      if (entities.length === 0 && !_noFallback && fallbackColumns && fallbackColumns.length > 0) {
+        console.log(`[SimilarEntities] No results in ${column}, trying fallback columns: ${fallbackColumns.join(', ')}`);
+        for (const fbCol of fallbackColumns) {
+          try {
+            const fbType = fbCol === 'Client' ? 'client' : fbCol === 'Company' ? 'company' : fbCol === 'PointOfContact' ? 'POC' : 'client';
+            const fbResults = await this.findSimilarEntities(term, fbType, externalDbQuery, maxSuggestions, true);
+            if (fbResults.length > 0) {
+              console.log(`[SimilarEntities] Found ${fbResults.length} fallback suggestions in ${fbCol}`);
+              return fbResults;
+            }
+          } catch (e) {}
+        }
+      }
+      
       return entities;
     } catch (error: any) {
       console.error(`[SimilarEntities] Error:`, error.message);
@@ -18075,8 +18139,7 @@ Response (JSON only):`;
           console.log(`[QueryEngine] 🎯 isValidEntityQuery = ${isValidEntityQuery}`);
           
           if (isValidEntityQuery) {
-            const entityType = args.poc ? 'POC' : args.company ? 'company' : args.project_type ? 'project type' : args.keyword ? 'title/keyword' : args.client ? 'client' : 'organization';
-            const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.organization || 'specified entity';
+            const { entityType, entityValue } = this.detectEntityTypeAndValue(functionName, args);
             const filterDesc = [
               (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
               args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
@@ -18168,8 +18231,8 @@ Response (JSON only):`;
         const isEntityQuery = isEntityFn || !!(args.poc || args.company || args.organization || args.project_type || args.keyword || args.client || args.project_name || args._poc_already_applied || args._company_already_applied || args._project_type_already_applied || args._keyword_already_applied || args._client_already_applied);
         if (isEntityQuery && isDataRelatedError) {
           console.log(`[QueryEngine] 🛡️ ENTITY GUARD AT EXECUTION_ERROR: Returning clean no-results for entity query (poc=${args.poc}, company=${args.company}, project_type=${args.project_type}, project_name=${args.project_name})`);
-          const entityType = args.poc ? "POC" : args.company ? "company" : args.project_type ? "project type" : args.keyword ? "keyword" : args.client ? "client" : args.project_name ? "project name" : "organization";
-          const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.project_name || args.organization || "specified entity";
+          const { entityType, entityValue: detectedValue } = this.detectEntityTypeAndValue(functionName, args);
+          const entityValue = detectedValue || args.project_name || 'specified entity';
           const filterDesc = [
             (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(", ")}` : `Status: ${args.status}`) : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
@@ -18266,7 +18329,7 @@ Response (JSON only):`;
           let followUpSuggestion = '';
           if (followUpEntityValue && externalDbQuery) {
             try {
-              const followUpEntityType = args.client ? 'client' : args.organization ? 'organization' : args.company ? 'company' : args.poc ? 'POC' : args.project_type ? 'project type' : args.keyword ? 'keyword' : 'client';
+              const { entityType: followUpEntityType } = this.detectEntityTypeAndValue(functionName, args);
               const similarEntities3 = await this.findSimilarEntities(followUpEntityValue, followUpEntityType, externalDbQuery, 5);
               if (similarEntities3.length > 0) {
                 followUpSuggestion = '\n\nDid you mean: ' + similarEntities3.map(c => `"${c}"`).join(', ') + '?';
@@ -18400,7 +18463,7 @@ Response (JSON only):`;
           }
           
           console.log(`[QueryEngine] ✅ EARLY ENTITY CHECK: poc=${args.poc}, returning clean no-results`);
-          const entityType = args.poc ? "POC" : args.company ? "company" : args.project_type ? "project type" : args.keyword ? "keyword" : args.client ? "client" : "organization";
+          const { entityType } = this.detectEntityTypeAndValue(functionName, args);
           
           // SMART SUGGESTION: Find similar client names when 0 results
           let earlyEntitySuggestion = '';
@@ -18748,8 +18811,7 @@ Response (JSON only):`;
         
         if (isValidEntityQuery) {
           console.log(`[QueryEngine] ✓ Valid entity query with 0 results - returning simple no-results message`);
-          const entityType = args.poc ? 'POC' : args.company ? 'company' : args.project_type ? 'project type' : args.keyword ? 'keyword' : args.client ? 'client' : 'organization';
-          const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.organization || 'specified entity';
+          const { entityType, entityValue } = this.detectEntityTypeAndValue(functionName, args);
           const filterDesc = [
             (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
