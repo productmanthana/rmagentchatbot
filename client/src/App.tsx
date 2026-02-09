@@ -88,6 +88,54 @@ function AuthenticatedRouter() {
   );
 }
 
+const APP_ROLE_MAP: Record<string, 'user' | 'admin' | 'superadmin'> = {
+  "admin": "admin",
+  "super admin": "superadmin",
+  "superadmin": "superadmin",
+  "poc members": "user",
+  "pocmembers": "user",
+  "poradmingroup": "admin",
+  "pormanagers": "user",
+  "administrator": "admin",
+  "manager": "admin",
+  "supervisor": "admin",
+  "user": "user",
+  "member": "user",
+  "viewer": "user",
+  "guest": "user",
+  "owner": "superadmin",
+  "root": "superadmin",
+};
+
+function decodeJwtRoleFromToken(token: string): 'superadmin' | 'admin' | 'user' | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    if (pad) base64 += '='.repeat(4 - pad);
+    const payload = JSON.parse(atob(base64));
+    const roleFields = [
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role",
+      "role", "roles", "Role", "Roles", "user_role", "userRole",
+      "UserRole", "user_type", "userType",
+    ];
+    let clientRole: string | null = null;
+    for (const field of roleFields) {
+      if (payload[field]) {
+        const val = payload[field];
+        clientRole = Array.isArray(val) ? val[0] : String(val);
+        break;
+      }
+    }
+    if (!clientRole) return null;
+    return APP_ROLE_MAP[clientRole.toLowerCase()] || 'user';
+  } catch {
+    return null;
+  }
+}
+
 // Parse embed context from URL params
 function getEmbedContextFromUrl(): { embedId: string | null; role: 'superadmin' | 'admin' | 'user' | null; displayId: string | null; token: string | null } {
   try {
@@ -107,14 +155,34 @@ function getEmbedContextFromUrl(): { embedId: string | null; role: 'superadmin' 
     }
     
     if (embedId && embedToken) {
-      // Get role from sessionStorage (NOT from token - embedToken is not a JWT)
       let role: 'superadmin' | 'admin' | 'user' = 'user';
-      try {
-        const storedRole = sessionStorage.getItem('embedRole');
-        if (storedRole === 'superadmin' || storedRole === 'admin' || storedRole === 'user') {
-          role = storedRole;
-        }
-      } catch {}
+      
+      // Try decoding role from JWT token in URL first
+      if (urlToken) {
+        const jwtRole = decodeJwtRoleFromToken(urlToken);
+        if (jwtRole) role = jwtRole;
+      }
+      
+      // If URL token didn't yield a role, try jwtToken from sessionStorage
+      if (role === 'user') {
+        try {
+          const storedJwt = sessionStorage.getItem('jwtToken');
+          if (storedJwt) {
+            const jwtRole = decodeJwtRoleFromToken(storedJwt);
+            if (jwtRole) role = jwtRole;
+          }
+        } catch {}
+      }
+      
+      // Last resort: check embedRole in sessionStorage
+      if (role === 'user') {
+        try {
+          const storedRole = sessionStorage.getItem('embedRole');
+          if (storedRole === 'superadmin' || storedRole === 'admin') {
+            role = storedRole;
+          }
+        } catch {}
+      }
       
       let displayId: string | null = null;
       try {
