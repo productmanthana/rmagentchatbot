@@ -2244,6 +2244,93 @@ export class QueryEngine {
     }
   }
 
+  private async findSimilarEntities(
+    searchTerm: string,
+    entityType: string,
+    externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>,
+    maxSuggestions: number = 5
+  ): Promise<string[]> {
+    if (!searchTerm || searchTerm.trim().length < 2) return [];
+    
+    const columnMap: Record<string, string> = {
+      'client': 'Client',
+      'organization': 'Client',
+      'company': 'Company',
+      'POC': 'PointOfContact',
+      'poc': 'PointOfContact',
+      'project type': 'ProjectType',
+      'keyword': 'Title',
+      'division': 'Division',
+      'department': 'Department',
+    };
+    
+    const column = columnMap[entityType] || 'Client';
+    const term = searchTerm.trim();
+    console.log(`[SimilarEntities] Searching ${column} for entities similar to: "${term}" (type: ${entityType})`);
+
+    try {
+      const tokens = term
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length >= 3);
+      const alphaOnly = term.replace(/[^a-zA-Z]/g, '');
+
+      const searchPatterns: string[] = [];
+      for (const token of tokens) {
+        searchPatterns.push(`%${token}%`);
+      }
+      if (alphaOnly.length >= 3 && !tokens.includes(alphaOnly)) {
+        searchPatterns.push(`%${alphaOnly}%`);
+      }
+      for (const token of tokens) {
+        if (token.length >= 2) {
+          searchPatterns.push(`%${token.substring(0, Math.min(token.length, 4))}%`);
+        }
+      }
+      if (alphaOnly.length >= 2 && alphaOnly.length <= 6) {
+        const acronymPattern = alphaOnly.split('').map((c: string) => `${c}%`).join('');
+        searchPatterns.push(acronymPattern);
+      }
+
+      const uniquePatterns = [...new Set(searchPatterns)];
+      if (uniquePatterns.length === 0) return [];
+
+      const conditions = uniquePatterns.map((_: string, i: number) => `"${column}" LIKE @p${i + 1}`);
+      const sql = `SELECT DISTINCT TOP ${maxSuggestions * 4} "${column}" FROM "${TABLE}" WHERE (${conditions.join(' OR ')}) ORDER BY "${column}"`;
+
+      const results = await externalDbQuery(sql, uniquePatterns);
+      const allEntities = results.map((r: any) => r[column]).filter(Boolean);
+      const termLower = term.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      const ranked = allEntities.map((c: string) => {
+        let score = 0;
+        const cLower = c.toLowerCase();
+        if (cLower.includes(term.toLowerCase())) score += 100;
+        for (const token of tokens) {
+          if (cLower.includes(token.toLowerCase())) score += 10;
+        }
+        if (termLower.length >= 2 && termLower.length <= 6) {
+          const cWords = c.split(/[\s&,]+/).filter(w => w.length > 0);
+          const initials = cWords.map(w => w[0]?.toLowerCase() || '').join('');
+          if (initials.includes(termLower)) score += 50;
+          let matchCount = 0;
+          for (const ch of termLower) {
+            if (cLower.includes(ch)) matchCount++;
+          }
+          score += matchCount * 2;
+        }
+        return { entity: c, score };
+      });
+      ranked.sort((a: any, b: any) => b.score - a.score);
+      const entities = ranked.slice(0, maxSuggestions).map((r: any) => r.entity);
+      console.log(`[SimilarEntities] Found ${allEntities.length} candidates in ${column}, returning top ${entities.length} for "${term}":`, entities);
+      return entities;
+    } catch (error: any) {
+      console.error(`[SimilarEntities] Error:`, error.message);
+      return [];
+    }
+  }
+
+
   private async detectBestMatchingColumn(
     searchTerm: string,
     externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>
@@ -17999,12 +18086,12 @@ Response (JSON only):`;
             // SMART SUGGESTION: When client/organization search returns 0 results,
             // find similar client names to help the user discover the correct name
             let suggestionText = '';
-            if ((entityType === 'client' || entityType === 'organization') && externalDbQuery) {
+            if (entityValue && externalDbQuery) {
               try {
-                const similarClients = await this.findSimilarClients(entityValue, externalDbQuery, 5);
-                if (similarClients.length > 0) {
-                  suggestionText = '\n\nDid you mean: ' + similarClients.map(c => `"${c}"`).join(', ') + '?';
-                  console.log(`[QueryEngine] 💡 SUGGESTION: Found ${similarClients.length} similar clients for "${entityValue}"`);
+                const similarEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
+                if (similarEntities.length > 0) {
+                  suggestionText = '\n\nDid you mean: ' + similarEntities.map(c => `"${c}"`).join(', ') + '?';
+                  console.log(`[QueryEngine] 💡 SUGGESTION: Found ${similarEntities.length} similar ${entityType}s for "${entityValue}"`);
                 }
               } catch (e) {
                 // Don't let suggestion failure break the response
@@ -18088,9 +18175,18 @@ Response (JSON only):`;
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
             args.year ? `Year: ${args.year}` : null,
           ].filter(Boolean).join(", ");
+          let guardSuggestion = '';
+          if (entityValue && entityValue !== 'specified entity' && externalDbQuery) {
+            try {
+              const guardEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
+              if (guardEntities.length > 0) {
+                guardSuggestion = '\n\nDid you mean: ' + guardEntities.map(c => `"${c}"`).join(', ') + '?';
+              }
+            } catch (e) {}
+          }
           const noResultsMessage = filterDesc
-            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).`
-            : `No projects found for ${entityType} "${entityValue}".`;
+            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).${guardSuggestion}`
+            : `No projects found for ${entityType} "${entityValue}".${guardSuggestion}`;
           return {
             success: true,
             question: userQuestion,
@@ -18162,7 +18258,7 @@ Response (JSON only):`;
         if (isFollowUpQuery) {
           console.log(`[QueryEngine] ✅ FOLLOW-UP 0-RESULTS: Returning empty result with SQL preserved`);
           // SMART SUGGESTION for follow-up queries
-          let followUpEntityValue = args.client || args.organization || args.company;
+          let followUpEntityValue = args.client || args.organization || args.company || args.poc || args.project_type;
           if (!followUpEntityValue && args.keyword) {
             const kwCleaned = (args.keyword || '').replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number|we|have|do|does|are|is|was|were|can|could|would|should|what|which|where|when|a|an|to|in|on|at|it|me|my|our|give|provide|about|any|some|there|their|them|they|i|you|your|us|has|had|please|tell|want|need)\b/gi, '').replace(/[?!.,:;]+/g, '').replace(/\s+/g, ' ').trim();
             if (kwCleaned.length >= 2) followUpEntityValue = kwCleaned;
@@ -18170,9 +18266,10 @@ Response (JSON only):`;
           let followUpSuggestion = '';
           if (followUpEntityValue && externalDbQuery) {
             try {
-              const similarClients3 = await this.findSimilarClients(followUpEntityValue, externalDbQuery, 5);
-              if (similarClients3.length > 0) {
-                followUpSuggestion = '\n\nDid you mean: ' + similarClients3.map(c => `"${c}"`).join(', ') + '?';
+              const followUpEntityType = args.client ? 'client' : args.organization ? 'organization' : args.company ? 'company' : args.poc ? 'POC' : args.project_type ? 'project type' : args.keyword ? 'keyword' : 'client';
+              const similarEntities3 = await this.findSimilarEntities(followUpEntityValue, followUpEntityType, externalDbQuery, 5);
+              if (similarEntities3.length > 0) {
+                followUpSuggestion = '\n\nDid you mean: ' + similarEntities3.map(c => `"${c}"`).join(', ') + '?';
               }
             } catch (e) {}
           }
@@ -18307,12 +18404,12 @@ Response (JSON only):`;
           
           // SMART SUGGESTION: Find similar client names when 0 results
           let earlyEntitySuggestion = '';
-          if ((entityType === 'client' || entityType === 'organization') && entityValue && externalDbQuery) {
+          if (entityValue && externalDbQuery) {
             try {
-              const similarClients2 = await this.findSimilarClients(entityValue, externalDbQuery, 5);
-              if (similarClients2.length > 0) {
-                earlyEntitySuggestion = '\n\nDid you mean: ' + similarClients2.map(c => `"${c}"`).join(', ') + '?';
-                console.log(`[QueryEngine] 💡 SUGGESTION (early): Found ${similarClients2.length} similar clients for "${entityValue}"`);
+              const similarEntities2 = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
+              if (similarEntities2.length > 0) {
+                earlyEntitySuggestion = '\n\nDid you mean: ' + similarEntities2.map(c => `"${c}"`).join(', ') + '?';
+                console.log(`[QueryEngine] 💡 SUGGESTION (early): Found ${similarEntities2.length} similar ${entityType}s for "${entityValue}"`);
               }
             } catch (e) {}
           }
@@ -18662,9 +18759,18 @@ Response (JSON only):`;
             args.categories ? `Categories: ${args.categories.join(', ')}` : null,
           ].filter(Boolean).join(', ');
           
+          let lastSuggestion = '';
+          if (entityValue && entityValue !== 'specified entity' && externalDbQuery) {
+            try {
+              const lastEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
+              if (lastEntities.length > 0) {
+                lastSuggestion = '\n\nDid you mean: ' + lastEntities.map(c => `"${c}"`).join(', ') + '?';
+              }
+            } catch (e) {}
+          }
           const noResultsMessage = filterDesc 
-            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).`
-            : `No projects found for ${entityType} "${entityValue}".`;
+            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).${lastSuggestion}`
+            : `No projects found for ${entityType} "${entityValue}".${lastSuggestion}`;
           
           return {
             success: true,
