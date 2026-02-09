@@ -350,10 +350,6 @@ export default function IntegrationPage() {
                         </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <span className="flex items-center gap-1">
-                            <Globe className="h-4 w-4" />
-                            {link.allowed_domain}
-                          </span>
-                          <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
                             Created: {formatDate(link.created_at)}
                           </span>
