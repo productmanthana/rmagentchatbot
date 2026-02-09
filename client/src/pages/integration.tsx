@@ -179,7 +179,7 @@ export default function IntegrationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-y-auto h-screen">
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-8">
           <WouterLink href={backUrl}>
