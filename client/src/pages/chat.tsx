@@ -2570,8 +2570,11 @@ export default function ChatPage() {
         // Check if query returned no data (0 results)
         const hasNoData = data.success && (data.row_count === 0 || !data.data || data.data.length === 0);
         
-        // Auto-log if any of these conditions are true
-        const shouldAutoLog = isActualError || isAIFallback || isAIAnalysis || hasNoData;
+        // Skip disambiguation queries - these are intermediate steps, not failures
+        const isDisambiguation = data.function_name === "disambiguation_required";
+        
+        // Auto-log if any of these conditions are true (but never for disambiguation)
+        const shouldAutoLog = !isDisambiguation && (isActualError || isAIFallback || isAIAnalysis || hasNoData);
         
         if (shouldAutoLog && chatId) {
           try {
