@@ -2164,6 +2164,86 @@ export class QueryEngine {
    * Smart Column Detection: Counts matches in each searchable column and returns the best one.
    * This enables prioritizing queries to the column with the most matches instead of OR across all.
    */
+  /**
+   * Find similar client names when a search term returns 0 results.
+   * Helps users discover the correct client name when they use abbreviations or partial names.
+   */
+  private async findSimilarClients(
+    searchTerm: string,
+    externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>,
+    maxSuggestions: number = 5
+  ): Promise<string[]> {
+    if (!searchTerm || searchTerm.trim().length < 2) return [];
+    const term = searchTerm.trim();
+    console.log(`[SimilarClients] Searching for clients similar to: "${term}"`);
+
+    try {
+      const tokens = term
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(t => t.length >= 3);
+      const alphaOnly = term.replace(/[^a-zA-Z]/g, '');
+
+      const searchPatterns: string[] = [];
+      for (const token of tokens) {
+        searchPatterns.push(`%${token}%`);
+      }
+      if (alphaOnly.length >= 3 && !tokens.includes(alphaOnly)) {
+        searchPatterns.push(`%${alphaOnly}%`);
+      }
+      for (const token of tokens) {
+        if (token.length >= 2) {
+          searchPatterns.push(`%${token.substring(0, Math.min(token.length, 4))}%`);
+        }
+      }
+
+      if (alphaOnly.length >= 2 && alphaOnly.length <= 6) {
+        const acronymPattern = alphaOnly.split('').map((c: string) => `${c}%`).join('');
+        searchPatterns.push(acronymPattern);
+        console.log(`[SimilarClients] Added acronym pattern: "${acronymPattern}"`);
+      }
+
+      const uniquePatterns = [...new Set(searchPatterns)];
+      if (uniquePatterns.length === 0) return [];
+
+      console.log(`[SimilarClients] Search patterns:`, uniquePatterns);
+      const conditions = uniquePatterns.map((_: string, i: number) => `"Client" LIKE @p${i + 1}`);
+      const sql = `SELECT DISTINCT TOP ${maxSuggestions * 4} "Client" FROM "${TABLE}" WHERE (${conditions.join(' OR ')}) ORDER BY "Client"`;
+
+      const results = await externalDbQuery(sql, uniquePatterns);
+      const allClients = results.map((r: any) => r.Client).filter(Boolean);
+      const termLower = term.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+      const ranked = allClients.map((c: string) => {
+        let score = 0;
+        const cLower = c.toLowerCase();
+        if (cLower.includes(term.toLowerCase())) score += 100;
+        for (const token of tokens) {
+          if (cLower.includes(token.toLowerCase())) score += 10;
+        }
+        const cAlpha = c.replace(/[^a-zA-Z]/g, '').toLowerCase();
+        if (termLower.length >= 2 && termLower.length <= 6) {
+          const cWords = c.split(/[\s&,]+/).filter(w => w.length > 0);
+          const initials = cWords.map(w => w[0]?.toLowerCase() || '').join('');
+          if (initials.includes(termLower)) score += 50;
+          const firstChars = cWords.map(w => w.substring(0,2).toLowerCase()).join('');
+          let matchCount = 0;
+          for (const ch of termLower) {
+            if (cLower.includes(ch)) matchCount++;
+          }
+          score += matchCount * 2;
+        }
+        return { client: c, score };
+      });
+      ranked.sort((a: any, b: any) => b.score - a.score);
+      const clients = ranked.slice(0, maxSuggestions).map((r: any) => r.client);
+      console.log(`[SimilarClients] Found ${allClients.length} candidates, returning top ${clients.length} for "${term}":`, clients);
+      return clients;
+    } catch (error: any) {
+      console.error(`[SimilarClients] Error:`, error.message);
+      return [];
+    }
+  }
+
   private async detectBestMatchingColumn(
     searchTerm: string,
     externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>
@@ -17911,14 +17991,29 @@ Response (JSON only):`;
             const entityType = args.poc ? 'POC' : args.company ? 'company' : args.project_type ? 'project type' : args.keyword ? 'title/keyword' : args.client ? 'client' : 'organization';
             const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.organization || 'specified entity';
             const filterDesc = [
-              args.status ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
+              (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
               args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
               args.year ? `Year: ${args.year}` : null,
             ].filter(Boolean).join(', ');
             
+            // SMART SUGGESTION: When client/organization search returns 0 results,
+            // find similar client names to help the user discover the correct name
+            let suggestionText = '';
+            if ((entityType === 'client' || entityType === 'organization') && externalDbQuery) {
+              try {
+                const similarClients = await this.findSimilarClients(entityValue, externalDbQuery, 5);
+                if (similarClients.length > 0) {
+                  suggestionText = '\n\nDid you mean: ' + similarClients.map(c => `"${c}"`).join(', ') + '?';
+                  console.log(`[QueryEngine] 💡 SUGGESTION: Found ${similarClients.length} similar clients for "${entityValue}"`);
+                }
+              } catch (e) {
+                // Don't let suggestion failure break the response
+              }
+            }
+
             const noResultsMessage = filterDesc 
-              ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).`
-              : `No projects found for ${entityType} "${entityValue}".`;
+              ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).${suggestionText}`
+              : `No projects found for ${entityType} "${entityValue}".${suggestionText}`;
             
             return {
               success: true,
@@ -17989,7 +18084,7 @@ Response (JSON only):`;
           const entityType = args.poc ? "POC" : args.company ? "company" : args.project_type ? "project type" : args.keyword ? "keyword" : args.client ? "client" : args.project_name ? "project name" : "organization";
           const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.project_name || args.organization || "specified entity";
           const filterDesc = [
-            args.status ? (Array.isArray(args.status) ? `Status: ${args.status.join(", ")}` : `Status: ${args.status}`) : null,
+            (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(", ")}` : `Status: ${args.status}`) : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
             args.year ? `Year: ${args.year}` : null,
           ].filter(Boolean).join(", ");
@@ -18066,14 +18161,30 @@ Response (JSON only):`;
         console.log(`[QueryEngine] 🔍 FOLLOW-UP CHECK: previousContext=${!!previousContext}, _project_type_already_applied=${args._project_type_already_applied}, isFollowUpQuery=${isFollowUpQuery}`);
         if (isFollowUpQuery) {
           console.log(`[QueryEngine] ✅ FOLLOW-UP 0-RESULTS: Returning empty result with SQL preserved`);
+          // SMART SUGGESTION for follow-up queries
+          let followUpEntityValue = args.client || args.organization || args.company;
+          if (!followUpEntityValue && args.keyword) {
+            const kwCleaned = (args.keyword || '').replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|how|many|count|total|number)\b/gi, '').trim();
+            if (kwCleaned.length >= 2) followUpEntityValue = kwCleaned;
+          }
+          let followUpSuggestion = '';
+          if (followUpEntityValue && externalDbQuery) {
+            try {
+              const similarClients3 = await this.findSimilarClients(followUpEntityValue, externalDbQuery, 5);
+              if (similarClients3.length > 0) {
+                followUpSuggestion = '\n\nDid you mean: ' + similarClients3.map(c => `"${c}"`).join(', ') + '?';
+              }
+            } catch (e) {}
+          }
           const filterDesc = [
-            args.status ? (Array.isArray(args.status) ? `Status: ${args.status.slice(0,2).join(", ")}${args.status.length > 2 ? "..." : ""}` : `Status: ${args.status}`) : null,
+            (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.slice(0,2).join(", ")}${args.status.length > 2 ? "..." : ""}` : `Status: ${args.status}`) : null,
             args.service_type ? `Service Type: ${args.service_type}` : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
           ].filter(Boolean).join(", ");
+          const entityDesc = followUpEntityValue ? ` for "${followUpEntityValue}"` : '';
           const noResultsMessage = filterDesc
-            ? `No projects found matching your filters (${filterDesc}).`
-            : `No projects found matching your criteria.`;
+            ? `No projects found${entityDesc} matching your filters (${filterDesc}).${followUpSuggestion}`
+            : `No projects found${entityDesc} matching your criteria.${followUpSuggestion}`;
           return {
             success: true,
             question: userQuestion,
@@ -18193,14 +18304,27 @@ Response (JSON only):`;
           
           console.log(`[QueryEngine] ✅ EARLY ENTITY CHECK: poc=${args.poc}, returning clean no-results`);
           const entityType = args.poc ? "POC" : args.company ? "company" : args.project_type ? "project type" : args.keyword ? "keyword" : args.client ? "client" : "organization";
+          
+          // SMART SUGGESTION: Find similar client names when 0 results
+          let earlyEntitySuggestion = '';
+          if ((entityType === 'client' || entityType === 'organization') && entityValue && externalDbQuery) {
+            try {
+              const similarClients2 = await this.findSimilarClients(entityValue, externalDbQuery, 5);
+              if (similarClients2.length > 0) {
+                earlyEntitySuggestion = '\n\nDid you mean: ' + similarClients2.map(c => `"${c}"`).join(', ') + '?';
+                console.log(`[QueryEngine] 💡 SUGGESTION (early): Found ${similarClients2.length} similar clients for "${entityValue}"`);
+              }
+            } catch (e) {}
+          }
+          
           const filterDesc = [
-            args.status ? (Array.isArray(args.status) ? `Status: ${args.status.join(", ")}` : `Status: ${args.status}`) : null,
+            (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(", ")}` : `Status: ${args.status}`) : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
             args.year ? `Year: ${args.year}` : null,
           ].filter(Boolean).join(", ");
           const noResultsMessage = filterDesc
-            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).`
-            : `No projects found for ${entityType} "${entityValue}".`;
+            ? `No projects found for ${entityType} "${entityValue}" matching your filters (${filterDesc}).${earlyEntitySuggestion}`
+            : `No projects found for ${entityType} "${entityValue}".${earlyEntitySuggestion}`;
           return {
             success: true,
             question: userQuestion,
@@ -18530,7 +18654,7 @@ Response (JSON only):`;
           const entityType = args.poc ? 'POC' : args.company ? 'company' : args.project_type ? 'project type' : args.keyword ? 'keyword' : args.client ? 'client' : 'organization';
           const entityValue = args.poc || args.company || args.project_type || args.keyword || args.client || args.organization || 'specified entity';
           const filterDesc = [
-            args.status ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
+            (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
             args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
             args.start_date && !args.end_date ? `From: ${args.start_date}` : null,
             args.year ? `Year: ${args.year}` : null,
