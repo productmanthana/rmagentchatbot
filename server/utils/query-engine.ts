@@ -14285,7 +14285,25 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           }
         }
       }
-      // BOTTOM X / TOP X FOLLOW-UP CORRECTION
+      // SINGULAR SUPERLATIVE DETECTION: "which had the most revenue", "which project has the highest fee"
+      // These are singular queries asking for THE one project with most/highest - set limit=1
+      if (classification.function_name === 'get_largest_projects' && !classification.arguments.limit) {
+        const singularSuperlativePattern = /\b(?:which|what)\s+(?:of\s+(?:the|these|those|above)\s+)?(?:project(?:s)?\s+)?(?:had?|has|have|got|get)\s+(?:the\s+)?(?:most|highest|largest|biggest|greatest|maximum)\s+(?:revenue|fee|value|contract|amount)/i;
+        const singularMostPattern = /\b(?:the\s+)?(?:most|highest|largest|biggest)\s+(?:revenue|fee|value|contract|amount)\s*(?:project)?\b/i;
+        if (singularSuperlativePattern.test(userQuestion) || singularMostPattern.test(userQuestion)) {
+          classification.arguments.limit = 1;
+          console.log(`[QueryEngine] SINGULAR SUPERLATIVE: "${userQuestion}" → limit=1 for get_largest_projects`);
+        }
+      }
+      if (classification.function_name === 'get_smallest_projects' && !classification.arguments.limit) {
+        const singularSmallestPattern = /\b(?:which|what)\s+(?:of\s+(?:the|these|those|above)\s+)?(?:project(?:s)?\s+)?(?:had?|has|have|got|get)\s+(?:the\s+)?(?:least|lowest|smallest|minimum|fewest)\s+(?:revenue|fee|value|contract|amount)/i;
+        if (singularSmallestPattern.test(userQuestion)) {
+          classification.arguments.limit = 1;
+          console.log(`[QueryEngine] SINGULAR SMALLEST: "${userQuestion}" → limit=1 for get_smallest_projects`);
+        }
+      }
+
+            // BOTTOM X / TOP X FOLLOW-UP CORRECTION
       // When user asks "bottom 3" or "top 5" as a follow-up, they want:
       // - Same query type as previous
       // - Just with different sort direction and limit
@@ -18112,6 +18130,24 @@ Response (JSON only):`;
         }
       }
       
+      // SINGULAR SUPERLATIVE LIMIT GUARD: Ensure 'which had the most revenue' gets limit=1
+      if (functionName === 'get_largest_projects' && !args.limit) {
+        const singularSuperlativePattern = /\b(?:which|what)\s+(?:of\s+(?:the|these|those|above)\s+)?(?:project(?:s)?\s+)?(?:had?|has|have|got|get)\s+(?:the\s+)?(?:most|highest|largest|biggest|greatest|maximum)\s+(?:revenue|fee|value|contract|amount)/i;
+        const singularMostPattern = /\b(?:the\s+)?(?:most|highest|largest|biggest)\s+(?:revenue|fee|value|contract|amount)\s*(?:project)?\b/i;
+        if (singularSuperlativePattern.test(userQuestion) || singularMostPattern.test(userQuestion)) {
+          args.limit = 1;
+          console.log(`[QueryEngine] SINGULAR SUPERLATIVE GUARD: "${userQuestion}" → limit=1 for get_largest_projects`);
+        }
+      }
+      if (functionName === 'get_smallest_projects' && !args.limit) {
+        const singularSmallestPattern = /\b(?:which|what)\s+(?:of\s+(?:the|these|those|above)\s+)?(?:project(?:s)?\s+)?(?:had?|has|have|got|get)\s+(?:the\s+)?(?:least|lowest|smallest|minimum|fewest)\s+(?:revenue|fee|value|contract|amount)/i;
+        const singularLeastPattern = /\b(?:the\s+)?(?:least|lowest|smallest)\s+(?:revenue|fee|value|contract|amount)\s*(?:project)?\b/i;
+        if (singularSmallestPattern.test(userQuestion) || singularLeastPattern.test(userQuestion)) {
+          args.limit = 1;
+          console.log(`[QueryEngine] SINGULAR SMALLEST GUARD: "${userQuestion}" → limit=1 for get_smallest_projects`);
+        }
+      }
+
       // FINAL HALLUCINATION GUARD: Strip geography args reintroduced by context merge
       const cleanedArgsForExecute = stripHallucinatedGeography(args, userQuestion);
       console.log(`[CATEGORY_TRACE] PRE-EXECUTE: args.category="${args.category}", cleanedArgs.category="${cleanedArgsForExecute.category}", fn="${functionName}"`);
@@ -23298,7 +23334,7 @@ DATABASE CONTEXT (for reference):
 
     // Year filter: Filter by YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = year
     // This is used when user asks "this year", "in 2024", etc.
-    if (args.year !== undefined && args.year !== null && !isNaN(Number(args.year)) && !excludeParams.includes('year')) {
+    if (args.year !== undefined && args.year !== null && !isNaN(Number(args.year)) && !excludeParams.includes('year') && !args._date_already_applied) {
       filters.push(`YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex}`);
       params.push(Number(args.year));
       paramIndex++;
