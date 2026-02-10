@@ -23635,7 +23635,7 @@ DATABASE CONTEXT (for reference):
           `AND TRY_CONVERT(DATE, "ConstStartDate") >= @p${paramIndex} AND TRY_CONVERT(DATE, "ConstStartDate") <= @p${paramIndex + 1}`
         );
         params.push(args.start_date, args.end_date);
-        paramIndex += 4;
+        paramIndex += 2;
         args._date_already_applied = true;
       } else if (hasStartDate) {
         // Open-ended: "after X", "since X" - only start boundary
@@ -23725,7 +23725,7 @@ DATABASE CONTEXT (for reference):
           `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p${paramIndex}, @p${paramIndex + 1})`
         );
         params.push(args.year1, args.year2);
-        paramIndex += 4;
+        paramIndex += 2;
       } else if (args.year2) {
         // Only year2 provided - compare to previous year
         const year1 = args.year2 - 1;
@@ -23734,7 +23734,7 @@ DATABASE CONTEXT (for reference):
           `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p${paramIndex}, @p${paramIndex + 1})`
         );
         params.push(year1, args.year2);
-        paramIndex += 4;
+        paramIndex += 2;
       } else if (args.year1) {
         // Only year1 provided - compare to next year
         const year2 = args.year1 + 1;
@@ -23743,7 +23743,7 @@ DATABASE CONTEXT (for reference):
           `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p${paramIndex}, @p${paramIndex + 1})`
         );
         params.push(args.year1, year2);
-        paramIndex += 4;
+        paramIndex += 2;
       } else {
         // No years specified - show ALL years (don't limit to just 2)
         result = result.replace("{year_filter}", "");
@@ -24458,7 +24458,7 @@ DATABASE CONTEXT (for reference):
           `TRY_CONVERT(DATE, "ConstStartDate") >= @p${paramIndex} AND TRY_CONVERT(DATE, "ConstStartDate") <= @p${paramIndex + 1}`
         );
         params.push(args.start_date, args.end_date);
-        paramIndex += 4;
+        paramIndex += 2;
         console.log(`[Filter] Date range: ${args.start_date} to ${args.end_date}`);
       } else if (args.start_date && !args.end_date) {
         // Only start_date - projects starting on or after this date
@@ -24877,7 +24877,7 @@ DATABASE CONTEXT (for reference):
       if (args.year1 && args.year2) {
         result = result.replace("{year_filter}", `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p${paramIndex}, @p${paramIndex + 1})`);
         params.push(args.year1, args.year2);
-        paramIndex += 4;
+        paramIndex += 2;
       } else if (args.year1) {
         result = result.replace("{year_filter}", `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex}`);
         params.push(args.year1);
@@ -24917,7 +24917,7 @@ DATABASE CONTEXT (for reference):
           AND TRY_CAST(SUBSTRING("Title", PATINDEX('%[0-9]%', "Title"), LEN("Title")) AS INT) <= @p${paramIndex + 1}
         `);
         params.push(args.pid_start, args.pid_end);
-        paramIndex += 4;
+        paramIndex += 2;
       } else if (hasSingle) {
         // Single project lookup
         result = result.replace("{pid_single_filter}", `
