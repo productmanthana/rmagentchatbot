@@ -1398,8 +1398,10 @@ export default function ChatPage() {
         })));
       }
       
-      // Numeric comparison patterns - with context-aware column targeting
-      // Pattern that captures optional column name before the numeric condition
+      const isYearOrDateColumn = columnsArray.some(col => 
+        /^(year|yr|date|month|quarter|period|fiscal.?year)$/i.test(col.trim())
+      );
+
       const numericConditionPatterns = [
         // Column-prefixed patterns: "win percentage greater than 50", "fee below 100k"  
         { regex: /(?:win\s*(?:rate|%|percentage|pct)?)\s*(?:greater\s*th[ae]n|above|over|>)\s*\$?([\d.]+)\s*%?/i, op: '>', targetCol: 'Win %', isPercent: true },
@@ -1419,7 +1421,8 @@ export default function ChatPage() {
         // Direct fee value with suffix (e.g., "800M", "$2M", "500k") - treated as exact match
         { regex: /^\s*\$?([\d.]+)\s*(m|k|b)\s*$/i, op: '=', targetCol: 'Fee', isPercent: false },
         // Direct bare number (e.g., "2.0", "800") - treated as millions when Fee column is selected
-        { regex: /^\s*\$?([\d.]+)\s*$/i, op: '=', targetCol: 'Fee', isPercent: false, assumeMillions: true },
+        // SKIP this pattern when the selected column is a year/date column to avoid treating "2023" as $2023M
+        ...(isYearOrDateColumn ? [] : [{ regex: /^\s*\$?([\d.]+)\s*$/i, op: '=', targetCol: 'Fee', isPercent: false, assumeMillions: true }]),
         { regex: /(?:between|from)\s*\$?([\d.]+)\s*(k|m|b)\s*(?:and|to|-)\s*\$?([\d.]+)\s*(k|m|b)?/i, op: 'between', targetCol: 'Fee', isPercent: false },
         // Between pattern without units - treat plain numbers as millions for Fee column context
         { regex: /(?:between|from)\s*\$?([\d.]+)\s*(?:and|to|-)\s*\$?([\d.]+)(?!\s*[kmb%])/i, op: 'between', targetCol: null, isPercent: null },
