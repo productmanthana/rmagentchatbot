@@ -15795,6 +15795,41 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           delete classification.arguments._category_already_applied;
         }
       }
+      // Step 1.7d-2b: MULTI-PERIOD COMPARISON GUARD
+      // Detect queries comparing revenue/data across different years/months
+      // e.g., "march 2020 revenue with 2023 revenue", "compare 2020 and 2023 revenue"
+      {
+        const qLow = userQuestion.toLowerCase();
+        const multiYearMatch = qLow.match(/(\d{4}).*(?:with|and|vs|versus|compared?\s+to|to)\s+.*?(\d{4})/);
+        if (multiYearMatch) {
+          const year1 = parseInt(multiYearMatch[1]);
+          const year2 = parseInt(multiYearMatch[2]);
+          if (year1 !== year2 && year1 >= 2000 && year1 <= 2030 && year2 >= 2000 && year2 <= 2030) {
+            const monthNames = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+            const monthMatch = qLow.match(new RegExp(`(${monthNames.join("|")})`, "i"));
+            if (monthMatch) {
+              const monthNum = monthNames.indexOf(monthMatch[1].toLowerCase()) + 1;
+              console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected comparison query with month=${monthNum}, years=[${year1},${year2}]`);
+              classification.function_name = "compare_months_across_years";
+              classification.arguments.month = monthNum;
+              classification.arguments.years = [year1, year2];
+              delete classification.arguments.start_date;
+              delete classification.arguments.end_date;
+              delete classification.arguments.min_fee;
+              delete classification.arguments.max_fee;
+            } else {
+              console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected year comparison years=[${year1},${year2}] -> compare_years`);
+              classification.function_name = "compare_years";
+              classification.arguments.years = [year1, year2];
+              delete classification.arguments.start_date;
+              delete classification.arguments.end_date;
+              delete classification.arguments.min_fee;
+              delete classification.arguments.max_fee;
+            }
+          }
+        }
+      }
+
       // Step 1.7d-3: MONTHLY BREAKDOWN ROUTING GUARD
       // If user asks "which month", "by month", "monthly breakdown" and it's misclassified to ai_fallback
       // route to get_revenue_by_month with preserved filters
@@ -22294,12 +22329,33 @@ DATABASE CONTEXT (for reference):
             }
             template = newTemplate;
           } else {
-            // No status either - this is a malformed query
-            return {
-              success: false,
-              data: [],
-              error: `get_projects_by_fee_range requires at least min_fee or max_fee parameter`,
-            };
+            // No status - check if this is a revenue query that should use get_revenue_by_month
+            const qLower = userQuestion.toLowerCase();
+            const isRevenueQuery = /revenue|fee|income|earning|potential/i.test(qLower);
+            if (isRevenueQuery) {
+              console.log(`[QueryEngine] Redirecting fee_range (no fee params) to get_revenue_by_month for revenue query`);
+              functionName = "get_revenue_by_month";
+              const newTemplate2 = this.queryTemplates[functionName];
+              if (newTemplate2) {
+                template = newTemplate2;
+                // Extract year from start_date if available
+                if (args.start_date && !args.year) {
+                  args.year = parseInt(args.start_date.substring(0, 4));
+                }
+              } else {
+                return {
+                  success: false,
+                  data: [],
+                  error: `get_projects_by_fee_range requires at least min_fee or max_fee parameter`,
+                };
+              }
+            } else {
+              return {
+                success: false,
+                data: [],
+                error: `get_projects_by_fee_range requires at least min_fee or max_fee parameter`,
+              };
+            }
           }
         }
       }
@@ -22432,7 +22488,12 @@ DATABASE CONTEXT (for reference):
             // Standard LIKE matching with wildcards
             sqlParams.push(`%${args[paramName]}%`);
           } else {
-            sqlParams.push(args[paramName]);
+            // Handle array params: join for STRING_SPLIT compatibility
+            if (Array.isArray(args[paramName])) {
+              sqlParams.push(args[paramName].join(","));
+            } else {
+              sqlParams.push(args[paramName]);
+            }
           }
         }
       }
@@ -24709,6 +24770,16 @@ DATABASE CONTEXT (for reference):
         console.log(`[buildSql] ✓ Excluding poc from additional_filters (template has {poc_condition})`);
       }
       
+      // COMPARE_MONTHS_ACROSS_YEARS GUARD: Strip start_date/end_date since this function
+      // uses its own month + years[] params for filtering. Additional date range would conflict.
+      if (functionName === 'compare_months_across_years') {
+        if (args.start_date || args.end_date) {
+          console.log(`[QueryEngine] COMPARE-MONTHS GUARD: Stripping start_date="${args.start_date}" end_date="${args.end_date}" (function uses month/years params)`);
+          delete args.start_date;
+          delete args.end_date;
+        }
+      }
+
       // Pass excludeParams to avoid duplicating filters already in WHERE clause
       const additionalFilters = this.buildAdditionalFilters(args, params, paramIndex, extendedExcludeParams);
       if (args.regions && Array.isArray(args.regions) && args.regions.length > 0) { console.log(`[REGION_DEBUG] additionalFilters.sql = "${additionalFilters.sql}", params = ${JSON.stringify(params)}`); }
