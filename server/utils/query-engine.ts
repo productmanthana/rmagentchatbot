@@ -15773,21 +15773,28 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         delete classification.arguments.project_type; // Remove misextracted project_type
       }
 
-      // CATEGORY "ALL" REROUTE GUARD:
-      // When LLM picks a category-specific function but category is "All" or missing,
-      // reroute to a general revenue/quarterly function
+      // CATEGORY "ALL" / INVALID REROUTE GUARD:
+      // When LLM picks a category-specific function but category is "All", missing,
+      // or a nonsensical value (year number, ordinal word, generic term), reroute to general revenue function
       if (classification.function_name === 'get_revenue_trend_by_category' || classification.function_name === 'get_revenue_trend_by_state') {
         const cat = classification.arguments.category || (classification.arguments.categories && classification.arguments.categories[0]);
         const catLower = (cat || ''). toString().toLowerCase().trim();
-        if (!cat || catLower === 'all' || catLower === 'all projects' || catLower === 'all categories') {
-          console.log(`[QueryEngine] 📊 CATEGORY-ALL REROUTE: "${classification.function_name}" with category="${cat}" → get_quarterly_trends`);
+        const invalidCategoryTerms = new Set([
+          'all', 'all projects', 'all categories', 'total', 'overall', 'everything',
+          'first', 'second', 'third', 'fourth', 'last', 'next', 'previous', 'current',
+          'potential', 'revenue', 'revenues', 'fee', 'fees', 'projects', 'quarter', 'year',
+        ]);
+        const isYearNumber = /^\d{4}$/.test(catLower);
+        const isQuarterRef = /^q[1-4]$/i.test(catLower);
+        const isInvalid = !cat || invalidCategoryTerms.has(catLower) || isYearNumber || isQuarterRef;
+        if (isInvalid) {
+          console.log(`[QueryEngine] CATEGORY-INVALID REROUTE: "${classification.function_name}" with category="${cat}" -> get_quarterly_trends`);
           classification.function_name = 'get_quarterly_trends';
           delete classification.arguments.category;
           delete classification.arguments.categories;
           delete classification.arguments._category_already_applied;
         }
       }
-
       // Step 1.7d-3: MONTHLY BREAKDOWN ROUTING GUARD
       // If user asks "which month", "by month", "monthly breakdown" and it's misclassified to ai_fallback
       // route to get_revenue_by_month with preserved filters
