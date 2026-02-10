@@ -15773,6 +15773,21 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         delete classification.arguments.project_type; // Remove misextracted project_type
       }
 
+      // CATEGORY "ALL" REROUTE GUARD:
+      // When LLM picks a category-specific function but category is "All" or missing,
+      // reroute to a general revenue/quarterly function
+      if (classification.function_name === 'get_revenue_trend_by_category' || classification.function_name === 'get_revenue_trend_by_state') {
+        const cat = classification.arguments.category || (classification.arguments.categories && classification.arguments.categories[0]);
+        const catLower = (cat || ''). toString().toLowerCase().trim();
+        if (!cat || catLower === 'all' || catLower === 'all projects' || catLower === 'all categories') {
+          console.log(`[QueryEngine] 📊 CATEGORY-ALL REROUTE: "${classification.function_name}" with category="${cat}" → get_quarterly_trends`);
+          classification.function_name = 'get_quarterly_trends';
+          delete classification.arguments.category;
+          delete classification.arguments.categories;
+          delete classification.arguments._category_already_applied;
+        }
+      }
+
       // Step 1.7d-3: MONTHLY BREAKDOWN ROUTING GUARD
       // If user asks "which month", "by month", "monthly breakdown" and it's misclassified to ai_fallback
       // route to get_revenue_by_month with preserved filters
