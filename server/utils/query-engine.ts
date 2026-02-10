@@ -502,6 +502,9 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     } else if (/\b(lost|declined|rejected)\b/i.test(questionLower)) {
       console.log(`[Normalize] STATUS FALLBACK: Detected "lost" in question, setting lost statuses`);
       normalized.status = LOST_STATUS_VALUES;
+    } else if (/\bpotential\b/i.test(questionLower) && /\b(revenue|fee|value|worth|income|earning|amount)s?\b/i.test(questionLower)) {
+      console.log(`[Normalize] STATUS FALLBACK: Detected "potential revenue" in question, excluding Lost/No Go/Cancelled`);
+      normalized.status = ["Proposal Development", "Qualified Lead", "Submitted", "Lead", "In Progress", "Hold", "Won"];
     }
   }
 
