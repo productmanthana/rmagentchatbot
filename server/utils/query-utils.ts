@@ -54,8 +54,74 @@ export class SemanticTimeParser {
     }
 
     // "this quarter" = current calendar quarter
-    if (timeRef.includes("this quarter")) {
+    if (timeRef.includes("this quarter") || timeRef.includes("current quarter")) {
+      console.log(`[TimeParser] "this/current quarter" detected`);
       return this.getCurrentQuarterDates();
+    }
+
+    // "this month" / "current month" = current calendar month
+    if (timeRef.includes("this month") || timeRef.includes("current month")) {
+      const year = this.today.getFullYear();
+      const month = this.today.getMonth() + 1;
+      const lastDay = new Date(year, month, 0).getDate();
+      console.log(`[TimeParser] "this/current month" → ${year}-${String(month).padStart(2, '0')}-01 to ${year}-${String(month).padStart(2, '0')}-${lastDay}`);
+      return [`${year}-${String(month).padStart(2, '0')}-01`, `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`];
+    }
+
+    // "this week" / "current week" = current calendar week (Monday to Sunday)
+    if (timeRef.includes("this week") || timeRef.includes("current week")) {
+      const dayOfWeek = this.today.getDay();
+      const monday = this.addDays(this.today, -(dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      const sunday = this.addDays(monday, 6);
+      console.log(`[TimeParser] "this/current week" → ${this.formatDate(monday)} to ${this.formatDate(sunday)}`);
+      return [this.formatDate(monday), this.formatDate(sunday)];
+    }
+
+    // "last month" / "previous month" = previous calendar month (exact boundaries)
+    if (timeRef === "last month" || timeRef === "previous month" || timeRef === "prior month") {
+      const firstOfThisMonth = new Date(this.today.getFullYear(), this.today.getMonth(), 1);
+      const lastOfPrevMonth = this.addDays(firstOfThisMonth, -1);
+      const firstOfPrevMonth = new Date(lastOfPrevMonth.getFullYear(), lastOfPrevMonth.getMonth(), 1);
+      console.log(`[TimeParser] "last/previous month" → ${this.formatDate(firstOfPrevMonth)} to ${this.formatDate(lastOfPrevMonth)}`);
+      return [this.formatDate(firstOfPrevMonth), this.formatDate(lastOfPrevMonth)];
+    }
+
+    // "last week" / "previous week" = previous calendar week (Monday to Sunday)
+    if (timeRef === "last week" || timeRef === "previous week" || timeRef === "prior week") {
+      const dayOfWeek = this.today.getDay();
+      const thisMonday = this.addDays(this.today, -(dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      const lastMonday = this.addDays(thisMonday, -7);
+      const lastSunday = this.addDays(lastMonday, 6);
+      console.log(`[TimeParser] "last/previous week" → ${this.formatDate(lastMonday)} to ${this.formatDate(lastSunday)}`);
+      return [this.formatDate(lastMonday), this.formatDate(lastSunday)];
+    }
+
+    // "last quarter" / "previous quarter" = previous calendar quarter (exact boundaries)
+    if (timeRef === "last quarter" || timeRef === "previous quarter" || timeRef === "prior quarter") {
+      return this.getPreviousQuarterDates();
+    }
+
+    // "next month" = next calendar month (exact boundaries)
+    if (timeRef === "next month" || timeRef === "coming month") {
+      const nextMonth = new Date(this.today.getFullYear(), this.today.getMonth() + 1, 1);
+      const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+      console.log(`[TimeParser] "next month" → ${this.formatDate(nextMonth)} to ${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+      return [this.formatDate(nextMonth), `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`];
+    }
+
+    // "next quarter" = next calendar quarter (exact boundaries)
+    if (timeRef === "next quarter" || timeRef === "coming quarter") {
+      return this.getNextQuarterDates();
+    }
+
+    // "next week" = next calendar week (Monday to Sunday)
+    if (timeRef === "next week" || timeRef === "coming week") {
+      const dayOfWeek = this.today.getDay();
+      const thisMonday = this.addDays(this.today, -(dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      const nextMonday = this.addDays(thisMonday, 7);
+      const nextSunday = this.addDays(nextMonday, 6);
+      console.log(`[TimeParser] "next week" → ${this.formatDate(nextMonday)} to ${this.formatDate(nextSunday)}`);
+      return [this.formatDate(nextMonday), this.formatDate(nextSunday)];
     }
 
     // CATEGORY 1: RELATIVE TIME PERIODS (e.g., "next 3 months", "last 6 months")
@@ -107,6 +173,9 @@ export class SemanticTimeParser {
 
     const monthRange = this.parseMonthRange(timeRef);
     if (monthRange) return monthRange;
+
+    const specificMonth = this.parseSpecificMonth(timeRef);
+    if (specificMonth) return specificMonth;
 
     // CATEGORY 4: NUMERIC + UNIT PATTERNS
     const numericResult = this.extractNumericTimeframe(timeRef);
@@ -336,12 +405,71 @@ export class SemanticTimeParser {
     return [`${year}-10-01`, `${year}-12-31`];
   }
 
+  private getPreviousQuarterDates(): [string, string] {
+    const month = this.today.getMonth() + 1;
+    const year = this.today.getFullYear();
+    if (month <= 3) {
+      console.log(`[TimeParser] "last quarter" → Q4 ${year - 1}`);
+      return [`${year - 1}-10-01`, `${year - 1}-12-31`];
+    }
+    if (month <= 6) {
+      console.log(`[TimeParser] "last quarter" → Q1 ${year}`);
+      return [`${year}-01-01`, `${year}-03-31`];
+    }
+    if (month <= 9) {
+      console.log(`[TimeParser] "last quarter" → Q2 ${year}`);
+      return [`${year}-04-01`, `${year}-06-30`];
+    }
+    console.log(`[TimeParser] "last quarter" → Q3 ${year}`);
+    return [`${year}-07-01`, `${year}-09-30`];
+  }
+
+  private getNextQuarterDates(): [string, string] {
+    const month = this.today.getMonth() + 1;
+    const year = this.today.getFullYear();
+    if (month <= 3) {
+      console.log(`[TimeParser] "next quarter" → Q2 ${year}`);
+      return [`${year}-04-01`, `${year}-06-30`];
+    }
+    if (month <= 6) {
+      console.log(`[TimeParser] "next quarter" → Q3 ${year}`);
+      return [`${year}-07-01`, `${year}-09-30`];
+    }
+    if (month <= 9) {
+      console.log(`[TimeParser] "next quarter" → Q4 ${year}`);
+      return [`${year}-10-01`, `${year}-12-31`];
+    }
+    console.log(`[TimeParser] "next quarter" → Q1 ${year + 1}`);
+    return [`${year + 1}-01-01`, `${year + 1}-03-31`];
+  }
+
   private parseSpecificQuarter(text: string): [string, string] | null {
     let match = text.match(/q(\d)\s+(\d{4})/);
     if (match) {
       const quarter = parseInt(match[1]);
       const year = parseInt(match[2]);
       if (quarter >= 1 && quarter <= 4) {
+        console.log(`[TimeParser] Specific quarter "Q${quarter} ${year}"`);
+        return this.getQuarterDates(year, quarter);
+      }
+    }
+
+    match = text.match(/(\d{4})\s+q(\d)/);
+    if (match) {
+      const year = parseInt(match[1]);
+      const quarter = parseInt(match[2]);
+      if (quarter >= 1 && quarter <= 4) {
+        console.log(`[TimeParser] Specific quarter "${year} Q${quarter}"`);
+        return this.getQuarterDates(year, quarter);
+      }
+    }
+
+    match = text.match(/\bq(\d)\b/);
+    if (match && !text.match(/\d{4}/)) {
+      const quarter = parseInt(match[1]);
+      if (quarter >= 1 && quarter <= 4) {
+        const year = this.today.getFullYear();
+        console.log(`[TimeParser] Quarter "Q${quarter}" (no year) → assumed ${year}`);
         return this.getQuarterDates(year, quarter);
       }
     }
@@ -354,10 +482,20 @@ export class SemanticTimeParser {
     };
 
     for (const [name, num] of Object.entries(quarterNames)) {
-      const pattern = new RegExp(`${name}\\s+quarter\\s+(\\d{4})`);
-      match = text.match(pattern);
+      const withYear = new RegExp(`${name}\\s+quarter\\s+(\\d{4})`);
+      match = text.match(withYear);
       if (match) {
         const year = parseInt(match[1]);
+        console.log(`[TimeParser] "${name} quarter ${year}"`);
+        return this.getQuarterDates(year, num);
+      }
+    }
+
+    for (const [name, num] of Object.entries(quarterNames)) {
+      const withoutYear = new RegExp(`${name}\\s+quarter\\b`);
+      if (text.match(withoutYear) && !text.match(/\d{4}/)) {
+        const year = this.today.getFullYear();
+        console.log(`[TimeParser] "${name} quarter" (no year) → assumed ${year}`);
         return this.getQuarterDates(year, num);
       }
     }
@@ -451,6 +589,39 @@ export class SemanticTimeParser {
         }
 
         return [startDate, endDate];
+      }
+    }
+
+    return null;
+  }
+
+  private parseSpecificMonth(text: string): [string, string] | null {
+    const monthMap: Record<string, number> = {
+      january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3,
+      april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7,
+      august: 8, aug: 8, september: 9, sep: 9, october: 10, oct: 10,
+      november: 11, nov: 11, december: 12, dec: 12,
+    };
+
+    for (const [name, monthNum] of Object.entries(monthMap)) {
+      const withYear = new RegExp(`\\b${name}\\s+(\\d{4})\\b`, 'i');
+      const matchWithYear = text.match(withYear);
+      if (matchWithYear) {
+        const year = parseInt(matchWithYear[1]);
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        console.log(`[TimeParser] Specific month "${name} ${year}" → ${year}-${String(monthNum).padStart(2, '0')}-01 to ${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`);
+        return [`${year}-${String(monthNum).padStart(2, '0')}-01`, `${year}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`];
+      }
+    }
+
+    for (const [name, monthNum] of Object.entries(monthMap)) {
+      if (name.length < 4) continue;
+      const standalone = new RegExp(`\\b(?:in\\s+)?${name}\\b`, 'i');
+      if (text.match(standalone)) {
+        const year = this.today.getFullYear();
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        console.log(`[TimeParser] Specific month "${name}" (no year) → assumed ${year}-${String(monthNum).padStart(2, '0')}-01 to ${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`);
+        return [`${year}-${String(monthNum).padStart(2, '0')}-01`, `${year}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`];
       }
     }
 

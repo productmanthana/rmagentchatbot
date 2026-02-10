@@ -19640,6 +19640,48 @@ Response (JSON only):`;
         delete args.time_reference;
       }
     }
+    // SPECIAL CASE: Handle get_projects_by_month with time_reference
+    // Extract month number and year from month name references
+    if (classification.function_name === 'get_projects_by_month' && args.time_reference && !args.month) {
+      const timeRef = args.time_reference.toLowerCase();
+      const monthNames: Record<string, number> = {
+        january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3,
+        april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7,
+        august: 8, aug: 8, september: 9, sep: 9, october: 10, oct: 10,
+        november: 11, nov: 11, december: 12, dec: 12,
+      };
+      let matched = false;
+      for (const [name, num] of Object.entries(monthNames)) {
+        if (name.length < 4) continue;
+        const withYear = timeRef.match(new RegExp(`${name}\\s+(\\d{4})`));
+        if (withYear) {
+          args.month = num;
+          args.year = parseInt(withYear[1], 10);
+          console.log(`[MonthExtract] Parsed "${args.time_reference}" -> year=${args.year}, month=${args.month}`);
+          delete args.time_reference;
+          matched = true;
+          break;
+        }
+        if (timeRef.includes(name)) {
+          args.month = num;
+          if (!args.year) args.year = new Date().getFullYear();
+          console.log(`[MonthExtract] Parsed "${args.time_reference}" -> year=${args.year}, month=${args.month}`);
+          delete args.time_reference;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        console.log(`[MonthExtract] Could not parse month from "${args.time_reference}", switching to date range query`);
+        classification.function_name = 'get_projects_by_combined_filters';
+        const dateRange = this.timeParser.parse(args.time_reference);
+        if (dateRange) {
+          args.start_date = dateRange[0];
+          args.end_date = dateRange[1];
+        }
+        delete args.time_reference;
+      }
+    }
     // Process semantic time references ONLY if NOT a duration-in-status query
     // If min_days_stalled exists, skip date parsing to avoid conflicts
     // ALSO skip if year filter is already set (from "this year" detection above)
