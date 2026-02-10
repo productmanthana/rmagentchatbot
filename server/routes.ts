@@ -201,9 +201,26 @@ export async function registerRoutes(app: Express): Promise<Express> {
         });
       }
       
+      console.log(`[API] 🔧 Getting query engine...`);
       const engine = await getQueryEngine();
+      console.log(`[API] 🔧 Engine ready, calling processQuery for: "${question.substring(0,60)}"`);
 
       const response = await engine.processQuery(question, queryExternalDb, previousContext, originalContext);
+      console.log(`[API] 🔧 processQuery returned: success=${response.success}, rows=${response.data?.length}, fn=${response.function_name}, is_fallback=${response.data?.[0]?.is_fallback}`);
+      // File-based debug for query analysis
+      const fs = await import('fs');
+      fs.appendFileSync('/tmp/query_debug.log', JSON.stringify({
+        ts: new Date().toISOString(),
+        question,
+        function_name: response.function_name,
+        arguments: response.arguments,
+        sql_query: response.sql_query,
+        sql_params: response.sql_params,
+        row_count: response.data?.length,
+        is_fallback: response.data?.[0]?.is_fallback,
+        success: response.success,
+        message: response.message,
+      }, null, 2) + '\n---\n');
 
       // Generate AI insights automatically for all successful queries
       // Skip for AI analysis responses since they already have narrative
@@ -1338,6 +1355,58 @@ Please provide a helpful analysis for the follow-up question.`,
         error: String(error),
         timestamp: new Date().toISOString(),
       });
+    }
+  });
+
+  // TEMP DEBUG ENDPOINT - remove after debugging
+  app.get("/api/debug/test-query", async (req, res) => {
+    try {
+      const TABLE = process.env.CLIENT_TABLE_NAME || "POR";
+      const r2 = await queryExternalDb(`SELECT COUNT(*) as total FROM "${TABLE}"`, []);
+      
+      const engine = await getQueryEngine();
+      const traceResult = await engine.processQuery("show me all projects", queryExternalDb);
+      
+      res.json({ 
+        directTotal: r2[0]?.total, 
+        processQueryResult: {
+          success: traceResult.success,
+          row_count: traceResult.row_count,
+          data_length: traceResult.data?.length,
+          first_data_type: traceResult.data?.[0]?.type,
+          is_fallback: traceResult.data?.[0]?.is_fallback,
+          sql_query: traceResult.sql_query,
+          sql_params: traceResult.sql_params,
+          function_name: traceResult.function_name,
+          message: traceResult.message,
+          error: traceResult.error,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: String(error), stack: (error as any).stack });
+    }
+  });
+
+  app.get("/api/debug/test-compare", async (req, res) => {
+    try {
+      const question = (req.query.q as string) || "compare march 2020 revenue with 2023 revenue";
+      const engine = await getQueryEngine();
+      const result = await engine.processQuery(question, queryExternalDb, undefined, undefined);
+      res.json({
+        question,
+        success: result.success,
+        function_name: result.function_name,
+        arguments: result.arguments,
+        sql_query: result.sql_query,
+        sql_params: result.sql_params,
+        row_count: result.data?.length,
+        is_fallback: result.data?.[0]?.is_fallback,
+        first_row: result.data?.[0],
+        message: result.message,
+        error: result.error,
+      });
+    } catch (error) {
+      res.status(500).json({ error: String(error), stack: (error as any).stack });
     }
   });
 

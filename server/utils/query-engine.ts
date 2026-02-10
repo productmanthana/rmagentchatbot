@@ -5264,7 +5264,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), MONTH(TRY_CONVERT(DATE, "ConstStartDate"))
+              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), MONTH(TRY_CONVERT(DATE, "ConstStartDate")), FORMAT(TRY_CONVERT(DATE, "ConstStartDate"), 'MMM yyyy')
               ORDER BY year`,
         params: ["month", "years"],
         param_types: ["int", "array"],
@@ -15817,6 +15817,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
               delete classification.arguments.end_date;
               delete classification.arguments.min_fee;
               delete classification.arguments.max_fee;
+              delete classification.arguments.year;
+              delete classification.arguments.quarter;
             } else {
               console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected year comparison years=[${year1},${year2}] -> compare_years`);
               classification.function_name = "compare_years";
@@ -15827,6 +15829,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
               delete classification.arguments.max_fee;
             }
           }
+              delete classification.arguments.year;
+              delete classification.arguments.quarter;
         }
       }
 
@@ -18000,7 +18004,8 @@ Response (JSON only):`;
       console.log(`[QueryEngine] 🔍 SKIP CHECK DEBUG: keyword="${args.keyword}", _keyword_already_applied=${args._keyword_already_applied}`);
       // HARD KEYWORD BYPASS: Force skip when keyword is set
       const hasKeyword = args.keyword && typeof args.keyword === 'string' && args.keyword.length > 3;
-      const effectiveSkip = skipUnrecognizedCheck || hasKeyword;
+      const isComparisonFunction = functionName === "compare_months_across_years" || functionName === "compare_years" || functionName === "compare_quarters";
+      const effectiveSkip = skipUnrecognizedCheck || hasKeyword || isComparisonFunction;
       if (hasKeyword && !skipUnrecognizedCheck) {
         console.log(`[QueryEngine] 🔑 HARD KEYWORD BYPASS ACTIVATED: keyword="${args.keyword}"`);
       }
@@ -22275,6 +22280,7 @@ DATABASE CONTEXT (for reference):
       // Now check for standard SQL template
       let template = this.queryTemplates[functionName];
       console.log(`[executeQuery] 🔍 TEMPLATE LOOKUP: functionName=${functionName}, template_found=${!!template}`);
+      try { fs.appendFileSync('/tmp/exec_debug.log', 'TEMPLATE_CHECK:' + functionName + ' found=' + !!template + '\n'); } catch(e) {}
       if (!template) {
         console.log(`[executeQuery] ❌ TEMPLATE NOT FOUND: ${functionName}, available: ${Object.keys(this.queryTemplates).slice(0, 10).join(', ')}...`);
         return {
@@ -22424,6 +22430,7 @@ DATABASE CONTEXT (for reference):
 
       let sql = template.sql;
       const sqlParams: any[] = [];
+      try { fs.appendFileSync("/tmp/exec_debug.log", "SQL_ASSIGNED:" + functionName + " sql_len=" + sql.length + "\n"); } catch(e) {}
       
       // Handle column_name substitution for get_project_column_by_id
       if (functionName === "get_project_column_by_id" && args.column_name) {
@@ -22554,7 +22561,7 @@ DATABASE CONTEXT (for reference):
       if (template.sql.includes('{category_or_type_condition}')) {
         excludeParams.push('category', 'categories', 'project_type', 'project_types');
       }
-      sql = this.buildSql(sql, args, sqlParams, template.params.length, excludeParams);
+      sql = this.buildSql(sql, args, sqlParams, template.params.length, excludeParams, functionName);
 
       // Log the actual executed SQL with parameters substituted
       const executedSql = this.substituteParams(sql, sqlParams);
@@ -22562,7 +22569,7 @@ DATABASE CONTEXT (for reference):
       // Display the SQL with @pN placeholders for MS SQL
       const displaySql = convertPlaceholders(executedSql);
       
-      if (functionName === 'compare_quarters' || functionName === 'compare_years') {
+      if (functionName === 'compare_quarters' || functionName === 'compare_years' || functionName === 'compare_months_across_years') {
         console.log(`[COMPARE_DEBUG] functionName=${functionName}, sqlParams=${JSON.stringify(sqlParams)}, sql=${sql.substring(0,800)}`);
       }
       console.log(`\n${'='.repeat(80)}`);
@@ -22571,8 +22578,11 @@ DATABASE CONTEXT (for reference):
       console.log(displaySql);
       console.log(`${'='.repeat(80)}\n`);
 
-      const results = await externalDbQuery(sql, sqlParams);
+      try { fs.appendFileSync('/tmp/exec_debug.log', JSON.stringify({ ts: new Date().toISOString(), functionName, sql: sql.substring(0, 500), sqlParams, paramCount: sqlParams.length }) + '\n'); } catch(e) {}
+      try { fs.writeFileSync("/tmp/full_sql.log", sql + "\nPARAMS: " + JSON.stringify(sqlParams)); } catch(e) {}
+      let results: any[]; try { results = await externalDbQuery(sql, sqlParams); } catch(dbErr: any) { fs.appendFileSync("/tmp/exec_debug.log", "DB_QUERY_ERROR:" + String(dbErr) + "\n"); throw dbErr; }
 
+      try { fs.appendFileSync('/tmp/exec_debug.log', 'RESULT_COUNT:' + results.length + '\n'); } catch(e) {}
       console.log(`[QueryEngine] Results count: ${results.length}`);
 
       // For get_top_tags, extract tag values so follow-up questions can reference them
@@ -23596,7 +23606,7 @@ DATABASE CONTEXT (for reference):
     };
   }
 
-  private buildSql(sql: string, args: Record<string, any>, params: any[], startIndex: number = 0, excludeParams: string[] = []): string {
+  private buildSql(sql: string, args: Record<string, any>, params: any[], startIndex: number = 0, excludeParams: string[] = [], functionName: string = ""): string {
     let result = sql;
     let paramIndex = startIndex + 1;
 
@@ -24770,16 +24780,18 @@ DATABASE CONTEXT (for reference):
         console.log(`[buildSql] ✓ Excluding poc from additional_filters (template has {poc_condition})`);
       }
       
-      // COMPARE_MONTHS_ACROSS_YEARS GUARD: Strip start_date/end_date since this function
-      // uses its own month + years[] params for filtering. Additional date range would conflict.
+      // COMPARE_MONTHS_ACROSS_YEARS GUARD: Strip date-related params since this function
+      // uses its own month + years[] params for filtering. Additional filters would conflict.
       if (functionName === 'compare_months_across_years') {
-        if (args.start_date || args.end_date) {
-          console.log(`[QueryEngine] COMPARE-MONTHS GUARD: Stripping start_date="${args.start_date}" end_date="${args.end_date}" (function uses month/years params)`);
+        if (args.start_date || args.end_date || args.year || args.quarter) {
+          console.log(`[QueryEngine] COMPARE-MONTHS GUARD: Stripping start_date="${args.start_date}" end_date="${args.end_date}" year="${args.year}" quarter="${args.quarter}" (function uses month/years params)`);
           delete args.start_date;
           delete args.end_date;
+          delete args.year;
+          delete args.quarter;
+          delete args._date_already_applied;
         }
       }
-
       // Pass excludeParams to avoid duplicating filters already in WHERE clause
       const additionalFilters = this.buildAdditionalFilters(args, params, paramIndex, extendedExcludeParams);
       if (args.regions && Array.isArray(args.regions) && args.regions.length > 0) { console.log(`[REGION_DEBUG] additionalFilters.sql = "${additionalFilters.sql}", params = ${JSON.stringify(params)}`); }
