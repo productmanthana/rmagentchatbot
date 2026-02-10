@@ -3991,6 +3991,7 @@ export class QueryEngine {
               )
               SELECT 
                 COUNT(*) as total_projects,
+                SUM(numeric_fee) as total_fee,
                 MIN(numeric_fee) as min_fee,
                 MAX(numeric_fee) as max_fee,
                 AVG(numeric_fee) as avg_fee,
