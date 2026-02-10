@@ -1724,7 +1724,6 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
-  // DEBUG: Trace query flow for region queries
   app.get("/api/debug/trace-query", async (req, res) => {
     try {
       const question = req.query.q as string || "top 5 projects in west region";

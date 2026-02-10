@@ -4472,7 +4472,7 @@ export class QueryEngine {
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
               AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
               {additional_filters}
-              GROUP BY size_tier
+              GROUP BY {size_case}
               ORDER BY MIN(CAST(NULLIF("Fee", '') AS NUMERIC))`,
         params: [],
         param_types: [],
@@ -4623,7 +4623,7 @@ export class QueryEngine {
               {year_filter}
               {status_filter}
               {additional_filters}
-              GROUP BY year
+              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate"))
               ORDER BY {order_by}`,
         params: [],
         param_types: [],
@@ -4763,7 +4763,7 @@ export class QueryEngine {
               WHERE YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p1
               AND "ConstStartDate" > '2000-01-01'
               {additional_filters}
-              GROUP BY year, month
+              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), MONTH(TRY_CONVERT(DATE, "ConstStartDate"))
               ORDER BY month`,
         params: ["year"],
         param_types: ["int"],
@@ -4789,7 +4789,7 @@ export class QueryEngine {
                 WHERE YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p1, @p2)
                 AND "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY year
+                GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate"))
               )
               SELECT 
                 year,
@@ -4963,7 +4963,7 @@ export class QueryEngine {
                 project_count,
                 prev_year_count,
                 (project_count - prev_year_count) as count_change,
-                ROUND(((project_count - prev_year_count), DECIMAL(18,2)) / NULLIF(prev_year_count, 0) * 100), 2) as growth_pct,
+                ROUND(CAST((project_count - prev_year_count) AS DECIMAL(18,2)) / NULLIF(prev_year_count, 0) * 100, 2) as growth_pct,
                 total_revenue,
                 prev_year_revenue,
                 (total_revenue - prev_year_revenue) as revenue_change
@@ -5234,12 +5234,12 @@ export class QueryEngine {
               AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
               FROM "${TABLE}"
-              WHERE (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p1 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p2)
-                 OR (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p3 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p4)
+              WHERE ((YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p1 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p2)
+                 OR (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p3 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p4))
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              GROUP BY year, quarter
+              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ORDER BY year, quarter`,
         params: ["year1", "quarter1", "year2", "quarter2"],
         param_types: ["int", "int", "int", "int"],
@@ -5264,7 +5264,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              GROUP BY year, month
+              GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), MONTH(TRY_CONVERT(DATE, "ConstStartDate"))
               ORDER BY year`,
         params: ["month", "years"],
         param_types: ["int", "array"],
@@ -5295,7 +5295,7 @@ export class QueryEngine {
                   WHEN @p1 = 'category' THEN "RequestCategory" IS NOT NULL
                   WHEN @p1 = 'poc' THEN "PointOfContact" IS NOT NULL
                 END
-                GROUP BY segment
+                GROUP BY CASE WHEN @p1 = 'company' THEN "Company" WHEN @p1 = 'state' THEN "State" WHEN @p1 = 'category' THEN "RequestCategory" WHEN @p1 = 'poc' THEN "PointOfContact" END
               ),
               overall_avg AS (
                 SELECT 
@@ -5311,7 +5311,7 @@ export class QueryEngine {
                 s.avg_win_rate,
                 o.overall_avg_value,
                 o.overall_avg_win_rate,
-                ROUND(((s.avg_project_value - o.overall_avg_value) / NULLIF(o.overall_avg_value, 0) * 100), DECIMAL(18,2)), 2) as pct_diff_from_avg
+                ROUND(((s.avg_project_value - o.overall_avg_value) / NULLIF(o.overall_avg_value, 0) * 100), 2) as pct_diff_from_avg
               FROM segment_stats s, overall_avg o
               WHERE s.segment LIKE @p2
               ORDER BY s.total_value DESC`,
@@ -5331,8 +5331,8 @@ export class QueryEngine {
                   AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
                   COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
                   COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
-                  ROUND((COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END), DECIMAL(18,2)) / 
-                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100), DECIMAL(18,2)), 2) as actual_win_rate
+                  ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
+                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as actual_win_rate
                 FROM "${TABLE}"
                 WHERE "PointOfContact" IS NOT NULL AND "PointOfContact" != ''
                 {date_filter}
@@ -5441,7 +5441,7 @@ export class QueryEngine {
                 WHERE "Client" IS NOT NULL AND "Client" != ''
                 GROUP BY "Client"
               ) client_stats
-              GROUP BY client_tier
+              GROUP BY CASE WHEN project_count >= 10 THEN 'Enterprise' WHEN project_count >= 5 THEN 'Mid-Market' ELSE 'Small' END
               ORDER BY 
                 CASE client_tier 
                   WHEN 'Enterprise' THEN 1 
@@ -5459,7 +5459,7 @@ export class QueryEngine {
               "PointOfContact" as poc,
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              ROUND((SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) / NULLIF(COUNT(*), 0)), DECIMAL(18,2)), 2) as revenue_per_project,
+              ROUND((SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) / NULLIF(COUNT(*), 0)), 2) as revenue_per_project,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
@@ -5487,12 +5487,12 @@ export class QueryEngine {
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_predicted_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END) as closed_count,
-              ROUND((COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END), DECIMAL(18,2)) / 
-                     NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100), DECIMAL(18,2)), 2) as actual_win_rate
+              ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
+                     NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as actual_win_rate
               FROM "${TABLE}"
               WHERE "PointOfContact" LIKE @p1
               AND "ConstStartDate" > '2000-01-01'
-              GROUP BY "PointOfContact", year, quarter
+              GROUP BY "PointOfContact", YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ORDER BY year DESC, quarter DESC`,
         params: ["poc"],
         param_types: ["str"],
@@ -5577,7 +5577,7 @@ export class QueryEngine {
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
-              ROUND((COUNT(*), DECIMAL(18,2)) / SUM(COUNT(*)) OVER (PARTITION BY "RequestCategory") * 100), DECIMAL(18,2)), 2) as pct_of_category
+              ROUND(CAST(COUNT(*) AS DECIMAL(18,2)) / SUM(COUNT(*)) OVER (PARTITION BY "RequestCategory") * 100, 2) as pct_of_category
               FROM "${TABLE}"
               WHERE "RequestCategory" IS NOT NULL AND "RequestCategory" != ''
               AND "StatusChoice" IS NOT NULL AND "StatusChoice" != ''
@@ -5609,7 +5609,7 @@ export class QueryEngine {
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY year, quarter
+                GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
@@ -5630,7 +5630,7 @@ export class QueryEngine {
                 total_revenue,
                 avg_win_rate,
                 prev_revenue,
-                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), DECIMAL(18,2)), 2) as growth_rate_pct
+                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), 2) as growth_rate_pct
               FROM with_lag
               ORDER BY year DESC, quarter DESC
               {limit_clause}`,
@@ -5654,7 +5654,7 @@ export class QueryEngine {
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY year, quarter
+                GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               ranked AS (
                 SELECT 
@@ -5714,7 +5714,7 @@ export class QueryEngine {
                 total_revenue,
                 project_count,
                 prev_month_revenue,
-                ROUND(((total_revenue - prev_month_revenue) / NULLIF(prev_month_revenue, 0) * 100), DECIMAL(18,2)), 2) as mom_growth_pct,
+                ROUND(((total_revenue - prev_month_revenue) / NULLIF(prev_month_revenue, 0) * 100), 2) as mom_growth_pct,
                 CASE 
                   WHEN total_revenue > prev_month_revenue AND prev_month_revenue > two_months_ago_revenue THEN 'Accelerating'
                   WHEN total_revenue < prev_month_revenue AND prev_month_revenue < two_months_ago_revenue THEN 'Decelerating'
@@ -5770,7 +5770,7 @@ export class QueryEngine {
                 WHERE "RequestCategory" LIKE @p1
                 AND "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY category, year, quarter
+                GROUP BY "RequestCategory", YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
@@ -5786,7 +5786,7 @@ export class QueryEngine {
                 period,
                 total_revenue,
                 project_count,
-                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), DECIMAL(18,2)), 2) as growth_rate_pct
+                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), 2) as growth_rate_pct
               FROM with_lag
               ORDER BY period DESC`,
         params: ["category"],
@@ -5811,7 +5811,7 @@ export class QueryEngine {
                 WHERE "State" LIKE @p1
                 AND "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY state, year, quarter
+                GROUP BY "State", YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
@@ -5829,7 +5829,7 @@ export class QueryEngine {
                 period,
                 total_revenue,
                 project_count,
-                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), DECIMAL(18,2)), 2) as growth_rate_pct
+                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), 2) as growth_rate_pct
               FROM with_lag
               ORDER BY year DESC, quarter DESC`,
         params: ["state_code"],
@@ -5854,7 +5854,7 @@ export class QueryEngine {
                 WHERE "Client" LIKE @p1
                 AND "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY "Client", year, quarter
+                GROUP BY "Client", YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
@@ -5872,7 +5872,7 @@ export class QueryEngine {
                 period,
                 total_revenue,
                 project_count,
-                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), DECIMAL(18,2)), 2) as growth_rate_pct,
+                ROUND(((total_revenue - prev_revenue) / NULLIF(prev_revenue, 0) * 100), 2) as growth_rate_pct,
                 CASE 
                   WHEN total_revenue > prev_revenue THEN 'Growing'
                   WHEN total_revenue < prev_revenue THEN 'Declining'
@@ -5920,12 +5920,12 @@ export class QueryEngine {
                   COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
                   COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
                   COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END) as closed_count,
-                  ROUND((COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END), DECIMAL(18,2)) / 
-                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100), DECIMAL(18,2)), 2) as win_rate
+                  ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
+                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as win_rate
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY year, quarter
+                GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
@@ -5946,7 +5946,7 @@ export class QueryEngine {
                 closed_count,
                 win_rate,
                 prev_win_rate,
-                ROUND((win_rate - prev_win_rate), DECIMAL(18,2)), 2) as win_rate_change
+                ROUND((win_rate - prev_win_rate), 2) as win_rate_change
               FROM with_lag
               ORDER BY year DESC, quarter DESC
               {limit_clause}`,
@@ -5977,7 +5977,7 @@ export class QueryEngine {
                 AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
                 AND "StatusChoice" IN ('Won', 'Lost')
                 {additional_filters}
-                GROUP BY deal_size, category
+                GROUP BY CASE WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 50000 THEN 'Small (<50K)' WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 200000 THEN 'Medium (50-200K)' WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 500000 THEN 'Large (200-500K)' ELSE 'Mega (500K+)' END, "RequestCategory"
               )
               SELECT * FROM sized_deals
               ORDER BY 
@@ -6044,7 +6044,7 @@ export class QueryEngine {
                 WHERE "StatusChoice" NOT IN ('Won', 'Lost')
                 AND "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
                 {additional_filters}
-                GROUP BY probability_tier
+                GROUP BY CASE WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 70 THEN 'High Probability (70%+)' WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 40 THEN 'Medium Probability (40-70%)' ELSE 'Low Probability (<40%)' END
               )
               SELECT * FROM tiered_pipeline
               ORDER BY 
@@ -6126,7 +6126,7 @@ export class QueryEngine {
                   END as retention_category,
                   COUNT(*) as client_count,
                   SUM(total_projects) as total_projects,
-                  ROUND(AVG(total_projects), DECIMAL(18,2)), 2) as avg_projects_per_client
+                  ROUND(AVG(total_projects), 2) as avg_projects_per_client
                 FROM client_years
                 GROUP BY retention_category
               )
@@ -6335,7 +6335,7 @@ export class QueryEngine {
                 c.total_companies,
                 c.total_revenue,
                 t.top_10_client_revenue,
-                ROUND((t.top_10_client_revenue / NULLIF(c.total_revenue, 0) * 100), DECIMAL(18,2)), 2) as top_10_concentration_pct
+                ROUND((t.top_10_client_revenue / NULLIF(c.total_revenue, 0) * 100), 2) as top_10_concentration_pct
               FROM concentration_metrics c, top_clients t`,
         params: [],
         param_types: [],
@@ -6364,9 +6364,9 @@ export class QueryEngine {
                 "Client",
                 client_revenue,
                 project_count,
-                ROUND((client_revenue / NULLIF(total_revenue, 0) * 100), DECIMAL(18,2)), 2) as pct_of_total_revenue,
+                ROUND((client_revenue / NULLIF(total_revenue, 0) * 100), 2) as pct_of_total_revenue,
                 SUM(client_revenue) OVER (ORDER BY revenue_rank) as cumulative_revenue,
-                ROUND((SUM(client_revenue) OVER (ORDER BY revenue_rank) / NULLIF(total_revenue, 0) * 100), DECIMAL(18,2)), 2) as cumulative_pct
+                ROUND((SUM(client_revenue) OVER (ORDER BY revenue_rank) / NULLIF(total_revenue, 0) * 100), 2) as cumulative_pct
               FROM ranked_clients
               WHERE revenue_rank <= 20
               ORDER BY revenue_rank`,
@@ -6385,13 +6385,13 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
-                  ROUND((COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END), DECIMAL(18,2)) / 
-                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100), DECIMAL(18,2)), 2) as win_rate,
+                  ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
+                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as win_rate,
                   COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END) as closed_deals
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
-                GROUP BY year, quarter
+                GROUP BY YEAR(TRY_CONVERT(DATE, "ConstStartDate")), DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate"))
                 HAVING COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END) >= 3
               ),
               with_lag AS (
@@ -6410,7 +6410,7 @@ export class QueryEngine {
                 win_rate,
                 prev_win_rate,
                 closed_deals,
-                ROUND((win_rate - prev_win_rate), DECIMAL(18,2)), 2) as win_rate_change
+                ROUND((win_rate - prev_win_rate), 2) as win_rate_change
               FROM with_lag
               WHERE win_rate < prev_win_rate 
               AND prev_win_rate < two_quarters_ago_win_rate
@@ -6437,8 +6437,8 @@ export class QueryEngine {
                   COUNT(*) as project_count,
                   SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
                   AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                  ROUND((COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END), DECIMAL(18,2)) / 
-                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100), DECIMAL(18,2)), 2) as win_rate
+                  ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
+                         NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as win_rate
                 FROM "${TABLE}"
                 WHERE CASE 
                   WHEN @p1 = 'category' THEN "RequestCategory" IS NOT NULL
@@ -6446,7 +6446,7 @@ export class QueryEngine {
                   WHEN @p1 = 'company' THEN "Company" IS NOT NULL
                 END
                 {additional_filters}
-                GROUP BY segment_name
+                GROUP BY CASE WHEN @p1 = 'category' THEN "RequestCategory" WHEN @p1 = 'state' THEN "State" WHEN @p1 = 'company' THEN "Company" END
                 HAVING COUNT(*) >= 5
               ),
               averages AS (
@@ -6463,8 +6463,8 @@ export class QueryEngine {
                 s.win_rate,
                 a.overall_avg_value,
                 a.overall_avg_win_rate,
-                ROUND(((s.avg_project_value - a.overall_avg_value) / NULLIF(a.overall_avg_value, 0) * 100), DECIMAL(18,2)), 2) as pct_below_avg_value,
-                ROUND((s.win_rate - a.overall_avg_win_rate), DECIMAL(18,2)), 2) as pct_below_avg_win_rate
+                ROUND(((s.avg_project_value - a.overall_avg_value) / NULLIF(a.overall_avg_value, 0) * 100), 2) as pct_below_avg_value,
+                ROUND((s.win_rate - a.overall_avg_win_rate), 2) as pct_below_avg_win_rate
               FROM segment_performance s, averages a
               WHERE s.avg_project_value < a.overall_avg_value 
               OR s.win_rate < a.overall_avg_win_rate
@@ -13640,6 +13640,48 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           function_name: 'search_description',
           arguments: mergeExtractedHints({ keyword: `%${matchedDescriptionKeyword}%` })
         };
+      } else if (/\b(?:between|compare|comparing)\b.*\b(?:q(?:uarter)?\s*\d)\b.*\b(?:and|vs\.?|versus|to|&)\b.*\b(?:q(?:uarter)?\s*\d)\b/i.test(userQuestion) ||
+                 /\b(?:q(?:uarter)?\s*\d)\b.*\b(?:and|vs\.?|versus|or|&)\b.*\b(?:q(?:uarter)?\s*\d)\b.*\b(?:which|more|most|higher|highest|greater|biggest|largest|less|least|lower|lowest|compare|comparison|had)\b/i.test(userQuestion)) {
+        console.log(`[QueryEngine] QUARTER COMPARISON OVERRIDE: Detected quarter-vs-quarter comparison`);
+        const qMatches = userQuestion.match(/(?:q(?:uarter)?\s*)(\d)/gi) || [];
+        const yearMatches = userQuestion.match(/\b(20\d{2})\b/g) || [];
+        const lastYearMatch = /\blast\s+year\b/i.test(userQuestion);
+        const thisYearMatch = /\bthis\s+year\b|\bcurrent\s+year\b/i.test(userQuestion);
+        const currentYear = new Date().getFullYear();
+        
+        let q1 = 1, q2 = 2;
+        if (qMatches.length >= 2) {
+          q1 = parseInt(qMatches[0].replace(/\D/g, ''));
+          q2 = parseInt(qMatches[1].replace(/\D/g, ''));
+        }
+        
+        let y1 = currentYear, y2 = currentYear;
+        if (lastYearMatch) {
+          y1 = currentYear - 1;
+          y2 = currentYear - 1;
+        } else if (thisYearMatch) {
+          y1 = currentYear;
+          y2 = currentYear;
+        }
+        if (yearMatches.length >= 2) {
+          y1 = parseInt(yearMatches[0]);
+          y2 = parseInt(yearMatches[1]);
+        } else if (yearMatches.length === 1) {
+          y1 = parseInt(yearMatches[0]);
+          y2 = parseInt(yearMatches[0]);
+        }
+        
+        classification = {
+          function_name: 'compare_quarters',
+          arguments: mergeExtractedHints({
+            year1: y1, quarter1: q1,
+            year2: y2, quarter2: q2,
+            _date_already_applied: true,
+            _skip_quarter_preprocess: true
+          })
+        };
+        console.log(`[QueryEngine] Quarter comparison: Q${q1} ${y1} vs Q${q2} ${y2}`);
+
       } else if (/\b(group|grouped|aggregate|aggregated|breakdown|break\s*down)\s+(all\s+)?(projects?\s+)?by\s+(start\s+)?year/i.test(userQuestion) ||
                  /\bby\s+(start\s+)?year\b/i.test(userQuestion) ||
                  /\b(yearly|annual)\s+(summary|breakdown|analysis|report)/i.test(userQuestion) ||
@@ -19052,6 +19094,18 @@ Response (JSON only):`;
       return classification;
     }
 
+    // EARLY EXIT: Skip date/quarter preprocessing for compare_quarters
+    // The pre-classification override already set year1/quarter1/year2/quarter2 correctly
+    if (args._skip_quarter_preprocess && classification.function_name === 'compare_quarters') {
+      console.log(`[preprocessQuery] COMPARE_QUARTERS: Skipping date preprocessing (already configured)`);
+      delete args._skip_quarter_preprocess;
+      delete args.year;
+      delete args.quarter;
+      delete args.start_date;
+      delete args.end_date;
+      return classification;
+    }
+
     // PREPROCESSING: Detect explicit "category" keyword in user question
     // This prevents the safety net from converting categories → project_type
     // when the user explicitly asked for a category
@@ -22379,6 +22433,9 @@ DATABASE CONTEXT (for reference):
       // Display the SQL with @pN placeholders for MS SQL
       const displaySql = convertPlaceholders(executedSql);
       
+      if (functionName === 'compare_quarters' || functionName === 'compare_years') {
+        console.log(`[COMPARE_DEBUG] functionName=${functionName}, sqlParams=${JSON.stringify(sqlParams)}, sql=${sql.substring(0,800)}`);
+      }
       console.log(`\n${'='.repeat(80)}`);
       console.log(`[QueryEngine] EXECUTED SQL QUERY (MS SQL):`);
       console.log(`${'='.repeat(80)}`);
@@ -23801,7 +23858,7 @@ DATABASE CONTEXT (for reference):
     // Handle size case
     if (result.includes("{size_case}")) {
       const sizeCase = this.sizeCalculator.getSqlCaseStatement();
-      result = result.replace("{size_case}", sizeCase);
+      result = result.replaceAll("{size_case}", sizeCase);
     }
 
     // Handle combined filters
@@ -24571,6 +24628,12 @@ DATABASE CONTEXT (for reference):
       // If ORIGINAL sql has {status_filter}, exclude status from additional_filters to prevent duplicate
       if (sql.includes("{status_filter}")) {
         extendedExcludeParams.push('status');
+      }
+      // For compare_quarters/compare_years: year1/quarter1/year2/quarter2 are already parameterized
+      // but preprocessor also sets args.year and args.quarter — exclude them to avoid duplicate filters
+      if (args.year1 !== undefined || args.year2 !== undefined || args.quarter1 !== undefined || args.quarter2 !== undefined) {
+        extendedExcludeParams.push('year', 'quarter', 'year1', 'quarter1', 'year2', 'quarter2');
+        console.log('[buildSql] Excluding year/quarter from additional_filters (compare function detected)');
       }
       // If ORIGINAL sql has {poc_condition}, exclude poc from additional_filters to prevent duplicate
       if (sql.includes("{poc_condition}")) {
