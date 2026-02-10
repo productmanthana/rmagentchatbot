@@ -15809,16 +15809,37 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             const monthMatch = qLow.match(new RegExp(`(${monthNames.join("|")})`, "i"));
             if (monthMatch) {
               const monthNum = monthNames.indexOf(monthMatch[1].toLowerCase()) + 1;
-              console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected comparison query with month=${monthNum}, years=[${year1},${year2}]`);
-              classification.function_name = "compare_months_across_years";
-              classification.arguments.month = monthNum;
-              classification.arguments.years = [year1, year2];
-              delete classification.arguments.start_date;
-              delete classification.arguments.end_date;
-              delete classification.arguments.min_fee;
-              delete classification.arguments.max_fee;
-              delete classification.arguments.year;
-              delete classification.arguments.quarter;
+              const monthName = monthMatch[1].toLowerCase();
+              // Check if month is only tied to one year (e.g., "march 2023 ... all 2025")
+              const monthNearYear1 = new RegExp(monthName + "\\s+" + year1 + "|" + year1 + "\\s+" + monthName, "i").test(qLow);
+              const monthNearYear2 = new RegExp(monthName + "\\s+" + year2 + "|" + year2 + "\\s+" + monthName, "i").test(qLow);
+              const allYear1 = new RegExp("all\\s+(of\\s+)?" + year1 + "|" + year1 + "\\s+all|entire\\s+" + year1 + "|full\\s+" + year1 + "|whole\\s+" + year1, "i").test(qLow);
+              const allYear2 = new RegExp("all\\s+(of\\s+)?" + year2 + "|" + year2 + "\\s+all|entire\\s+" + year2 + "|full\\s+" + year2 + "|whole\\s+" + year2, "i").test(qLow);
+              const isMixedComparison = (allYear1 || allYear2);
+              if (isMixedComparison) {
+                console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Mixed comparison (month=${monthName} for one year, full year for other) -> compare_years`);
+                classification.function_name = "compare_years";
+                classification.arguments.year1 = year1;
+                classification.arguments.year2 = year2;
+                classification.arguments.years = [year1, year2];
+                delete classification.arguments.start_date;
+                delete classification.arguments.end_date;
+                delete classification.arguments.min_fee;
+                delete classification.arguments.max_fee;
+                delete classification.arguments.year;
+                delete classification.arguments.quarter;
+              } else {
+                console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected comparison query with month=${monthNum}, years=[${year1},${year2}]`);
+                classification.function_name = "compare_months_across_years";
+                classification.arguments.month = monthNum;
+                classification.arguments.years = [year1, year2];
+                delete classification.arguments.start_date;
+                delete classification.arguments.end_date;
+                delete classification.arguments.min_fee;
+                delete classification.arguments.max_fee;
+                delete classification.arguments.year;
+                delete classification.arguments.quarter;
+              }
             } else {
               console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Detected year comparison years=[${year1},${year2}] -> compare_years`);
               classification.function_name = "compare_years";
