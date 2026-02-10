@@ -23433,7 +23433,7 @@ DATABASE CONTEXT (for reference):
 
     // Year filter: Filter by YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = year
     // This is used when user asks "this year", "in 2024", etc.
-    if (args.year !== undefined && args.year !== null && !isNaN(Number(args.year)) && !excludeParams.includes('year') && !args._date_already_applied) {
+    if (args.year !== undefined && args.year !== null && !isNaN(Number(args.year)) && !excludeParams.includes('year')) {
       filters.push(`YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex}`);
       params.push(Number(args.year));
       paramIndex++;
