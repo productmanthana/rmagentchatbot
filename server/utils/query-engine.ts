@@ -15834,6 +15834,49 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         }
       }
 
+      // Step 1.7d-2b: PROJECT NAMES IN COMPARISON QUERIES REROUTE
+      // When user asks for "project names" in a year comparison context, reroute from
+      // compare_years (which returns aggregates) to get_projects_by_status (which returns individual records)
+      const asksForNames = /\b(project\s+names?|names?\s+of\s+(the\s+)?projects?|list\s+(of\s+)?(the\s+)?projects?|show\s+(me\s+)?(the\s+)?projects?|which\s+projects?)\b/i.test(userQuestion);
+      const isCompareYearsAgg = classification.function_name === 'compare_years';
+      if (asksForNames && isCompareYearsAgg) {
+        console.log(`[QueryEngine] PROJECT NAMES REROUTE: User asked for project names in comparison query -> rerouting compare_years to get_projects_by_status`);
+        classification.function_name = 'get_projects_by_status';
+        // Convert year1/year2 to date range filters
+        const y1 = classification.arguments.year1;
+        const y2 = classification.arguments.year2;
+        if (y1 && y2) {
+          const minYear = Math.min(y1, y2);
+          const maxYear = Math.max(y1, y2);
+          classification.arguments.start_date = `${minYear}-01-01`;
+          classification.arguments.end_date = `${maxYear}-12-31`;
+          console.log(`[QueryEngine] PROJECT NAMES REROUTE: Set date range ${minYear}-01-01 to ${maxYear}-12-31`);
+        } else if (y1) {
+          classification.arguments.start_date = `${y1}-01-01`;
+          classification.arguments.end_date = `${y1}-12-31`;
+        } else if (y2) {
+          classification.arguments.start_date = `${y2}-01-01`;
+          classification.arguments.end_date = `${y2}-12-31`;
+        }
+        // If user mentioned "winning" or "won", set status filter
+        if (/\b(winning|won|wins|most\s+won)\b/i.test(userQuestion)) {
+          classification.arguments.status = 'Won';
+          console.log(`[QueryEngine] PROJECT NAMES REROUTE: Status set to Won`);
+        }
+        // Keep years from arguments if available for context
+        if (classification.arguments.years) {
+          const yArr = classification.arguments.years;
+          const minY = Math.min(...yArr);
+          const maxY = Math.max(...yArr);
+          classification.arguments.start_date = `${minY}-01-01`;
+          classification.arguments.end_date = `${maxY}-12-31`;
+          console.log(`[QueryEngine] PROJECT NAMES REROUTE: Set date range from years array ${minY}-01-01 to ${maxY}-12-31`);
+        }
+        delete classification.arguments.year1;
+        delete classification.arguments.year2;
+        delete classification.arguments.years;
+      }
+
       // Step 1.7d-3: MONTHLY BREAKDOWN ROUTING GUARD
       // If user asks "which month", "by month", "monthly breakdown" and it's misclassified to ai_fallback
       // route to get_revenue_by_month with preserved filters
