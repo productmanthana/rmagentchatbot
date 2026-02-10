@@ -4629,7 +4629,7 @@ export class QueryEngine {
         param_types: [],
         optional_params: ["year1", "year2", "status", "limit", "poc", "client", "company",
           "client",
-          "organization", "state_code", "categories", "min_fee", "max_fee"],
+          "organization", "state_code", "categories", "min_fee", "max_fee", "mixed_month", "mixed_month_year"],
         chart_type: "bar",
         chart_field: "total_revenue",
       },
@@ -15817,11 +15817,14 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
               const allYear2 = new RegExp("all\\s+(of\\s+)?" + year2 + "|" + year2 + "\\s+all|entire\\s+" + year2 + "|full\\s+" + year2 + "|whole\\s+" + year2, "i").test(qLow);
               const isMixedComparison = (allYear1 || allYear2);
               if (isMixedComparison) {
-                console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Mixed comparison (month=${monthName} for one year, full year for other) -> compare_years`);
+                const monthYear = allYear1 ? year2 : year1;
+                console.log(`[QueryEngine] MULTI-PERIOD COMPARISON GUARD: Mixed comparison (month=${monthName} for ${monthYear}, full year for other) -> compare_years with mixed_month=${monthNum}`);
                 classification.function_name = "compare_years";
                 classification.arguments.year1 = year1;
                 classification.arguments.year2 = year2;
                 classification.arguments.years = [year1, year2];
+                classification.arguments.mixed_month = monthNum;
+                classification.arguments.mixed_month_year = monthYear;
                 delete classification.arguments.start_date;
                 delete classification.arguments.end_date;
                 delete classification.arguments.min_fee;
@@ -23782,6 +23785,17 @@ DATABASE CONTEXT (for reference):
       // If all_years is true, show all years without filtering
       if (args.all_years === true || args.all_years === 'true') {
         result = result.replace("{year_filter}", "");
+      } else if (args.mixed_month && args.mixed_month_year && args.year1 && args.year2) {
+        // Mixed comparison: one year filtered by month, the other full year
+        const fullYear = args.mixed_month_year == args.year1 ? args.year2 : args.year1;
+        const monthYear = args.mixed_month_year;
+        result = result.replace(
+          "{year_filter}",
+          `AND ((YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex}) OR (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex + 1} AND MONTH(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex + 2}))`
+        );
+        params.push(fullYear, monthYear, args.mixed_month);
+        paramIndex += 3;
+        console.log(`[QueryEngine] Mixed month filter applied: full year=${fullYear}, month ${args.mixed_month} of ${monthYear}`);
       } else if (args.year1 && args.year2) {
         // Both years provided
         result = result.replace(
@@ -24938,7 +24952,14 @@ DATABASE CONTEXT (for reference):
 
     // Year filter for compare_years template
     if (result.includes("{year_filter}")) {
-      if (args.year1 && args.year2) {
+      if (args.mixed_month && args.mixed_month_year && args.year1 && args.year2) {
+        const fullYear = args.mixed_month_year == args.year1 ? args.year2 : args.year1;
+        const monthYear = args.mixed_month_year;
+        result = result.replace("{year_filter}", `AND ((YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex}) OR (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex + 1} AND MONTH(TRY_CONVERT(DATE, "ConstStartDate")) = @p${paramIndex + 2}))`);
+        params.push(fullYear, monthYear, args.mixed_month);
+        paramIndex += 3;
+        console.log(`[QueryEngine] Mixed month filter: full year=${fullYear}, month ${args.mixed_month} of ${monthYear}`);
+      } else if (args.year1 && args.year2) {
         result = result.replace("{year_filter}", `AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p${paramIndex}, @p${paramIndex + 1})`);
         params.push(args.year1, args.year2);
         paramIndex += 2;
