@@ -1026,6 +1026,7 @@ export default function ChatPage() {
   const [maximizedTable, setMaximizedTable] = useState<{ messageId: string; data: any[] } | null>(null);
   const [activeTabPerMessage, setActiveTabPerMessage] = useState<Record<string, string>>({});
   const [followUpTabs, setFollowUpTabs] = useState<Record<string, string>>({});
+  const HIDE_FOLLOWUP = true;
   const [dismissedLimitNotification, setDismissedLimitNotification] = useState<Record<string, boolean>>({});
   const [usedSuggestions, setUsedSuggestions] = useState<Record<string, string>>({});  // messageId -> selected suggestion description
   const [showLargeDataAlert, setShowLargeDataAlert] = useState(false);
@@ -4074,9 +4075,8 @@ export default function ChatPage() {
                                   </div>
                                 )}
                                 
-                                {/* Ask Follow-up Question Button - Scrolls to follow-up input */}
-                                {/* Only show when: successful response with actual data rows, not AI analysis, not fallback, not suggested_queries, not disambiguation */}
-                                {message.response.success && 
+                                {/* Ask Follow-up Question Button - Temporarily hidden */}
+                                {!HIDE_FOLLOWUP && message.response.success && 
                                  message.response.data && 
                                  message.response.data.length > 0 && 
                                  message.response.data[0]?.type !== 'ai_analysis' && 
@@ -4350,8 +4350,8 @@ export default function ChatPage() {
                                           </div>
                                         </div>
 
-                                        {/* Follow-up Questions Section - Hide for fallback and AI Analysis responses */}
-                                        {!(message.response.data?.[0]?.is_fallback) && 
+                                        {/* Follow-up Questions Section - Temporarily hidden */}
+                                        {!HIDE_FOLLOWUP && !(message.response.data?.[0]?.is_fallback) && 
                                          message.response.function_name !== 'ai_fallback' && 
                                          message.response.function_name !== 'ai_data_analysis' &&
                                          message.response.data?.[0]?.type !== 'ai_analysis' && (() => {
@@ -4665,8 +4665,8 @@ export default function ChatPage() {
                                         </div>
                                       )}
                                       
-                                      {/* Follow-up Questions in Chart Tab - Simplified */}
-                                      {(message.response.data && message.response.data.length > 0) && (() => {
+                                      {/* Follow-up Questions in Chart Tab - Temporarily hidden */}
+                                      {!HIDE_FOLLOWUP && (message.response.data && message.response.data.length > 0) && (() => {
                                         const userFollowUpCount = (message.aiAnalysisMessages || []).filter(m => m.type === "user").length;
                                         const canAskMore = userFollowUpCount < 3;
                                         return (
@@ -4925,8 +4925,8 @@ export default function ChatPage() {
                                           </div>
                                         )}
 
-                                        {/* Follow-up Questions - Simplified */}
-                                        {(message.response.data && message.response.data.length > 0) && (() => {
+                                        {/* Follow-up Questions - Temporarily hidden */}
+                                        {!HIDE_FOLLOWUP && (message.response.data && message.response.data.length > 0) && (() => {
                                           const userFollowUpCount = (message.aiAnalysisMessages || []).filter(m => m.type === "user").length;
                                           const canAskMore = userFollowUpCount < 3;
                                           return (
@@ -5136,8 +5136,8 @@ export default function ChatPage() {
                                         </div>
                                       </div>
                                       
-                                      {/* Follow-up Questions in Logs Tab - Simplified */}
-                                      {(message.response.data && message.response.data.length > 0) && (() => {
+                                      {/* Follow-up Questions in Logs Tab - Temporarily hidden */}
+                                      {!HIDE_FOLLOWUP && (message.response.data && message.response.data.length > 0) && (() => {
                                         const userFollowUpCount = (message.aiAnalysisMessages || []).filter(m => m.type === "user").length;
                                         const canAskMore = userFollowUpCount < 3;
                                         return (
