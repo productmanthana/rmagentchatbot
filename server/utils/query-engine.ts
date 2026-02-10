@@ -4945,7 +4945,7 @@ export class QueryEngine {
                   AND "ConstStartDate" > '2000-01-01'
                   {year_filter}
                   {additional_filters}
-                GROUP BY "ProjectType", year
+                GROUP BY "ProjectType", YEAR(TRY_CONVERT(DATE, "ConstStartDate"))
               ),
               with_lag AS (
                 SELECT 
