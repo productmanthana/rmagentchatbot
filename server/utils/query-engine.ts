@@ -21270,7 +21270,11 @@ Based on ${aggregates.count} projects:
       'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom',
       'show', 'me', 'give', 'get', 'find', 'list', 'display', 'provide',
       'projects', 'project', 'data', 'records', 'results', 'information',
-      'variance', 'average', 'total', 'count', 'sum', 'statistics', 'stats'
+      'variance', 'average', 'total', 'count', 'sum', 'statistics', 'stats',
+      'revenue', 'revenues', 'potential', 'fee', 'fees', 'highest', 'lowest',
+      'number', 'quarter', 'quarters', 'monthly', 'yearly', 'annually',
+      'won', 'lost', 'leads', 'submitted', 'progress', 'rate', 'rates',
+      'biggest', 'smallest', 'largest', 'best', 'worst', 'top', 'bottom'
     ]);
     
     // EXPLICIT REGION CHECK: Must be first to ensure region queries always bypass
