@@ -3202,13 +3202,34 @@ export default function ChatPage() {
   };
 
   const copyToClipboard = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast({
-      title: "Copied!",
-      description: "Data copied to clipboard",
-    });
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      toast({
+        title: "Copied!",
+        description: "Data copied to clipboard",
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast({
+        title: "Copy failed",
+        description: "Please select and copy manually",
+        variant: "destructive",
+      });
+    }
   };
 
 
@@ -3984,7 +4005,19 @@ export default function ChatPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const questionText = message.response?.question || message.originalQuestion || message.content;
-                                navigator.clipboard.writeText(questionText);
+                                if (navigator.clipboard && window.isSecureContext) {
+                                  navigator.clipboard.writeText(questionText);
+                                } else {
+                                  const ta = document.createElement('textarea');
+                                  ta.value = questionText;
+                                  ta.style.position = 'fixed';
+                                  ta.style.left = '-9999px';
+                                  document.body.appendChild(ta);
+                                  ta.focus();
+                                  ta.select();
+                                  document.execCommand('copy');
+                                  document.body.removeChild(ta);
+                                }
                                 toast({
                                   title: "Copied!",
                                   description: "Question copied to clipboard",
@@ -4335,7 +4368,19 @@ export default function ChatPage() {
                                                 className="text-[#6B7280] hover:text-[#111827] hover:bg-[#E5E7EB]"
                                                 onClick={() => {
                                                   const narrative = message.response?.data?.[0]?.narrative || '';
-                                                  navigator.clipboard.writeText(narrative);
+                                                  if (navigator.clipboard && window.isSecureContext) {
+                                                    navigator.clipboard.writeText(narrative);
+                                                  } else {
+                                                    const ta = document.createElement('textarea');
+                                                    ta.value = narrative;
+                                                    ta.style.position = 'fixed';
+                                                    ta.style.left = '-9999px';
+                                                    document.body.appendChild(ta);
+                                                    ta.focus();
+                                                    ta.select();
+                                                    document.execCommand('copy');
+                                                    document.body.removeChild(ta);
+                                                  }
                                                   toast({
                                                     title: "Copied!",
                                                     description: "AI Analysis copied to clipboard",
@@ -5895,7 +5940,20 @@ export default function ChatPage() {
                           }).join(',')
                         )
                       ];
-                      navigator.clipboard.writeText(csvRows.join('\n'));
+                      const csvText = csvRows.join('\n');
+                      if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(csvText);
+                      } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = csvText;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                      }
                       toast({ title: "Copied!", description: `${data.length} rows copied to clipboard as CSV` });
                     }}
                     className="text-[#3B82F6] border-[#3B82F6]"
