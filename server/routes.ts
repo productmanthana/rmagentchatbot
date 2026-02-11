@@ -207,20 +207,24 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       const response = await engine.processQuery(question, queryExternalDb, previousContext, originalContext);
       console.log(`[API] 🔧 processQuery returned: success=${response.success}, rows=${response.data?.length}, fn=${response.function_name}, is_fallback=${response.data?.[0]?.is_fallback}`);
-      // File-based debug for query analysis
-      const fs = await import('fs');
-      fs.appendFileSync('/tmp/query_debug.log', JSON.stringify({
-        ts: new Date().toISOString(),
-        question,
-        function_name: response.function_name,
-        arguments: response.arguments,
-        sql_query: response.sql_query,
-        sql_params: response.sql_params,
-        row_count: response.data?.length,
-        is_fallback: response.data?.[0]?.is_fallback,
-        success: response.success,
-        message: response.message,
-      }, null, 2) + '\n---\n');
+      try {
+        const fs = await import('fs');
+        const os = await import('os');
+        const path = await import('path');
+        const debugLogPath = path.join(os.tmpdir(), 'query_debug.log');
+        fs.appendFileSync(debugLogPath, JSON.stringify({
+          ts: new Date().toISOString(),
+          question,
+          function_name: response.function_name,
+          arguments: response.arguments,
+          sql_query: response.sql_query,
+          sql_params: response.sql_params,
+          row_count: response.data?.length,
+          is_fallback: response.data?.[0]?.is_fallback,
+          success: response.success,
+          message: response.message,
+        }, null, 2) + '\n---\n');
+      } catch(e) {}
 
       // Generate AI insights automatically for all successful queries
       // Skip for AI analysis responses since they already have narrative
