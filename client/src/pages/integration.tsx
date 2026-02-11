@@ -348,6 +348,10 @@ export default function IntegrationPage() {
                             </Badge>
                           )}
                         </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
+                          <Globe className="h-4 w-4" />
+                          <span>Domain: <span className="font-mono text-gray-800 dark:text-gray-200">{link.allowed_domain}</span></span>
+                        </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
