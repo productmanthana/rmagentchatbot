@@ -25724,11 +25724,11 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     const isSelectStar = existingColumns.length > 10;
     if (!isSelectStar) return data;
 
-    const explicitShowPattern = /\b(?:show|display|include|provide)\s+(?:(?:the|their|me|only|just)\s+)*([^.?!]+?)(?:\.|\?|!|$)/i;
+    const explicitColumnPattern = /\b(?:show|display|include|provide)\s+(?:(?:the|their|me|only|just|top\s+\d+\s+by)\s+)*([^.?!]+?)(?:\.|\?|!|$)/i;
     const withTheirPattern = /\b(?:with\s+their|and\s+their)\s+([^.?!]+?)(?:\.|\?|!|$)/i;
     
     let requestedText = '';
-    const showMatch = userQuestion.match(explicitShowPattern);
+    const showMatch = userQuestion.match(explicitColumnPattern);
     const withMatch = userQuestion.match(withTheirPattern);
     
     if (showMatch) requestedText += ' ' + showMatch[1].toLowerCase();
@@ -25736,16 +25736,28 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     
     if (!requestedText.trim()) return data;
 
-    const filterWords = ['top', 'all', 'projects', 'opportunities', 'results', 'records', 'data', 'me', 'by', 'the', 'a', 'an', 'for', 'in', 'on', 'at', 'to', 'vs', 'versus', 'and', 'or', 'lead', 'submitted', 'won', 'lost', 'qualified', 'hold', 'proposal', 'progress'];
-    const tokens = requestedText.trim().split(/[,\s]+/).filter(t => t && !filterWords.includes(t));
+    const nonColumnWords = ['top', 'all', 'projects', 'opportunities', 'results', 'records',
+      'data', 'me', 'by', 'the', 'a', 'an', 'for', 'in', 'on', 'at', 'to', 'vs', 'versus',
+      'and', 'or', 'lead', 'submitted', 'won', 'lost', 'qualified', 'hold', 'proposal',
+      'progress', 'each', 'every', 'those', 'these', 'them', 'it', 'its', 'is', 'are',
+      'was', 'were', 'be', 'been', 'with', 'from', 'that', 'this', 'which', 'where',
+      'when', 'how', 'what', 'who', 'whom', 'total', 'average', 'avg', 'sum', 'count',
+      'number', 'of', 'breakdown', 'comparison', 'between', 'across', 'over', 'under',
+      'above', 'below', 'than', 'most', 'least', 'highest', 'lowest', 'best', 'worst'];
+    const tokens = requestedText.trim().split(/[,\s]+/).filter(t => t && !nonColumnWords.includes(t));
     
     const columnTerms = new Set<string>();
+    const matchedTokenIndices = new Set<number>();
     for (let i = 0; i < tokens.length; i++) {
+      if (matchedTokenIndices.has(i)) continue;
+      let matched = false;
       for (let len = 3; len >= 1; len--) {
         if (i + len <= tokens.length) {
           const phrase = tokens.slice(i, i + len).join(' ');
           if (SYNONYM_TO_COLUMN[phrase]) {
             columnTerms.add(SYNONYM_TO_COLUMN[phrase]);
+            for (let j = i; j < i + len; j++) matchedTokenIndices.add(j);
+            matched = true;
             break;
           }
         }
@@ -25754,22 +25766,46 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     
     if (columnTerms.size === 0) return data;
 
-    const priorityColumns = Array.from(columnTerms).filter(col => existingColumns.includes(col));
-    if (priorityColumns.length === 0) return data;
+    const unmatchedTokens = tokens.filter((_, i) => !matchedTokenIndices.has(i));
+    const unmatchedRatio = tokens.length > 0 ? unmatchedTokens.length / tokens.length : 0;
+    if (unmatchedRatio > 0.6 && columnTerms.size <= 1) {
+      console.log('[ColumnFilter] Skipping - too many unmatched tokens, likely not an explicit column request:', unmatchedTokens.join(', '));
+      return data;
+    }
 
-    const remainingColumns = existingColumns.filter(col => !priorityColumns.includes(col));
-    const newOrder = [...priorityColumns, ...remainingColumns];
+    const ambiguousColumns = new Set(['Title', 'ConstStartDate']);
+    const hasNonAmbiguousColumns = Array.from(columnTerms).some(col => !ambiguousColumns.has(col));
+    if (!hasNonAmbiguousColumns && columnTerms.size <= 1) {
+      const hasExplicitSignal = /\b(?:only|just)\b/i.test(requestedText) || requestedText.includes(',');
+      if (!hasExplicitSignal) {
+        console.log('[ColumnFilter] Skipping - ambiguous single column without explicit signal');
+        return data;
+      }
+    }
 
-    console.log('[ColumnReorder] User requested columns: ' + priorityColumns.join(', ') + ' moved to front');
+    const requestedColumns = Array.from(columnTerms).filter(col => existingColumns.includes(col));
+    if (requestedColumns.length === 0) return data;
+
+    const contextColumns: string[] = [];
+    const identifierCols = ['Title', 'PID'];
+    for (const idCol of identifierCols) {
+      if (existingColumns.includes(idCol) && !requestedColumns.includes(idCol)) {
+        contextColumns.push(idCol);
+      }
+    }
+
+    const finalColumns = [...contextColumns, ...requestedColumns];
+
+    console.log('[ColumnFilter] Showing only: ' + finalColumns.join(', ') + ' (user requested: ' + requestedColumns.join(', ') + ')');
 
     return data.map(row => {
-      const reordered: Record<string, any> = {};
-      for (const col of newOrder) {
+      const filtered: Record<string, any> = {};
+      for (const col of finalColumns) {
         if (col in row) {
-          reordered[col] = row[col];
+          filtered[col] = row[col];
         }
       }
-      return reordered;
+      return filtered;
     });
   }
 
