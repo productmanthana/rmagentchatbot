@@ -19432,12 +19432,15 @@ Response (JSON only):`;
       const chartConfig = isAIAnalysis ? (results.chart_config || null) : this.generateChartConfig(results.data, functionName);
       const summary = isAIAnalysis ? (results.summary || {}) : this.calculateSummaryStats(results.data);
 
+      // Step 5: Column priority reordering - move user-requested columns to front of data table
+      const reorderedData = this.reorderColumnsByUserRequest(results.data, userQuestion, functionName);
+
       return {
         success: true,
         question: results.question || userQuestion,
         function_name: results.function_name || functionName,
         arguments: cleanedResponseArgs, // Sanitized arguments - year guard applied
-        data: results.data,
+        data: reorderedData,
         row_count: results.row_count || results.data.length, // Preserve AI analysis row_count (aggregates.count)
         summary,
         chart_config: chartConfig,
@@ -25713,7 +25716,64 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     }
   }
 
-  private calculateSummaryStats(data: any[]): SummaryStats {
+  private reorderColumnsByUserRequest(data: any[], userQuestion: string, functionName: string): any[] {
+    if (!data || data.length === 0 || !userQuestion) return data;
+    if (data[0]?.type === 'ai_analysis') return data;
+
+    const existingColumns = Object.keys(data[0]);
+    const isSelectStar = existingColumns.length > 10;
+    if (!isSelectStar) return data;
+
+    const explicitShowPattern = /\b(?:show|display|include|provide)\s+(?:(?:the|their|me|only|just)\s+)*([^.?!]+?)(?:\.|\?|!|$)/i;
+    const withTheirPattern = /\b(?:with\s+their|and\s+their)\s+([^.?!]+?)(?:\.|\?|!|$)/i;
+    
+    let requestedText = '';
+    const showMatch = userQuestion.match(explicitShowPattern);
+    const withMatch = userQuestion.match(withTheirPattern);
+    
+    if (showMatch) requestedText += ' ' + showMatch[1].toLowerCase();
+    if (withMatch) requestedText += ' ' + withMatch[1].toLowerCase();
+    
+    if (!requestedText.trim()) return data;
+
+    const filterWords = ['top', 'all', 'projects', 'opportunities', 'results', 'records', 'data', 'me', 'by', 'the', 'a', 'an', 'for', 'in', 'on', 'at', 'to', 'vs', 'versus', 'and', 'or', 'lead', 'submitted', 'won', 'lost', 'qualified', 'hold', 'proposal', 'progress'];
+    const tokens = requestedText.trim().split(/[,\s]+/).filter(t => t && !filterWords.includes(t));
+    
+    const columnTerms = new Set<string>();
+    for (let i = 0; i < tokens.length; i++) {
+      for (let len = 3; len >= 1; len--) {
+        if (i + len <= tokens.length) {
+          const phrase = tokens.slice(i, i + len).join(' ');
+          if (SYNONYM_TO_COLUMN[phrase]) {
+            columnTerms.add(SYNONYM_TO_COLUMN[phrase]);
+            break;
+          }
+        }
+      }
+    }
+    
+    if (columnTerms.size === 0) return data;
+
+    const priorityColumns = Array.from(columnTerms).filter(col => existingColumns.includes(col));
+    if (priorityColumns.length === 0) return data;
+
+    const remainingColumns = existingColumns.filter(col => !priorityColumns.includes(col));
+    const newOrder = [...priorityColumns, ...remainingColumns];
+
+    console.log('[ColumnReorder] User requested columns: ' + priorityColumns.join(', ') + ' moved to front');
+
+    return data.map(row => {
+      const reordered: Record<string, any> = {};
+      for (const col of newOrder) {
+        if (col in row) {
+          reordered[col] = row[col];
+        }
+      }
+      return reordered;
+    });
+  }
+
+    private calculateSummaryStats(data: any[]): SummaryStats {
     if (!data || data.length === 0) return {};
 
     const stats: SummaryStats = {
