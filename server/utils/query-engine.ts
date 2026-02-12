@@ -744,6 +744,43 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
       delete normalized.divisions;
     }
   }
+
+  // 9b. Client/Organization sector reclassification
+  // When LLM puts a known sector (e.g. "Mission Critical") into client or organization,
+  // reclassify it as category (RequestCategory) since sectors are not client names
+  const clientVal = (normalized.client || '').toLowerCase().trim();
+  const orgVal = (normalized.organization || '').toLowerCase().trim();
+  if (clientVal && knownSectors.includes(clientVal) && !normalized.category && !normalized.categories && !normalized._category_already_applied) {
+    const properName = normalized.client.charAt(0).toUpperCase() + normalized.client.slice(1);
+    const sectorCapitalize: Record<string, string> = {
+      'mission critical': 'Mission Critical', 'mixed use': 'Mixed Use',
+      'disaster relief and recovery': 'Disaster Relief and Recovery',
+      'education and institutions': 'Education and Institutions',
+      'humanitarian and environmental': 'Humanitarian and Environmental',
+      'water / wastewater': 'Water / Wastewater'
+    };
+    const catValue = sectorCapitalize[clientVal] || properName;
+    console.log(`[Normalize] RECLASSIFY: client "${normalized.client}" → category (known sector → RequestCategory)`);
+    normalized.category = catValue;
+    normalized.categories = [catValue];
+    normalized._category_already_applied = true;
+    delete normalized.client;
+  }
+  if (orgVal && knownSectors.includes(orgVal) && !normalized.category && !normalized.categories && !normalized._category_already_applied) {
+    const sectorCapitalize: Record<string, string> = {
+      'mission critical': 'Mission Critical', 'mixed use': 'Mixed Use',
+      'disaster relief and recovery': 'Disaster Relief and Recovery',
+      'education and institutions': 'Education and Institutions',
+      'humanitarian and environmental': 'Humanitarian and Environmental',
+      'water / wastewater': 'Water / Wastewater'
+    };
+    const catValue = sectorCapitalize[orgVal] || normalized.organization.charAt(0).toUpperCase() + normalized.organization.slice(1);
+    console.log(`[Normalize] RECLASSIFY: organization "${normalized.organization}" → category (known sector → RequestCategory)`);
+    normalized.category = catValue;
+    normalized.categories = [catValue];
+    normalized._category_already_applied = true;
+    delete normalized.organization;
+  }
   
   // 10. Department normalization: department_name, departments → department + departments
   if (normalized.department_name && !normalized.department) {
@@ -1123,10 +1160,10 @@ function cleanupGarbageValues(args: Record<string, any>, userQuestion: string): 
   
   // HALLUCINATED CATEGORY CLEANUP: If the LLM added a category/categories but the user
   // didnt explicitly mention category keywords, remove it to prevent false filtering
-  const categoryKeywords = /\b(category|categories|sector|sectors|transportation|healthcare|aviation|infrastructure|water|education)\b/i;
+  const categoryKeywords = /\b(category|categories|sector|sectors|transportation|healthcare|aviation|infrastructure|water|education|mission\s*critical|opportunities?|energy|industrial|hospitality|residential|commercial)\b/i;
   const hasExplicitCategoryInQuestion = categoryKeywords.test(userQuestion);
   
-  if (!hasExplicitCategoryInQuestion && !args._explicit_category) {
+  if (!hasExplicitCategoryInQuestion && !args._explicit_category && !args._category_already_applied) {
     if (cleaned.category) {
       console.log(`[QueryEngine] HALLUCINATED CATEGORY CLEANUP: Removing category="${cleaned.category}" (not explicitly mentioned)`);
       delete cleaned.category;
@@ -14865,7 +14902,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       const hasCategoryKeyword = /\b(categor(?:y|ies)|sectors?)\b/i.test(questionLower);
       const hasExplicitCategoryFlag = classification.arguments._explicit_category === true;
       
-      if (!hasCategoryKeyword && !hasExplicitCategoryFlag && classification.arguments.categories) {
+      if (!hasCategoryKeyword && !hasExplicitCategoryFlag && !classification.arguments._category_already_applied && classification.arguments.categories) {
         const args = classification.arguments;
         const categoriesArray = Array.isArray(args.categories) ? args.categories : [args.categories];
         
@@ -16744,6 +16781,7 @@ Response (JSON only):`;
       // DEBUG: Log state right before preprocessQuery
       console.log(`[QueryEngine] 🔍 PRE-PREPROCESS: classification.arguments.company = "${classification.arguments?.company}", _company_already_applied = ${classification.arguments?._company_already_applied}`);
       console.log(`[QueryEngine] 🔍 PRE-PREPROCESS: states=${JSON.stringify(classification.arguments?.states)}, regions=${JSON.stringify(classification.arguments?.regions)}, poc="${classification.arguments?.poc}", keyword="${classification.arguments?.keyword}"`);
+      console.log(`[QueryEngine] 🔍 PRE-PREPROCESS: project_type="${classification.arguments?.project_type}", _project_type_explicit=${classification.arguments?._project_type_explicit}`);
       
       // Step 2: Preprocess to handle ALL calculations (dates, numbers, limits)
       const processedClassification = await this.preprocessQuery(
@@ -16773,7 +16811,7 @@ Response (JSON only):`;
           'mission critical': 'Mission Critical', 'disaster': 'Disaster Recovery',
           'humanitarian': 'Humanitarian', 'other': 'Other'
         };
-        const sectorRx = /(education|healthcare|transportation|aviation|commercial|corporate|civic|entertainment|energy|corrections|cultural|industrial|mixed\s*use|multifamily|residential|sports|waterfront|hospitality|water|building|buildings|mission\s*critical|disaster|humanitarian|other)\s+(?:sector\s+)?projects?/i;
+        const sectorRx = /(education|healthcare|transportation|aviation|commercial|corporate|civic|entertainment|energy|corrections|cultural|industrial|mixed\s*use|multifamily|residential|sports|waterfront|hospitality|water|building|buildings|mission\s*critical|disaster|humanitarian|other)\s+(?:sector\s+)?(?:projects?|opportunities?|deals?)/i;
         const sectorMatch = userQuestion.match(sectorRx);
         if (sectorMatch) {
           const term = sectorMatch[1].toLowerCase().replace(/\s+/g, ' ');
@@ -16794,6 +16832,45 @@ Response (JSON only):`;
         console.log(`[QueryEngine] 🏗️ POST-PREPROCESS CATEGORY LOCK: functionName=${functionName}, category="${args.category}"`);
       }
       
+      // ═══════════════════════════════════════════════════════════════
+      // SECTOR + OPPORTUNITIES DETECTION (all functions):
+      // When question mentions a known sector with "opportunities/deals",
+      // ensure it becomes a category (RequestCategory) filter
+      // ═══════════════════════════════════════════════════════════════
+      if (!args.category && !args.categories && !args._category_already_applied) {
+        const sectorOpportunityRx = /\b(education|healthcare|transportation|aviation|commercial|corporate|civic|entertainment|energy|corrections|cultural|industrial|mixed\s*use|multifamily|residential|sports|waterfront|hospitality|water|buildings?|mission\s*critical|disaster|humanitarian|other)\b.*?\b(?:opportunities?|deals?)\b|\b(?:opportunities?|deals?)\b.*?\b(education|healthcare|transportation|aviation|commercial|corporate|civic|entertainment|energy|corrections|cultural|industrial|mixed\s*use|multifamily|residential|sports|waterfront|hospitality|water|buildings?|mission\s*critical|disaster|humanitarian|other)\b/i;
+        const sectorOppMatch = userQuestion.match(sectorOpportunityRx);
+        if (sectorOppMatch) {
+          const rawSector = (sectorOppMatch[1] || sectorOppMatch[2]).toLowerCase().replace(/\s+/g, ' ');
+          const sectorMap: Record<string, string> = {
+            'education': 'Education', 'healthcare': 'Healthcare', 'transportation': 'Transportation',
+            'aviation': 'Aviation', 'commercial': 'Commercial', 'corporate': 'Corporate',
+            'civic': 'Civic', 'entertainment': 'Entertainment', 'energy': 'Energy',
+            'corrections': 'Corrections', 'cultural': 'Cultural', 'industrial': 'Industrial',
+            'mixed use': 'Mixed Use', 'multifamily': 'Multifamily', 'residential': 'Residential',
+            'sports': 'Sports', 'waterfront': 'Waterfront', 'hospitality': 'Hospitality',
+            'water': 'Water', 'building': 'Buildings', 'buildings': 'Buildings',
+            'mission critical': 'Mission Critical', 'disaster': 'Disaster Recovery',
+            'humanitarian': 'Humanitarian', 'other': 'Other'
+          };
+          const catValue = sectorMap[rawSector] || rawSector.charAt(0).toUpperCase() + rawSector.slice(1);
+          console.log(`[QueryEngine] 🏷️ SECTOR+OPPORTUNITIES: Detected "${catValue}" as RequestCategory from question`);
+          args.category = catValue;
+          args.categories = [catValue];
+          args._category_already_applied = true;
+          if (args.organization && args.organization.toLowerCase().trim() === rawSector) {
+            delete args.organization;
+            delete args._organization_override;
+            console.log(`[QueryEngine] 🏷️ SECTOR+OPPORTUNITIES: Removed organization="${catValue}" (now category)`);
+          }
+          if (args.project_type && args.project_type.toLowerCase().trim() === rawSector) {
+            delete args.project_type;
+            delete args._project_type_explicit;
+            console.log(`[QueryEngine] 🏷️ SECTOR+OPPORTUNITIES: Removed project_type="${catValue}" (now category)`);
+          }
+        }
+      }
+      
       // DEBUG: Log args right after preprocessQuery
       console.log(`[QueryEngine] 🔍 POST-PREPROCESS args: company="${args.company}", keyword="${args.keyword}", _company_already_applied=${args._company_already_applied}`);
       args._debug_post_preprocess = { company: args.company, keyword: args.keyword, category: args.category, poc: args.poc, states: args.states, regions: args.regions, _company_already_applied: args._company_already_applied };
@@ -16802,7 +16879,8 @@ Response (JSON only):`;
       // HEAD CHEF: Unified entity resolution (replaces scattered logic)
       // Only run if no entity is already locked AND no disambiguation pre-applied
       // ═══════════════════════════════════════════════════════════════
-      args._debug_pre_headchef = { poc: args.poc, _marker: "MAIN_FLOW", _head_chef_done: args._head_chef_done, company: args.company, _company_already_applied: args._company_already_applied, _poc_already_applied: args._poc_already_applied };
+      args._debug_pre_headchef = { _marker: "MAIN_FLOW", company: args.company };
+      console.log(`[QueryEngine] 🔍 PRE-HEADCHEF: project_type="${args.project_type}", _project_type_explicit=${args._project_type_explicit}, division="${args.division}", categories=${JSON.stringify(args.categories)}`);
       const hasLockedEntity = args._client_already_applied || args._company_already_applied || args._poc_already_applied || args._title_already_applied || args._category_already_applied || args._keyword_already_applied;
       args._poc_trace_0 = args.poc;
       const hasPreAppliedDisambiguation = Object.keys(preAppliedFilters).some(k => !k.startsWith('_'));
