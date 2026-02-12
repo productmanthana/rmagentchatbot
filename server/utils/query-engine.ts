@@ -3482,7 +3482,8 @@ export class QueryEngine {
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
               AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_size,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              ROUND(SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) * 100.0 / NULLIF(SUM(SUM(CAST(NULLIF("Fee", '') AS NUMERIC))) OVER(), 0), 1) as pct_of_total_pipeline
               FROM "${TABLE}"
               WHERE "Company" IS NOT NULL AND "Company" != ''
               {date_filter}
@@ -7091,7 +7092,7 @@ export class QueryEngine {
 
       {
         name: "compare_companies",
-        description: "AGGREGATE/GROUP by company - ranks ALL companies (OPCOs) by total revenue, project count, average size, and win rates. Use for: 'which company has most projects', 'which company has most submitted projects', 'top companies by revenue', 'which company contributes most', 'breakdown by company', 'aggregate by company', 'what company has highest total fee', 'revenue by company', 'rank all OPCOs', 'company performance comparison', 'historical win rate for each OPCO', 'win rate by company', 'which OPCO has best win rate'. CRITICAL: User asking 'which company' (without naming specific companies) = aggregation = use THIS function. DO NOT extract company names from previous results. IMPORTANT: When filtering AGGREGATED company results by win rate (e.g., 'which have win rate 40%', 'companies with 50% win rate'), continue using THIS function with min_win/max_win parameters - do NOT switch to individual project queries. Supports OPTIONAL FILTERS: fee ranges (min_fee, max_fee), win rate ranges (min_win, max_win), status (e.g., 'submitted', 'won', 'lead'), date ranges, categories, tags, state. This is an AGGREGATION query, NOT a filter. Returns all companies sorted by revenue.",
+        description: "AGGREGATE/GROUP by company - ranks ALL companies (OPCOs) by total revenue, project count, average size, win rates, and percentage of total pipeline. Use for: 'which company has most projects', 'which company has most submitted projects', 'top companies by revenue', 'which company contributes most', 'breakdown by company', 'aggregate by company', 'what company has highest total fee', 'revenue by company', 'rank all OPCOs', 'company performance comparison', 'historical win rate for each OPCO', 'win rate by company', 'which OPCO has best win rate', 'percentage of total pipeline', 'share of pipeline by company', 'what percentage does each company represent'. CRITICAL: User asking 'which company' (without naming specific companies) = aggregation = use THIS function. DO NOT extract company names from previous results. IMPORTANT: When filtering AGGREGATED company results by win rate (e.g., 'which have win rate 40%', 'companies with 50% win rate'), continue using THIS function with min_win/max_win parameters - do NOT switch to individual project queries. Supports OPTIONAL FILTERS: fee ranges (min_fee, max_fee), win rate ranges (min_win, max_win), status (e.g., 'submitted', 'won', 'lead'), date ranges, categories, tags, state. This is an AGGREGATION query, NOT a filter. Returns all companies sorted by revenue with pct_of_total_pipeline showing each company's share.",
         parameters: {
           type: "object",
           properties: {
