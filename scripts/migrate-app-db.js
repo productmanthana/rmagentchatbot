@@ -18,10 +18,11 @@ const sql = require('mssql');
 
 // ---- EDIT THESE CONNECTION STRINGS ----
 
+// SOURCE: AWS RDS (old location)
 const SOURCE_CONNECTION = process.env.APP_MSSQL_URL || 'Server=rmchatbot.c4f40eea0sit.us-east-1.rds.amazonaws.com,1433;Database=rmchatbot_app;User Id=admin;Password=rmone8723;Encrypt=true;TrustServerCertificate=true;';
 
-// ---- UPDATE THIS WITH YOUR WINDOWS VM SQL SERVER DETAILS ----
-const TARGET_CONNECTION = process.env.TARGET_MSSQL_URL || 'Server=YOUR_WINDOWS_VM_IP;Database=rmchatbot_app;User Id=sa;Password=YOUR_VM_PASSWORD;Encrypt=true;TrustServerCertificate=true;';
+// TARGET: Windows VM (new location)
+const TARGET_CONNECTION = process.env.TARGET_MSSQL_URL || 'Server=AWS-VM36,1433;Database=rmchatbot;User Id=CB-SA-App;Password=P@$$word@321;TrustServerCertificate=true;Encrypt=true;';
 
 // ---- DO NOT EDIT BELOW THIS LINE ----
 
