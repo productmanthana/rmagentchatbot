@@ -643,7 +643,10 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
   
   // 6c. Explicit percentage range extraction: "between 60 and 90%", "60% to 90%", "60 to 90 percent"
   // Safety net for when the LLM fails to extract explicit numeric win percentage ranges
-  if (originalQuestion && normalized.min_win === undefined && normalized.max_win === undefined) {
+  // SKIP for ai_data_analysis: "X% of total value" is about share, not win rate
+  const isAnalysisFunction = normalized.analysis_question || (normalized as any)._function_name === 'ai_data_analysis';
+  const hasValueShareContext = originalQuestion ? /\b\d+\s*%\s*of\s+(our\s+)?(total|overall|entire|all|combined|aggregate|pipeline|revenue|fee|value)/i.test(originalQuestion) : false;
+  if (originalQuestion && normalized.min_win === undefined && normalized.max_win === undefined && !isAnalysisFunction && !hasValueShareContext) {
     const qLower = originalQuestion.toLowerCase();
     const hasWinContext = /\b(chance|probability|likelihood|odds|win\s*%|win\s*rate|chance\s*of\s*success|winning|predicted|opportunities|opportunity|percent|%)\b/i.test(qLower);
     
@@ -16167,10 +16170,11 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       // Step 1.7d-2b: MULTI-PERIOD COMPARISON GUARD
       // Detect queries comparing revenue/data across different years/months
       // e.g., "march 2020 revenue with 2023 revenue", "compare 2020 and 2023 revenue"
+      // SKIP if LLM already classified as ai_data_analysis (complex analytical queries should not be overridden)
       {
         const qLow = userQuestion.toLowerCase();
         const multiYearMatch = qLow.match(/(\d{4}).*(?:with|and|vs|versus|compared?\s+to|to)\s+.*?(\d{4})/);
-        if (multiYearMatch) {
+        if (multiYearMatch && classification.function_name !== 'ai_data_analysis') {
           const year1 = parseInt(multiYearMatch[1]);
           const year2 = parseInt(multiYearMatch[2]);
           if (year1 !== year2 && year1 >= 2000 && year1 <= 2030 && year2 >= 2000 && year2 <= 2030) {
@@ -22900,11 +22904,13 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           const operator = fix.operator || 'LIKE';
           const filterValue = operator === 'LIKE' ? `%${fix.value}%` : fix.value;
           
+          const groupByIndex = correctedSql.indexOf('GROUP BY');
           const orderByIndex = correctedSql.indexOf('ORDER BY');
-          if (orderByIndex > -1) {
-            correctedSql = correctedSql.substring(0, orderByIndex) + 
+          const insertBeforeIndex = groupByIndex > -1 ? groupByIndex : (orderByIndex > -1 ? orderByIndex : -1);
+          if (insertBeforeIndex > -1) {
+            correctedSql = correctedSql.substring(0, insertBeforeIndex) + 
               `AND "${fix.column}" ${operator} ${paramPlaceholder}\n              ` + 
-              correctedSql.substring(orderByIndex);
+              correctedSql.substring(insertBeforeIndex);
           } else {
             correctedSql += `\nAND "${fix.column}" ${operator} ${paramPlaceholder}`;
           }
