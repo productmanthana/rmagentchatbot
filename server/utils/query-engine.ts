@@ -481,9 +481,16 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
       normalized.status = PENDING_STATUS_VALUES;
     }
     // Fallback: Try cache-based resolution for unknown status synonyms
+    // GUARD: Skip for known valid status values - "Lead" should stay as "Lead", not become "Qualified Lead"
     else if (cacheResolved && cacheResolved.length > 0 && cacheResolved[0] !== statusLower) {
-      console.log(`[Normalize] CACHE-BACKED STATUS: "${normalized.status}" → ${JSON.stringify(cacheResolved)}`);
-      normalized.status = cacheResolved;
+      const KNOWN_VALID_STATUSES = new Set(['lead', 'won', 'lost', 'submitted', 'in progress', 'proposal development', 
+        'qualified lead', 'hold', 'no go', 'cancelled', 'awarded', 'declined', 'rejected', 'pending']);
+      if (!KNOWN_VALID_STATUSES.has(statusLower)) {
+        console.log(`[Normalize] CACHE-BACKED STATUS: "${normalized.status}" → ${JSON.stringify(cacheResolved)}`);
+        normalized.status = cacheResolved;
+      } else {
+        console.log(`[Normalize] CACHE-BACKED STATUS SKIPPED: "${normalized.status}" is a known valid status, keeping as-is`);
+      }
     }
   }
   
@@ -549,6 +556,31 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     }
   }
   
+  // 5b. STATUS VS EXTRACTION: When user says "X vs Y" with status values, ensure BOTH are in the status array
+  // This catches cases where the LLM only extracts one status from "Lead vs Submitted" queries
+  if (originalQuestion) {
+    const STATUS_MAP_VS: Record<string, string> = {
+      'won': 'Won', 'lost': 'Lost', 'lead': 'Lead', 'submitted': 'Submitted',
+      'in progress': 'In Progress', 'proposal development': 'Proposal Development',
+      'qualified lead': 'Qualified Lead', 'hold': 'Hold', 'no go': 'No Go', 'cancelled': 'Cancelled',
+      'awarded': 'Won', 'declined': 'Lost', 'rejected': 'Lost'
+    };
+    const vsMatch = originalQuestion.match(/\b(Won|Lost|Lead|Submitted|In Progress|Proposal Development|Qualified Lead|Hold|No Go|Cancelled|Awarded|Declined|Rejected)\s+(?:vs\.?|versus|compared to|and)\s+(Won|Lost|Lead|Submitted|In Progress|Proposal Development|Qualified Lead|Hold|No Go|Cancelled|Awarded|Declined|Rejected)\b/i);
+    if (vsMatch) {
+      const status1 = STATUS_MAP_VS[vsMatch[1].toLowerCase()] || vsMatch[1];
+      const status2 = STATUS_MAP_VS[vsMatch[2].toLowerCase()] || vsMatch[2];
+      const currentStatuses = Array.isArray(normalized.status) ? normalized.status.map((s: string) => s.toLowerCase()) : 
+                              (normalized.status ? [normalized.status.toLowerCase()] : []);
+      const neededStatuses = [status1, status2];
+      const missing = neededStatuses.filter(s => !currentStatuses.includes(s.toLowerCase()));
+      if (missing.length > 0) {
+        const existingArray = Array.isArray(normalized.status) ? normalized.status : (normalized.status ? [normalized.status] : []);
+        normalized.status = [...new Set([...existingArray, ...missing])];
+        console.log(`[Normalize] STATUS VS EXTRACTION: Detected "${vsMatch[1]} vs ${vsMatch[2]}" → status: ${JSON.stringify(normalized.status)}`);
+      }
+    }
+  }
+
   // 6. Fee normalization: fee → min_fee or max_fee based on context
   if (normalized.fee && typeof normalized.fee === 'number') {
     if (!normalized.min_fee && !normalized.max_fee) {
@@ -4314,7 +4346,9 @@ export class QueryEngine {
       get_status_breakdown: {
         sql: `SELECT "StatusChoice",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
+              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "StatusChoice" IS NOT NULL AND "StatusChoice" != ''
               {date_filter}
@@ -4325,7 +4359,7 @@ export class QueryEngine {
         param_types: [],
         optional_params: ["start_date", "end_date", "start_year", "end_year", "size", "status", "state_code", "company",
           "client",
-          "organization", "client", "categories", "min_fee", "max_fee", "min_win", "max_win"],
+          "organization", "client", "categories", "project_type", "min_fee", "max_fee", "min_win", "max_win"],
         chart_type: "pie",
         chart_field: "project_count",
       },
@@ -7562,10 +7596,12 @@ export class QueryEngine {
 
       {
         name: "get_status_breakdown",
-        description: "Get AGGREGATED breakdown/analysis by status - GROUPS projects by status and shows totals. Use for: 'group by status', 'group projects by status', 'breakdown by status', 'which status has most projects', 'which status contributes most revenue', 'aggregate by status', 'total fees by status', 'what status has highest total', 'revenue by status', 'categorize by status'. Supports OPTIONAL FILTERS: client, company, state, categories, date range. This is an AGGREGATION query, NOT a filter.",
+        description: "Get AGGREGATED breakdown/analysis by status - GROUPS projects by status and shows totals including average win rate. Use for: 'group by status', 'group projects by status', 'breakdown by status', 'which status has most projects', 'which status contributes most revenue', 'aggregate by status', 'total fees by status', 'what status has highest total', 'revenue by status', 'categorize by status', 'show total Fee by Status', 'compare Lead vs Submitted'. Returns: StatusChoice, project_count, total_value, avg_project_value, avg_win_rate. Supports OPTIONAL FILTERS: status (array for specific statuses like ['Lead','Submitted']), project_type, client, company, state, categories, date range. CRITICAL: When user says 'Lead vs Submitted' or 'Won vs Lost', extract ALL mentioned statuses as an array in the status parameter.",
         parameters: {
           type: "object",
           properties: {
+            status: { type: "array", items: { type: "string" }, description: "Optional: Array of specific statuses to include in breakdown (e.g., ['Lead', 'Submitted'] for 'Lead vs Submitted'). When user says 'X vs Y', extract BOTH statuses." },
+            project_type: { type: "string", description: "Optional: Filter by project type (e.g., 'Hospitals', 'Schools', 'Bridges')" },
             client: { type: "string", description: "Optional: Filter by client ID" },
             company: { type: "string", description: "Optional: Filter by company/OPCO" },
             state_code: { type: "string", description: "Optional: Filter by state" },
@@ -23541,23 +23577,22 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
     // Status filter - apply in additional_filters for templates that don't have {status_filter} placeholder
     // Skip if 'status' is in excludeParams (meaning template has its own {status_filter})
+    // Uses exact matching (=) for well-defined status values to prevent "Lead" matching "Qualified Lead"
     if (args.status && !excludeParams.includes('status')) {
       if (Array.isArray(args.status) && args.status.length > 0) {
-        // Handle multiple status values: (status LIKE val1 OR status LIKE val2)
         const statusConditions = args.status.map((status: string) => {
-          const condition = `"StatusChoice" LIKE @p${paramIndex}`;
-          params.push(`%${status}%`);
+          const condition = `"StatusChoice" = @p${paramIndex}`;
+          params.push(status);
           paramIndex++;
           return condition;
         });
         filters.push(`(${statusConditions.join(' OR ')})`);
-        console.log(`[Filter] Status filter (multiple): ${args.status.join(', ')}`);
+        console.log(`[Filter] Status filter (multiple, exact match): ${args.status.join(', ')}`);
       } else if (!Array.isArray(args.status)) {
-        // Single status value
-        filters.push(`"StatusChoice" LIKE @p${paramIndex}`);
-        params.push(`%${args.status}%`);
+        filters.push(`"StatusChoice" = @p${paramIndex}`);
+        params.push(args.status);
         paramIndex++;
-        console.log(`[Filter] Status filter: ${args.status}`);
+        console.log(`[Filter] Status filter (exact match): ${args.status}`);
       }
     }
 
