@@ -20291,6 +20291,20 @@ Response (JSON only):`;
       }
     }
 
+    // GUARD: Remove spurious start_date when user only asked "before [date]" / "prior to [date]" / "until [date]"
+    // LLM often incorrectly adds start_date when only end_date is implied
+    if (args.start_date && args.end_date) {
+      const beforePattern = /\b(?:before|prior\s+to|until|up\s+to|by|no\s+later\s+than|starting\s+before|ending\s+(?:before|by))\s+/i;
+      const hasBeforeIntent = beforePattern.test(userQuestion);
+      const hasExplicitStartDate = /\b(?:after|from|since|starting\s+(?:from|after|in)|between|beginning)\s+/i.test(userQuestion);
+      const hasRangeIntent = /\b(?:between|from\s+.+\s+to\b|in\s+\d{4}\b)/i.test(userQuestion);
+      
+      if (hasBeforeIntent && !hasExplicitStartDate && !hasRangeIntent) {
+        console.log(`[Before-Date Guard] Removing spurious start_date="${args.start_date}" - user only asked "before ${args.end_date}"`);
+        delete args.start_date;
+      }
+    }
+
     // GUARD: Remove ALL limits unless user explicitly requested a specific count
     // Explicit limit patterns: "top 10", "first 5", "last 3", "bottom 5", "only 1", "single", "one project"
     // Also ordinals: "second largest", "third best", "5th biggest"
