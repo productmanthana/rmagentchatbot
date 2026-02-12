@@ -22912,7 +22912,7 @@ DATABASE CONTEXT (for reference):
         args.categories = pluralArray;
       }
       
-   // Remove singular form after processing
+      delete args.category; // Remove singular form after processing
     }
 
     // tag → tags (merge if both exist)
