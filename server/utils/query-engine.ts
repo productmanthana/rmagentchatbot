@@ -10127,12 +10127,21 @@ Return ONLY valid JSON, no explanation.`;
       /\b(?:from|by|for|at)\s+(Company\s+[A-Za-z]+)\b/i,
       /\b(Company\s+[A-Za-z]+)\b/i,
     ];
+    // Post-filter: strip trailing noise words that get captured (e.g., "company and" → skip)
+    const companyNoiseWords = /^(and|or|the|each|every|all|by|for|of|with|per|in|from|their|its|our|what|how|does|do|is|are|which)$/i;
     
     for (const pattern of companyPatterns) {
       const match = userQuestion.match(pattern);
       if (match && match[1]) {
-        extractedContext.company = match[1].trim();
-        console.log(`[ExtractContext] 🏢 Detected company: "${extractedContext.company}"`);
+        const compVal = match[1].trim();
+        // Skip if the captured "company name" is just the word "company" + a noise word
+        const compParts = compVal.split(/\s+/);
+        if (compParts.length === 2 && compParts[0].toLowerCase() === 'company' && companyNoiseWords.test(compParts[1])) {
+          console.log(`[ExtractContext] ⚠ Skipping false company match: "${compVal}" (noise word after column keyword)`);
+        } else {
+          extractedContext.company = compVal;
+          console.log(`[ExtractContext] 🏢 Detected company: "${extractedContext.company}"`);
+        }
         break;
       }
     }
@@ -17503,6 +17512,18 @@ Response (JSON only):`;
         if (value && typeof value === 'string' && !args._smart_detection_done && !args[mapping.alreadyAppliedFlag]) {
           activeEntity = { paramName: mapping.paramName, value, displayName: mapping.displayName };
           break;
+        }
+      }
+      
+      // COLUMN KEYWORD GUARD: Strip entity values that are actually column keywords
+      // (e.g., "company and", "client", "each company") before disambiguation check
+      if (activeEntity) {
+        const colKeywords = ['company', 'companies', 'client', 'clients', 'poc', 'point of contact', 'status', 'category', 'type', 'project type', 'division', 'department', 'module'];
+        const cleaned = activeEntity.value.replace(/\b(and|or|the|each|every|all|by|for|of|with|per|in|from|their|its|our|what|how|does|do|is|are|which)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (colKeywords.includes(cleaned)) {
+          console.log(`[QueryEngine] ⚠ GENERALIZED GUARD: Entity "${activeEntity.value}" is a column keyword (cleaned: "${cleaned}"), skipping disambiguation`);
+          delete args[activeEntity.paramName];
+          activeEntity = null;
         }
       }
       
