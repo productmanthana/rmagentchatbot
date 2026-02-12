@@ -2303,7 +2303,7 @@ export class QueryEngine {
     
     const columnMap: Record<string, string> = {
       'client': 'Client',
-      'organization': 'Client',
+      'organization': 'Company',
       'company': 'Company',
       'POC': 'PointOfContact',
       'poc': 'PointOfContact',
@@ -18443,6 +18443,12 @@ Response (JSON only):`;
               (args.status && (!Array.isArray(args.status) || args.status.length > 0)) ? (Array.isArray(args.status) ? `Status: ${args.status.join(', ')}` : `Status: ${args.status}`) : null,
               args.start_date && args.end_date ? `Date: ${args.start_date} to ${args.end_date}` : null,
               args.year ? `Year: ${args.year}` : null,
+              (args.division || (args.divisions && args.divisions.length > 0)) ? `Division: ${args.division || args.divisions.join(', ')}` : null,
+              (args.department || (args.departments && args.departments.length > 0)) ? `Department: ${args.department || args.departments.join(', ')}` : null,
+              (args.category || (args.categories && args.categories.length > 0)) ? `Category: ${args.category || args.categories.join(', ')}` : null,
+              args.project_type ? `Project Type: ${args.project_type}` : null,
+              (args._company_already_applied && args.company) ? `Company: ${args.company}` : null,
+              (args._client_already_applied && args.client) ? `Client: ${args.client}` : null,
             ].filter(Boolean).join(', ');
             
             // SMART SUGGESTION: When client/organization search returns 0 results,
@@ -18451,7 +18457,8 @@ Response (JSON only):`;
             if (entityValue && externalDbQuery) {
               try {
                 const similarEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
-                if (similarEntities.length > 0) {
+                const isExactMatch = similarEntities.length === 1 && similarEntities[0].toLowerCase() === entityValue.toLowerCase();
+                if (similarEntities.length > 0 && !isExactMatch) {
                   suggestionText = '\n\nDid you mean: ' + similarEntities.map(c => `"${c}"`).join(', ') + '?';
                   console.log(`[QueryEngine] 💡 SUGGESTION: Found ${similarEntities.length} similar ${entityType}s for "${entityValue}"`);
                 }
@@ -23474,7 +23481,7 @@ DATABASE CONTEXT (for reference):
 
     // Division filter - organizational business unit
     // Uses flexible matching to handle missing punctuation (e.g., "LCC Healthcare" matches "LCC - Healthcare")
-    if (args.division && !excludeParams.includes('division')) {
+    if (args.division && !excludeParams.includes('division') && !(args.divisions && Array.isArray(args.divisions) && args.divisions.length > 0)) {
       filters.push(`"Division" LIKE @p${paramIndex}`);
       params.push(normalizeDivisionForFlexibleMatch(args.division));
       paramIndex++;
@@ -23494,7 +23501,7 @@ DATABASE CONTEXT (for reference):
 
     // Department filter - organizational department
     // Uses flexible matching to handle missing punctuation
-    if (args.department && !excludeParams.includes('department')) {
+    if (args.department && !excludeParams.includes('department') && !(args.departments && Array.isArray(args.departments) && args.departments.length > 0)) {
       filters.push(`"Department" LIKE @p${paramIndex}`);
       params.push(normalizeDivisionForFlexibleMatch(args.department));
       paramIndex++;
@@ -24489,7 +24496,7 @@ DATABASE CONTEXT (for reference):
       // Division filter - organizational business unit
       // Use normalizeDivisionForFlexibleMatch for flexible matching:
       // "UK Domestic" → "%UK%Domestic%" → matches "UK - Domestic"
-      if (args.division) {
+      if (args.division && !(args.divisions && Array.isArray(args.divisions) && args.divisions.length > 0)) {
         filters.push(`"Division" LIKE @p${paramIndex}`);
         params.push(normalizeDivisionForFlexibleMatch(args.division));
         paramIndex++;
@@ -24509,7 +24516,7 @@ DATABASE CONTEXT (for reference):
 
       // Department filter - organizational department
       // Use normalizeDivisionForFlexibleMatch for flexible matching
-      if (args.department) {
+      if (args.department && !(args.departments && Array.isArray(args.departments) && args.departments.length > 0)) {
         filters.push(`"Department" LIKE @p${paramIndex}`);
         params.push(normalizeDivisionForFlexibleMatch(args.department));
         paramIndex++;
