@@ -204,12 +204,14 @@ function MarkdownRenderer({ content }: { content: string }) {
   let listType: 'ordered' | 'unordered' | null = null;
   let tableRows: string[][] = [];
   let tableHasSep = false;
+  let orderedParentActive = false;
 
   const flushList = () => {
     if (listItems.length > 0 && listType) {
       push({ type: listType === 'ordered' ? 'ordered-list' : 'unordered-list', items: [...listItems] });
       listItems = []; listType = null;
     }
+    orderedParentActive = false;
   };
   const flushTable = () => {
     if (tableRows.length > 0 && tableHasSep) {
@@ -234,9 +236,29 @@ function MarkdownRenderer({ content }: { content: string }) {
     else if (t.startsWith('#### ')) { flushList(); push({ type: 'h4', content: t.replace(/^####\s+/, '') }); }
     else if (/^[-*_]{3,}$/.test(t)) { flushList(); push({ type: 'hr' }); }
     else if (t.startsWith('> ')) { flushList(); push({ type: 'blockquote', content: t.replace(/^>\s+/, '') }); }
-    else if (/^\d+[\.)]\s+/.test(t)) { if (listType !== 'ordered') { flushList(); listType = 'ordered'; } listItems.push(t.replace(/^\d+[\.)]\s+/, '')); }
-    else if (t.startsWith('- ') || t.startsWith('* ')) { if (listType !== 'unordered') { flushList(); listType = 'unordered'; } listItems.push(t.replace(/^[-*]\s+/, '')); }
-    else if (t === '') { flushList(); push({ type: 'spacer' }); }
+    else if (/^\d+[\.)]\s+/.test(t)) {
+      if (listType === 'unordered' && orderedParentActive) {
+        flushList();
+      } else if (listType !== 'ordered') {
+        flushList();
+      }
+      listType = 'ordered';
+      orderedParentActive = true;
+      listItems.push(t.replace(/^\d+[\.)]\s+/, ''));
+    }
+    else if (t.startsWith('- ') || t.startsWith('* ')) {
+      if (orderedParentActive && listType === 'ordered' && listItems.length > 0) {
+        const subText = t.replace(/^[-*]\s+/, '');
+        listItems[listItems.length - 1] += ' \u2022 ' + subText;
+      } else {
+        if (listType !== 'unordered') { flushList(); listType = 'unordered'; }
+        listItems.push(t.replace(/^[-*]\s+/, ''));
+      }
+    }
+    else if (t === '') {
+      if (!orderedParentActive) flushList();
+      else push({ type: 'spacer' });
+    }
     else { flushList(); push({ type: 'paragraph', content: t }); }
   });
   flushList(); flushTable();
