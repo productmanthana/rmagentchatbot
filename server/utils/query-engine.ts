@@ -10251,6 +10251,65 @@ Return ONLY valid JSON, no explanation.`;
       if (userQuestion !== originalUserQuestion) {
         console.log(`[QueryEngine] 📝 Normalized query: "${originalUserQuestion}" → "${userQuestion}"`);
       }
+
+      // ═══════════════════════════════════════════════════════════════
+      // TOP-LEVEL COMMON CLIENTS DETECTION
+      // Detects "common/shared/same clients between X and Y" queries 
+      // BEFORE any regex pattern matching or LLM classification
+      // This ensures the LLM decides intent while regex acts as safety net
+      // ═══════════════════════════════════════════════════════════════
+      const topLevelCompanyPattern = /\b(ais|gafcon|gei|hill|liro|palladium|stobg)\b/gi;
+      const topLevelCommonKeyword = /\b(common|shared|both|overlap|intersect|same|mutual)\b/i;
+      const topLevelClientContext = /\b(client|clients|customer|customers|clientele|accounts?)\b/i;
+      const topLevelMetricExclusion = /\b(revenue|fee|fees|win\s*rate|budget|cost|value|count|total|amount|profit|margin|score|volume|number|projects?)\b/i;
+      const topLevelCompanyMatches = userQuestion.match(topLevelCompanyPattern);
+      const topLevelUniqueCompanies = topLevelCompanyMatches ? [...new Set(topLevelCompanyMatches.map((c: string) => c.toUpperCase()))] : [];
+      const hasCommonKeyword = topLevelCommonKeyword.test(userQuestion);
+      const hasClientContext = topLevelClientContext.test(userQuestion);
+      const hasMetricContext = topLevelMetricExclusion.test(userQuestion);
+      const isLikelyCommonClients = hasCommonKeyword && topLevelUniqueCompanies.length >= 2 && (hasClientContext || !hasMetricContext);
+      if (isLikelyCommonClients) {
+        console.log(`[QueryEngine] 🔀 TOP-LEVEL COMMON CLIENTS: Detected companies: ${JSON.stringify(topLevelUniqueCompanies)} - routing directly to common_clients_between_companies`);
+        const commonClientsArgs: Record<string, any> = {
+          company1: topLevelUniqueCompanies[0],
+          company2: topLevelUniqueCompanies[1],
+          _common_clients_query: true
+        };
+        const commonResult = await this.executeQuery('common_clients_between_companies', commonClientsArgs, externalDbQuery, userQuestion);
+        if (commonResult.data && commonResult.data.length > 0) {
+          const chartConfig = this.generateChartConfig(commonResult.data, 'common_clients_between_companies');
+          return {
+            success: true,
+            data: commonResult.data,
+            row_count: commonResult.data.length,
+            question: userQuestion,
+            function_name: 'common_clients_between_companies',
+            arguments: commonClientsArgs,
+            sql_query: commonResult.sql_query,
+            sql_params: commonResult.sql_params,
+            summary: commonResult.summary || {},
+            chart_config: chartConfig,
+          };
+        } else {
+          return {
+            success: true,
+            data: [{
+              type: 'ai_analysis',
+              narrative: `Based on our database, there are no common clients shared between ${topLevelUniqueCompanies[0]} and ${topLevelUniqueCompanies[1]}. These companies appear to serve different client bases.`,
+              aggregates: { count: 0, totalFee: 0, avgFee: 0 },
+              samples: [],
+              question: userQuestion,
+              is_empty_result: true
+            }],
+            row_count: 0,
+            question: userQuestion,
+            function_name: 'common_clients_between_companies',
+            arguments: commonClientsArgs,
+            summary: {},
+            chart_config: null,
+          };
+        }
+      }
       
       // ═══════════════════════════════════════════════════════════════
       // EARLY FOLLOW-UP REFINEMENT DETECTION
@@ -11899,23 +11958,6 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           // Set regions filter and skip the EARLY DETECTION block
           extractedHints.regions = [generalTermLower];
         } else if (!skipTerms.includes(generalTermLower)) {
-          // ═══════════════════════════════════════════════════════════════
-          // EARLY COMMON CLIENTS GUARD: Must run BEFORE ExplicitColumn detection
-          // to prevent "clients common between X and Y" from being treated as
-          // a client name search for "common between X and Y"
-          // ═══════════════════════════════════════════════════════════════
-          const earlyCommonClientsPattern = /\b(ais|gafcon|gei|hill|liro|palladium|stobg)\b/gi;
-          const earlyCommonKeyword = /\b(common|shared|both|overlap|intersect|same|mutual)\b/i;
-          const earlyCompanyMatches = userQuestion.match(earlyCommonClientsPattern);
-          const earlyUniqueCompanies = earlyCompanyMatches ? [...new Set(earlyCompanyMatches.map((c: string) => c.toUpperCase()))] : [];
-          if (earlyCommonKeyword.test(userQuestion) && earlyUniqueCompanies.length >= 2) {
-            console.log(`[QueryEngine] EARLY COMMON CLIENTS GUARD: Detected common/shared query with companies: ${JSON.stringify(earlyUniqueCompanies)} - bypassing ExplicitColumn`);
-            classification.function_name = 'common_clients_between_companies';
-            extractedHints._earlyCommonClients = true;
-            extractedHints._earlyCompany1 = earlyUniqueCompanies[0];
-            extractedHints._earlyCompany2 = earlyUniqueCompanies[1];
-          }
-
           console.log(`[QueryEngine] 📊 EARLY DETECTION: Found term "${generalTerm}" in "X projects" pattern`);
           
           // ═══════════════════════════════════════════════════════════════
@@ -12024,7 +12066,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           
           let smartSearchTerm = generalTerm;
           
-          if (explicitColumn && keywordIndex >= 0 && !extractedHints._earlyCommonClients) {
+          if (explicitColumn && keywordIndex >= 0) {
             // User explicitly mentioned a column - extract the value
             // For patterns 2/3 (keyword at start/end), generalTerm is already the extracted value
             // For pattern 1 (X projects), we need to extract from full query
@@ -20099,7 +20141,11 @@ Response (JSON only):`;
     const companyMatch = userQuestion.match(companyPattern);
     console.log(`[DEBUG] Company Detection: userQuestion="${userQuestion}", companyMatch=${JSON.stringify(companyMatch)}, args.organization=${args.organization}, args._organization_already_applied=${args._organization_already_applied}`);
     // GUARD: Skip company detection for "clients in common" / "shared clients between companies" queries
-    const isCommonBetweenCompanies = /\b(both|common|shared|overlap|intersect|same|mutual)\b/i.test(userQuestion) && (userQuestion.match(new RegExp(companyPattern.source, "gi")) || []).length >= 2;
+    const laterMetricExclusion = /\b(revenue|fee|fees|win\s*rate|budget|cost|value|count|total|amount|profit|margin|score|volume|number|projects?)\b/i;
+    const laterClientContext = /\b(client|clients|customer|customers|clientele|accounts?)\b/i;
+    const hasLaterCommonKeyword = /\b(both|common|shared|overlap|intersect|same|mutual)\b/i.test(userQuestion);
+    const hasLaterMultipleCompanies = (userQuestion.match(new RegExp(companyPattern.source, "gi")) || []).length >= 2;
+    const isCommonBetweenCompanies = hasLaterCommonKeyword && hasLaterMultipleCompanies && (laterClientContext.test(userQuestion) || !laterMetricExclusion.test(userQuestion));
     if (isCommonBetweenCompanies) {
       console.log(`[Company Detection Guard] SKIPPING - query asks for common/shared entities between multiple companies`);
       const allCompanyMatches = userQuestion.match(new RegExp(companyPattern.source, 'gi')) || [];
