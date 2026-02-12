@@ -11899,6 +11899,23 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           // Set regions filter and skip the EARLY DETECTION block
           extractedHints.regions = [generalTermLower];
         } else if (!skipTerms.includes(generalTermLower)) {
+          // ═══════════════════════════════════════════════════════════════
+          // EARLY COMMON CLIENTS GUARD: Must run BEFORE ExplicitColumn detection
+          // to prevent "clients common between X and Y" from being treated as
+          // a client name search for "common between X and Y"
+          // ═══════════════════════════════════════════════════════════════
+          const earlyCommonClientsPattern = /\b(ais|gafcon|gei|hill|liro|palladium|stobg)\b/gi;
+          const earlyCommonKeyword = /\b(common|shared|both|overlap|intersect|same|mutual)\b/i;
+          const earlyCompanyMatches = userQuestion.match(earlyCommonClientsPattern);
+          const earlyUniqueCompanies = earlyCompanyMatches ? [...new Set(earlyCompanyMatches.map((c: string) => c.toUpperCase()))] : [];
+          if (earlyCommonKeyword.test(userQuestion) && earlyUniqueCompanies.length >= 2) {
+            console.log(`[QueryEngine] EARLY COMMON CLIENTS GUARD: Detected common/shared query with companies: ${JSON.stringify(earlyUniqueCompanies)} - bypassing ExplicitColumn`);
+            classification.function_name = 'common_clients_between_companies';
+            extractedHints._earlyCommonClients = true;
+            extractedHints._earlyCompany1 = earlyUniqueCompanies[0];
+            extractedHints._earlyCompany2 = earlyUniqueCompanies[1];
+          }
+
           console.log(`[QueryEngine] 📊 EARLY DETECTION: Found term "${generalTerm}" in "X projects" pattern`);
           
           // ═══════════════════════════════════════════════════════════════
@@ -12007,7 +12024,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           
           let smartSearchTerm = generalTerm;
           
-          if (explicitColumn && keywordIndex >= 0) {
+          if (explicitColumn && keywordIndex >= 0 && !extractedHints._earlyCommonClients) {
             // User explicitly mentioned a column - extract the value
             // For patterns 2/3 (keyword at start/end), generalTerm is already the extracted value
             // For pattern 1 (X projects), we need to extract from full query
@@ -20082,7 +20099,7 @@ Response (JSON only):`;
     const companyMatch = userQuestion.match(companyPattern);
     console.log(`[DEBUG] Company Detection: userQuestion="${userQuestion}", companyMatch=${JSON.stringify(companyMatch)}, args.organization=${args.organization}, args._organization_already_applied=${args._organization_already_applied}`);
     // GUARD: Skip company detection for "clients in common" / "shared clients between companies" queries
-    const isCommonBetweenCompanies = /\b(both|common|shared|overlap|intersect)\b/i.test(userQuestion) && (userQuestion.match(new RegExp(companyPattern.source, "gi")) || []).length >= 2;
+    const isCommonBetweenCompanies = /\b(both|common|shared|overlap|intersect|same|mutual)\b/i.test(userQuestion) && (userQuestion.match(new RegExp(companyPattern.source, "gi")) || []).length >= 2;
     if (isCommonBetweenCompanies) {
       console.log(`[Company Detection Guard] SKIPPING - query asks for common/shared entities between multiple companies`);
       const allCompanyMatches = userQuestion.match(new RegExp(companyPattern.source, 'gi')) || [];
