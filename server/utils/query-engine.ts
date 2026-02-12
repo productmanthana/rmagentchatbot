@@ -484,7 +484,7 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     // GUARD: Skip for known valid status values - "Lead" should stay as "Lead", not become "Qualified Lead"
     else if (cacheResolved && cacheResolved.length > 0 && cacheResolved[0] !== statusLower) {
       const KNOWN_VALID_STATUSES = new Set(['lead', 'won', 'lost', 'submitted', 'in progress', 'proposal development', 
-        'qualified lead', 'hold', 'no go', 'cancelled', 'awarded', 'declined', 'rejected', 'pending']);
+        'qualified lead', 'hold', 'no go', 'cancelled', 'canceled', 'awarded', 'accepted', 'declined', 'rejected', 'pending']);
       if (!KNOWN_VALID_STATUSES.has(statusLower)) {
         console.log(`[Normalize] CACHE-BACKED STATUS: "${normalized.status}" → ${JSON.stringify(cacheResolved)}`);
         normalized.status = cacheResolved;
@@ -556,27 +556,41 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     }
   }
   
-  // 5b. STATUS VS EXTRACTION: When user says "X vs Y" with status values, ensure BOTH are in the status array
-  // This catches cases where the LLM only extracts one status from "Lead vs Submitted" queries
+  // 5b. STATUS VS EXTRACTION: When user says "X vs Y vs Z" with status values, ensure ALL are in the status array
+  // Supports all database status values and 2+ statuses separated by vs/versus/compared to/and
   if (originalQuestion) {
-    const STATUS_MAP_VS: Record<string, string> = {
-      'won': 'Won', 'lost': 'Lost', 'lead': 'Lead', 'submitted': 'Submitted',
-      'in progress': 'In Progress', 'proposal development': 'Proposal Development',
-      'qualified lead': 'Qualified Lead', 'hold': 'Hold', 'no go': 'No Go', 'cancelled': 'Cancelled',
-      'awarded': 'Won', 'declined': 'Lost', 'rejected': 'Lost'
+    const ALL_STATUS_VALUES: Record<string, string> = {
+      'cancelled': 'Cancelled', 'canceled': 'Cancelled',
+      'hold': 'Hold', 'on hold': 'Hold',
+      'in progress': 'In Progress', 'in-progress': 'In Progress',
+      'lead': 'Lead', 'leads': 'Lead',
+      'lost': 'Lost',
+      'no go': 'No Go', 'no-go': 'No Go', 'nogo': 'No Go',
+      'proposal development': 'Proposal Development', 'proposal dev': 'Proposal Development',
+      'qualified lead': 'Qualified Lead', 'qualified leads': 'Qualified Lead',
+      'submitted': 'Submitted',
+      'won': 'Won',
+      'awarded': 'Won', 'accepted': 'Won',
+      'declined': 'Lost', 'rejected': 'Lost'
     };
-    const vsMatch = originalQuestion.match(/\b(Won|Lost|Lead|Submitted|In Progress|Proposal Development|Qualified Lead|Hold|No Go|Cancelled|Awarded|Declined|Rejected)\s+(?:vs\.?|versus|compared to|and)\s+(Won|Lost|Lead|Submitted|In Progress|Proposal Development|Qualified Lead|Hold|No Go|Cancelled|Awarded|Declined|Rejected)\b/i);
-    if (vsMatch) {
-      const status1 = STATUS_MAP_VS[vsMatch[1].toLowerCase()] || vsMatch[1];
-      const status2 = STATUS_MAP_VS[vsMatch[2].toLowerCase()] || vsMatch[2];
-      const currentStatuses = Array.isArray(normalized.status) ? normalized.status.map((s: string) => s.toLowerCase()) : 
-                              (normalized.status ? [normalized.status.toLowerCase()] : []);
-      const neededStatuses = [status1, status2];
-      const missing = neededStatuses.filter(s => !currentStatuses.includes(s.toLowerCase()));
-      if (missing.length > 0) {
-        const existingArray = Array.isArray(normalized.status) ? normalized.status : (normalized.status ? [normalized.status] : []);
-        normalized.status = [...new Set([...existingArray, ...missing])];
-        console.log(`[Normalize] STATUS VS EXTRACTION: Detected "${vsMatch[1]} vs ${vsMatch[2]}" → status: ${JSON.stringify(normalized.status)}`);
+    const STATUS_PATTERN = '(?:Cancelled|Canceled|Hold|In Progress|In-Progress|Lead|Leads|Lost|No Go|No-Go|NoGo|Proposal Development|Proposal Dev|Qualified Lead|Qualified Leads|Submitted|Won|Awarded|Accepted|Declined|Rejected)';
+    const vsRegex = new RegExp(`\\b(${STATUS_PATTERN})(?:\\s+(?:vs\\.?|versus|compared to|and|,)\\s+(${STATUS_PATTERN}))+\\b`, 'gi');
+    const fullMatch = originalQuestion.match(vsRegex);
+    if (fullMatch) {
+      const extractRegex = new RegExp(STATUS_PATTERN, 'gi');
+      const allMatched = fullMatch[0].match(extractRegex) || [];
+      const resolvedStatuses = allMatched.map(s => ALL_STATUS_VALUES[s.toLowerCase()] || s);
+      const uniqueResolved = [...new Set(resolvedStatuses)];
+      if (uniqueResolved.length >= 2) {
+        const currentStatuses = Array.isArray(normalized.status) ? normalized.status.map((s: string) => s.toLowerCase()) : 
+                                (normalized.status ? [normalized.status.toLowerCase()] : []);
+        const missing = uniqueResolved.filter(s => !currentStatuses.includes(s.toLowerCase()));
+        if (missing.length > 0) {
+          const existingArray = Array.isArray(normalized.status) ? normalized.status : (normalized.status ? [normalized.status] : []);
+          normalized.status = [...new Set([...existingArray, ...missing])];
+        }
+        normalized.status = [...new Set((normalized.status as string[]).map((s: string) => ALL_STATUS_VALUES[s.toLowerCase()] || s))];
+        console.log(`[Normalize] STATUS VS EXTRACTION: Detected ${uniqueResolved.length} statuses "${allMatched.join(' vs ')}" → status: ${JSON.stringify(normalized.status)}`);
       }
     }
   }
