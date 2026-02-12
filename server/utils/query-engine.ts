@@ -717,6 +717,33 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
     }
     console.log(`[Normalize] division → divisions:`, normalized.divisions);
   }
+
+  const knownSectors = [
+    'aviation', 'buildings', 'disaster relief and recovery', 'education',
+    'education and institutions', 'energy', 'healthcare', 'hospitality',
+    'humanitarian and environmental', 'industrial', 'mission critical',
+    'other', 'residential', 'transportation', 'water / wastewater'
+  ];
+  if (normalized.division && !normalized.project_type && !normalized._project_type_explicit) {
+    const divLower = (normalized.division || '').toLowerCase().trim();
+    if (knownSectors.includes(divLower)) {
+      console.log(`[Normalize] RECLASSIFY: division "${normalized.division}" → project_type (known sector)`);
+      normalized.project_type = normalized.division;
+      normalized._project_type_explicit = true;
+      delete normalized.division;
+      delete normalized.divisions;
+    }
+  }
+  if (normalized.divisions && Array.isArray(normalized.divisions) && normalized.divisions.length > 0 && !normalized.project_type && !normalized._project_type_explicit) {
+    const firstDiv = (normalized.divisions[0] || '').toLowerCase().trim();
+    if (knownSectors.includes(firstDiv) && normalized.divisions.length === 1) {
+      console.log(`[Normalize] RECLASSIFY: divisions ["${normalized.divisions[0]}"] → project_type (known sector)`);
+      normalized.project_type = normalized.divisions[0];
+      normalized._project_type_explicit = true;
+      delete normalized.division;
+      delete normalized.divisions;
+    }
+  }
   
   // 10. Department normalization: department_name, departments → department + departments
   if (normalized.department_name && !normalized.department) {
@@ -18548,7 +18575,8 @@ Response (JSON only):`;
           if (entityValue && entityValue !== 'specified entity' && externalDbQuery) {
             try {
               const guardEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
-              if (guardEntities.length > 0) {
+              const isGuardExact = guardEntities.length === 1 && guardEntities[0].toLowerCase() === (entityValue || '').toLowerCase();
+              if (guardEntities.length > 0 && !isGuardExact) {
                 guardSuggestion = '\n\nDid you mean: ' + guardEntities.map(c => `"${c}"`).join(', ') + '?';
               }
             } catch (e) {}
@@ -18656,7 +18684,8 @@ Response (JSON only):`;
             try {
               const { entityType: followUpEntityType } = this.detectEntityTypeAndValue(functionName, args);
               const similarEntities3 = await this.findSimilarEntities(followUpEntityValue, followUpEntityType, externalDbQuery, 5);
-              if (similarEntities3.length > 0) {
+              const isFollowUpExact = similarEntities3.length === 1 && similarEntities3[0].toLowerCase() === (followUpEntityValue || '').toLowerCase();
+              if (similarEntities3.length > 0 && !isFollowUpExact) {
                 followUpSuggestion = '\n\nDid you mean: ' + similarEntities3.map(c => `"${c}"`).join(', ') + '?';
               }
             } catch (e) {}
@@ -18795,7 +18824,8 @@ Response (JSON only):`;
           if (entityValue && externalDbQuery) {
             try {
               const similarEntities2 = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
-              if (similarEntities2.length > 0) {
+              const isEarlyExact = similarEntities2.length === 1 && similarEntities2[0].toLowerCase() === (entityValue || '').toLowerCase();
+              if (similarEntities2.length > 0 && !isEarlyExact) {
                 earlyEntitySuggestion = '\n\nDid you mean: ' + similarEntities2.map(c => `"${c}"`).join(', ') + '?';
                 console.log(`[QueryEngine] 💡 SUGGESTION (early): Found ${similarEntities2.length} similar ${entityType}s for "${entityValue}"`);
               }
@@ -19150,7 +19180,8 @@ Response (JSON only):`;
           if (entityValue && entityValue !== 'specified entity' && externalDbQuery) {
             try {
               const lastEntities = await this.findSimilarEntities(entityValue, entityType, externalDbQuery, 5);
-              if (lastEntities.length > 0) {
+              const isLastExact = lastEntities.length === 1 && lastEntities[0].toLowerCase() === (entityValue || '').toLowerCase();
+              if (lastEntities.length > 0 && !isLastExact) {
                 lastSuggestion = '\n\nDid you mean: ' + lastEntities.map(c => `"${c}"`).join(', ') + '?';
               }
             } catch (e) {}
