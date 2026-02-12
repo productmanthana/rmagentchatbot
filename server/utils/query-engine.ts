@@ -21637,6 +21637,26 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         .map(([cat, g]) => `  - ${cat}: ${g.count} projects, Avg Fee: $${(g.avgFee / 1000000).toFixed(2)}M, Total: $${(g.totalFee / 1000000).toFixed(1)}M`)
         .join('\n');
       
+      // Build per-project-type breakdown (top 15) — important for queries about specific types
+      const projectTypeGroups: Record<string, { count: number; totalFee: number; avgFee: number }> = {};
+      data.forEach(p => {
+        const pt = p.project_type || 'Unknown';
+        if (!projectTypeGroups[pt]) {
+          projectTypeGroups[pt] = { count: 0, totalFee: 0, avgFee: 0 };
+        }
+        projectTypeGroups[pt].count++;
+        projectTypeGroups[pt].totalFee += parseFloat(p.fee) || 0;
+      });
+      Object.keys(projectTypeGroups).forEach(pt => {
+        const g = projectTypeGroups[pt];
+        g.avgFee = g.count > 0 ? g.totalFee / g.count : 0;
+      });
+      const projectTypeBreakdown = Object.entries(projectTypeGroups)
+        .sort((a, b) => b[1].totalFee - a[1].totalFee)
+        .slice(0, 15)
+        .map(([pt, g]) => `  - ${pt}: ${g.count} projects, Avg Fee: $${(g.avgFee / 1000000).toFixed(2)}M, Total: $${(g.totalFee / 1000000).toFixed(1)}M`)
+        .join('\n');
+      
       // Build cross-tabulation for status × category (if multiple statuses)
       let crossTabulation = '';
       const uniqueStatuses = Object.keys(statusGroups);
@@ -21728,8 +21748,16 @@ ${filterSummary ? `- Applied Filters: ${filterSummary}` : ''}
 BREAKDOWN BY STATUS (EXACT CALCULATED AVERAGES):
 ${statusBreakdown}
 
-BREAKDOWN BY CATEGORY (TOP 10 BY AVG FEE):
+BREAKDOWN BY CATEGORY (RequestCategory column, TOP 10 BY AVG FEE):
 ${categoryBreakdown}
+
+BREAKDOWN BY PROJECT TYPE (ProjectType column, TOP 15 BY TOTAL FEE):
+${projectTypeBreakdown}
+NOTE: "Category" (RequestCategory) and "Project Type" (ProjectType) are DIFFERENT columns.
+For example, "Healthcare" is a Category, while "Hospitals" is a Project Type within it.
+"Education" is a Category, while "Higher Education" and "K-12" are Project Types within it.
+"Aviation" can be both a Category and a Project Type. When the user asks about specific types like
+"Hospitals" or "Higher Education", use the PROJECT TYPE breakdown above, NOT the Category breakdown.
 ${crossTabulation}
 
 SAMPLE PROJECTS (balanced across statuses):
@@ -21740,6 +21768,8 @@ INSTRUCTIONS:
 - Reference specific projects by name when discussing patterns or notable examples
 - When comparing statuses, use the pre-calculated averages from "BREAKDOWN BY STATUS"
 - When comparing categories, use the pre-calculated averages from "BREAKDOWN BY CATEGORY"
+- When comparing project types (e.g., Hospitals, Higher Education, K-12), use "BREAKDOWN BY PROJECT TYPE"
+- IMPORTANT: Category and Project Type are DIFFERENT columns. Match the user's terms to the correct breakdown
 - Provide actionable insights based on the actual data
 - Use PLAIN TEXT for all calculations (NO LaTeX notation)
 
