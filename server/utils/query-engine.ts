@@ -16825,7 +16825,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       if (!classification.arguments.max_fee) {
         const maxFeePatterns = [
           /\b(?:fees?|price|cost|revenue|value|budget)\s+(?:below|under|less\s+than|<|at\s+most)\s*\$?([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?/i,
-          /\b(?:below|under|less\s+than|<|at\s+most)\s*\$?([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?\s*(?:fee|price|cost)?/i,
+          /\b(?:below|under|less\s+than|<|at\s+most)\s*\$([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?\s*(?:fee|price|cost)?/i,
+          /\b(?:below|under|less\s+than|<|at\s+most)\s*([\d,]+(?:\.\d+)?)\s*(million|m|billion|b)\s*(?:fee|price|cost)?/i,
         ];
         for (const pattern of maxFeePatterns) {
           const match = userQuestion.match(pattern);
@@ -20034,14 +20035,16 @@ Response (JSON only):`;
     // Only detect INCLUSION regions if we didn't detect an exclusion AND no states/regions already set
     // FIX: Use Region column directly instead of expanding to individual states
     if (!args.exclude_states && !args.state_code && !args.states && !args.regions) {
+      const entityNames = [args.client, args.company, args.organization].filter(Boolean).join(' ').toLowerCase();
       for (const [regionKey, regionStates] of Object.entries(REGION_TO_STATES)) {
-        // Match "west region", "in the west", "western states", "from midwest", etc.
         const regionPattern = new RegExp(`\\b(in\\s+the\\s+)?${regionKey}(\\s+region|\\s+states?|\\s+area)?\\b`, 'i');
         if (regionPattern.test(questionLower)) {
-          // Use Region column directly instead of expanding to states
+          if (entityNames && entityNames.includes(regionKey.toLowerCase())) {
+            console.log(`[RegionExpand] ⚠ Skipping region "${regionKey}" - found inside entity name "${entityNames}"`);
+            continue;
+          }
           console.log(`[RegionExpand] 🌎 Detected region "${regionKey}" → Region column filter (NOT state expansion)`);
-          args.regions = [regionKey]; // Use Region column, not states
-          // Remove state_code if set
+          args.regions = [regionKey];
           delete args.state_code;
           break;
         }
@@ -22909,8 +22912,12 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           console.log(`[LLM-SQL-Review] 🔧 Added filter: "${fix.column}" ${operator} "${fix.value}"`);
         }
         else if (fix.type === 'remove_filter' && fix.column) {
-          const removeRegex = new RegExp(`\\s*AND\\s+"${fix.column}"\\s+LIKE\\s+@p\\d+`, 'gi');
-          correctedSql = correctedSql.replace(removeRegex, '');
+          const likeRegex = new RegExp(`\\s*AND\\s+"${fix.column}"\\s+LIKE\\s+@p\\d+`, 'gi');
+          correctedSql = correctedSql.replace(likeRegex, '');
+          const castRegex = new RegExp(`\\s*AND\\s+CAST\\(NULLIF\\("${fix.column}",\\s*''\\)\\s+AS\\s+NUMERIC\\)\\s*[<>=!]+\\s*@p\\d+`, 'gi');
+          correctedSql = correctedSql.replace(castRegex, '');
+          const parenLikeRegex = new RegExp(`\\s*AND\\s+\\("${fix.column}"\\s+LIKE\\s+@p\\d+\\)`, 'gi');
+          correctedSql = correctedSql.replace(parenLikeRegex, '');
           console.log(`[LLM-SQL-Review] 🔧 Removed filter on: "${fix.column}"`);
         }
       }
@@ -23390,21 +23397,26 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       try { fs.writeFileSync("/tmp/full_sql.log", sql + "\nPARAMS: " + JSON.stringify(sqlParams)); } catch(e) {}
 
       // ═══════════════════════════════════════════════════════════════
-      // LLM SQL REVIEW: Log-only diagnostic - never auto-corrects
+      // LLM SQL REVIEW: Active mode - applies corrections before execution
       // ═══════════════════════════════════════════════════════════════
       const skipReviewFunctions = new Set([
         'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response'
       ]);
       if (userQuestion && !skipReviewFunctions.has(functionName) && !args._llm_review_done) {
         args._llm_review_done = true;
-        this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args)
-          .then(review => {
-            if (review.corrected) {
-              console.log(`[LLM-SQL-Review] ⚠️ DIAGNOSTIC ONLY (not applied): ${review.reason}`);
-              try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, suggestedSql: review.sql?.substring(0, 500) }) + '\n'); } catch(e) {}
-            }
-          })
-          .catch(() => {});
+        try {
+          const review = await this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args);
+          if (review.corrected && review.sql && review.sql !== sql) {
+            console.log(`[LLM-SQL-Review] ✅ APPLYING CORRECTION: ${review.reason}`);
+            console.log(`[LLM-SQL-Review] 📝 Original SQL:\n${sql}`);
+            sql = review.sql;
+            sqlParams = review.params;
+            console.log(`[LLM-SQL-Review] 📝 Corrected SQL:\n${sql}`);
+            try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: true, correctedSql: review.sql?.substring(0, 500) }) + '\n'); } catch(e) {}
+          }
+        } catch(reviewErr) {
+          console.log(`[LLM-SQL-Review] ⚠️ Review error (non-blocking): ${reviewErr}`);
+        }
       }
 
       let results: any[]; try { results = await externalDbQuery(sql, sqlParams); } catch(dbErr: any) { fs.appendFileSync("/tmp/exec_debug.log", "DB_QUERY_ERROR:" + String(dbErr) + "\n"); throw dbErr; }
