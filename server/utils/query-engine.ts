@@ -24083,6 +24083,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       paramIndex++;
       console.log(`[Filter] Module filter: ${args.module}`);
     }
+
     // Return SQL fragment
     return {
       sql: filters.length > 0 ? `AND ${filters.join(" AND ")}` : "",
