@@ -13957,6 +13957,22 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           this.openaiClient.classifyQuery(finalQuestion, functionsToSend)
         );
       }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // POST-LLM CORRECTION: "Identify all opportunities... Which Clients are these for?"
+      // When user asks to LIST individual projects with filters and then asks
+      // "which clients/companies are these for", the LLM often misroutes to
+      // get_top_clients (aggregation). Force to get_projects_by_combined_filters.
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (classification.function_name === 'get_top_clients' || classification.function_name === 'get_top_companies') {
+        const asksForIndividualProjects = /\b(?:identify|list|show|find|get)\s+(?:all\s+)?(?:opportunities|projects|pursuits)\b/i.test(userQuestion);
+        const asksWhichEntityForThem = /\b(?:which|what)\s+(?:clients?|companies?|firms?)\s+(?:are\s+these|is\s+this|do\s+these|does\s+this)\s+(?:for|from|in|under|at|with)\b/i.test(userQuestion);
+        if (asksForIndividualProjects && asksWhichEntityForThem) {
+          console.log(`[QueryEngine] 🔄 POST-LLM CORRECTION: LLM chose "${classification.function_name}" but user wants individual projects with entity column visible. Rerouting to get_projects_by_combined_filters.`);
+          classification.function_name = 'get_projects_by_combined_filters';
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════════════════════
       // DISAMBIGUATION GUARD: If user selected a disambiguation option, force the
       // correct function and apply the pre-applied filters immediately.
