@@ -19496,6 +19496,24 @@ Response (JSON only):`;
     if (args._disambiguation_locked) {
       console.log(`[preprocessQuery] 🔒 DISAMBIGUATION LOCKED: Skipping all preprocessing`);
       console.log(`[preprocessQuery] 🔒 Preserving function="${classification.function_name}", args=${JSON.stringify(args)}`);
+      
+      // CRITICAL: Still apply Limit Guard even for disambiguation-locked queries
+      // LLM often sets limit=1 for "who is the contact" type queries, but user wants ALL results
+      if (args.limit) {
+        const hasExplicitNumericLimit = /\b(top|first|last|bottom|only|just|smallest|largest|biggest|lowest|highest|cheapest)\s+(\d+|active|open|won|closed|submitted|lead|qualified)\s*(\d+)?\b/i.test(userQuestion);
+        const hasOrdinalRequest = /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(st|nd|rd|th))\s+(largest|biggest|smallest|best|worst|highest|lowest)/i.test(userQuestion);
+        const hasSingleRequest = /\b(single|one\s+project|1\s+project|the\s+largest|the\s+biggest|the\s+smallest|the\s+highest|the\s+lowest|the\s+best|the\s+worst)\b/i.test(userQuestion);
+        const hasNumberBeforeSize = /\b(\d+)\s+(smallest|largest|biggest|lowest|highest|cheapest|top|bottom)\b/i.test(userQuestion);
+        const hasNumberBeforeCategory = /\b(\d+)\s+(small|medium|large|tiny|huge|mega|micro)\s+(project|projects)\b/i.test(userQuestion);
+        const hasExplicitLimit = hasExplicitNumericLimit || hasOrdinalRequest || hasSingleRequest || hasNumberBeforeSize || hasNumberBeforeCategory;
+        
+        if (!hasExplicitLimit) {
+          console.log(`[Limit Guard - Disambiguation] Removing limit=${args.limit} - no explicit limit in: "${userQuestion}"`);
+          delete args.limit;
+          delete args.offset;
+        }
+      }
+      
       return classification;
     }
 
@@ -23998,13 +24016,18 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       }
     }
 
-    // Category filter (singular) - applies to Request Category column
-    // This is used when user explicitly says "request category" or "in the education sector"
-    if (args.category && !(args._category_already_applied && excludeParams.includes("category"))) {
+    // Category filter - applies to Request Category column
+    // DEDUP: If both args.category and args.categories contain the same value, only apply once via categories array
+    const categoryAlreadyInArray = args.category && Array.isArray(args.categories) && args.categories.length > 0 &&
+      args.categories.some((c: string) => c.toLowerCase() === args.category.toLowerCase());
+    
+    if (args.category && !categoryAlreadyInArray && !(args._category_already_applied && excludeParams.includes("category"))) {
       filters.push(`"RequestCategory" LIKE @p${paramIndex}`);
       params.push(`%${args.category}%`);
       paramIndex++;
       console.log(`[Filter] Request Category filter: ${args.category}`);
+    } else if (categoryAlreadyInArray) {
+      console.log(`[Filter] DEDUP: Skipping singular category "${args.category}" (already in categories array)`);
     }
     
     // Categories filter (array) - applies to Request Category column
