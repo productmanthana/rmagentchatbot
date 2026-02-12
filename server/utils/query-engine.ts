@@ -13984,6 +13984,31 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           } catch (mergeErr: any) {
           }
         }
+      } else if (
+        /\b(?:percentage|percent|proportion|share|concentrated|concentration)\b/i.test(userQuestion) &&
+        /\b(?:pipeline|total|overall|all)\b/i.test(userQuestion) &&
+        (() => {
+          const projectTypes = ['aviation', 'airports?', 'hospitals?', 'higher\\s+education', 'bridges?', 'transit',
+            'k-12', 'industrial', 'water', 'government', 'corporate', 'healthcare', 'transportation',
+            'residential', 'education', 'mixed\\s+use', 'commercial', 'civic', 'data\\s+cent(?:er|re)s?'];
+          const qLower = userQuestion.toLowerCase();
+          let typeCount = 0;
+          for (const t of projectTypes) {
+            if (new RegExp('\\b' + t + '\\b', 'i').test(qLower)) typeCount++;
+          }
+          return typeCount >= 2;
+        })()
+      ) {
+        // ═══════════════════════════════════════════════════════════════
+        // MULTI-TYPE PERCENTAGE OVERRIDE: Route to ai_data_analysis with NO filters
+        // Detects: "What percentage of total pipeline Fee is in [Type1], [Type2], and [Type3]?"
+        // Must see all data to calculate real proportions across types
+        // ═══════════════════════════════════════════════════════════════
+        console.log(`[QueryEngine] 📊 MULTI-TYPE PERCENTAGE OVERRIDE: Detected percentage across multiple types → forcing ai_data_analysis with NO type filters`);
+        classification = {
+          function_name: 'ai_data_analysis',
+          arguments: { analysis_question: userQuestion }
+        };
       } else if (/\b(group|grouped|aggregate|aggregated|breakdown|break\s*down|categorize|categorized)\s+(all\s+)?(projects?\s+|results?\s+)?by\s+status/i.test(userQuestion) ||
                  /\bby\s+status\b/i.test(userQuestion) ||
                  /\bstatus\s+(summary|breakdown|analysis|report)/i.test(userQuestion) ||
