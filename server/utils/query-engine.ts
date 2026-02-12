@@ -5340,6 +5340,42 @@ export class QueryEngine {
         chart_field: "total_value",
       },
 
+      get_clients_by_time_period: {
+        sql: `WITH period_data AS (
+              SELECT "Client",
+                CASE 
+                  WHEN @p1 = 3 THEN CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate")))
+                  WHEN @p1 = 6 THEN CONCAT(CASE WHEN MONTH(TRY_CONVERT(DATE, "ConstStartDate")) <= 6 THEN 'H1' ELSE 'H2' END, ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate")))
+                  WHEN @p1 = 12 THEN CAST(YEAR(TRY_CONVERT(DATE, "ConstStartDate")) AS VARCHAR)
+                  ELSE CONCAT('H', CASE WHEN MONTH(TRY_CONVERT(DATE, "ConstStartDate")) <= 6 THEN '1' ELSE '2' END, ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate")))
+                END as period_label,
+                COALESCE(TRY_CAST(NULLIF("Fee", '') AS NUMERIC), 0) as fee_val,
+                COALESCE(TRY_CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC), 0) as win_val
+              FROM "${TABLE}"
+              WHERE "Client" IS NOT NULL AND "Client" != ''
+              AND "ConstStartDate" IS NOT NULL AND "ConstStartDate" != ''
+              AND TRY_CONVERT(DATE, "ConstStartDate") IS NOT NULL
+              AND TRY_CONVERT(DATE, "ConstStartDate") > '2000-01-01'
+              {status_filter}
+              {additional_filters}
+            )
+            SELECT "Client",
+              period_label,
+              COUNT(*) as project_count,
+              SUM(fee_val) as total_fee,
+              AVG(fee_val) as avg_fee,
+              AVG(win_val) as avg_win_rate
+            FROM period_data
+            GROUP BY "Client", period_label
+            HAVING COUNT(*) >= @p2
+            ORDER BY project_count DESC, total_fee DESC`,
+        params: ["period_months", "min_projects"],
+        param_types: ["int", "int"],
+        optional_params: ["status", "company", "project_type", "state_code", "categories", "min_fee", "max_fee", "min_win", "max_win"],
+        chart_type: "bar",
+        chart_field: "total_fee",
+      },
+
       common_clients_between_companies: {
         sql: `SELECT c."Client",
               COUNT(*) as project_count,
@@ -8244,6 +8280,23 @@ export class QueryEngine {
       },
 
       {
+        name: "get_clients_by_time_period",
+        description: "Find clients with multiple projects starting within the same time period (quarter, half-year, or year). Use for: 'clients with more than X projects in the same 6-month period', 'clients with multiple projects starting within the same quarter', 'which clients have overlapping project starts', 'clients with projects clustered in same period'. Groups projects by Client AND time period, filters by minimum count per period. ALWAYS use this when user mentions 'same period', 'same quarter', 'same half', 'same year', 'within X months', or 'overlapping' in context of client project clustering.",
+        parameters: {
+          type: "object",
+          properties: {
+            period_months: { type: "integer", enum: [3, 6, 12], description: "Period length in months: 3 for quarterly, 6 for half-year/semi-annual, 12 for yearly. Extract from: 'same quarter' → 3, 'same 6-month period' or 'same half' → 6, 'same year' → 12. Default: 6" },
+            min_projects: { type: "integer", description: "Minimum number of projects a client must have WITHIN a single period (HAVING COUNT >= this value). Extract from: 'more than 2' → 3, 'at least 3' → 3, '3 or more' → 3, 'multiple' → 2." },
+            status: { type: "string", description: "Optional: Filter by project status (e.g., 'Submitted', 'Won')" },
+            company: { type: "string", description: "Optional: Filter by company" },
+            project_type: { type: "string", description: "Optional: Filter by project type" },
+            state_code: { type: "string", description: "Optional: Filter by state" },
+          },
+          required: ["period_months", "min_projects"],
+        },
+      },
+
+      {
         name: "compare_quarters",
         description: "Compare two specific quarters (e.g., Q1 2024 vs Q1 2023, or Q4 2024 vs Q3 2024). Use when user wants quarter-over-quarter comparison.",
         parameters: {
@@ -8959,6 +9012,7 @@ export class QueryEngine {
       'get_projects_by_poc': 'entity',
       'get_projects_by_category': 'category',
       'get_top_clients': 'aggregation',
+      'get_clients_by_time_period': 'aggregation',
       'get_top_tags': 'aggregation',
       'compare_companies': 'aggregation',
       'get_size_distribution': 'aggregation',
@@ -9027,7 +9081,7 @@ export class QueryEngine {
     
     // Clear limit when switching from ranking/top queries to client/company queries
     // This ensures "average" calculations use ALL records, not just top 1
-    const rankingFunctions = ['get_largest_projects', 'get_smallest_projects', 'get_highest_win_rate', 'get_lowest_win_rate', 'get_top_clients', 'compare_companies', 'get_top_pocs', 'get_top_tags', 'get_status_breakdown', 'get_revenue_by_project_type', 'get_project_type_breakdown', 'get_projects_by_project_type'];
+    const rankingFunctions = ['get_largest_projects', 'get_smallest_projects', 'get_highest_win_rate', 'get_lowest_win_rate', 'get_top_clients', 'get_clients_by_time_period', 'compare_companies', 'get_top_pocs', 'get_top_tags', 'get_status_breakdown', 'get_revenue_by_project_type', 'get_project_type_breakdown', 'get_projects_by_project_type'];
     const clientCompanyFunctions = ['get_projects_by_client', 'get_projects_by_company', 'compare_clients', 'compare_companies'];
     
     // Clear limit when switching from ranking to detail/average queries
@@ -13942,6 +13996,31 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         classification = {
           function_name: 'get_status_breakdown',
           arguments: mergeExtractedHints({})
+        };
+      } else if (/\b(?:same|within\s+(?:the\s+)?(?:a\s+)?(?:single\s+)?)\s*(?:\d+[\s-]*month|quarter(?:ly)?|half[\s-]*year|semi[\s-]*annual|6[\s-]*month|3[\s-]*month|annual|year(?:ly)?)\s*(?:period|window|span|time\s*frame)?\b/i.test(userQuestion) &&
+                 /\b(?:client|clients|company|companies)\b/i.test(userQuestion) &&
+                 /\b(?:more\s+than|at\s+least|over|\d+\+?\s+projects?|multiple|several)\b/i.test(userQuestion) &&
+                 /\b(?:projects?|opportunities|pursuits|starting|start)\b/i.test(userQuestion)) {
+        // ═══════════════════════════════════════════════════════════════
+        // TIME PERIOD CLUSTERING OVERRIDE: Route to get_clients_by_time_period
+        // Detects: "clients with more than X projects in the same 6-month period"
+        // ═══════════════════════════════════════════════════════════════
+        let periodMonths = 6;
+        if (/\bquarter(?:ly)?\b|3[\s-]*month/i.test(userQuestion)) periodMonths = 3;
+        else if (/\byear(?:ly)?\b|\bannual\b|12[\s-]*month/i.test(userQuestion)) periodMonths = 12;
+        
+        let minProjects = 3;
+        const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+        const parseNumOrWord = (val: string): number => parseInt(val) || wordToNum[val.toLowerCase()] || 2;
+        const minMatch = userQuestion.match(/\bmore\s+than\s+(\w+)/i) || userQuestion.match(/\bover\s+(\w+)/i);
+        const atLeastMatch = userQuestion.match(/\bat\s+least\s+(\w+)/i) || userQuestion.match(/\b(\d+)\s+or\s+more/i);
+        if (minMatch) minProjects = parseNumOrWord(minMatch[1]) + 1;
+        else if (atLeastMatch) minProjects = parseNumOrWord(atLeastMatch[1]);
+        
+        console.log(`[QueryEngine] 📅 TIME PERIOD CLUSTERING OVERRIDE: Detected period clustering query → forcing get_clients_by_time_period (period=${periodMonths}mo, min_projects=${minProjects})`);
+        classification = {
+          function_name: 'get_clients_by_time_period',
+          arguments: mergeExtractedHints({ period_months: periodMonths, min_projects: minProjects })
         };
       } else {
         // Use request queue to limit concurrent OpenAI requests
