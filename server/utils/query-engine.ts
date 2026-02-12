@@ -21685,21 +21685,40 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       }
       
       // Build structured prompt for GPT-5
-      const systemPrompt = `You are an expert business development analyst with deep experience analyzing project pipelines and predicting outcomes. Your role is to:
-1. Analyze the PROVIDED DATA using the EXACT NUMBERS given - DO NOT make up statistics
-2. Reference SPECIFIC PROJECTS by name (e.g., "PID 1234") when discussing patterns or outliers
-3. Provide evidence-based insights citing specific data points from the dataset
-4. Use the pre-calculated aggregates provided - these are the ACCURATE numbers from the database
-5. Acknowledge limitations and uncertainties in your analysis
+      const systemPrompt = `You are an expert business development analyst. Analyze the PROVIDED DATA using EXACT NUMBERS - never make up statistics.
 
-CRITICAL: All statistics (averages, counts, totals) have been pre-calculated from the COMPLETE dataset. Use these numbers directly - do NOT estimate or assume different values.
+CRITICAL: All statistics have been pre-calculated from the COMPLETE dataset. Use these numbers directly.
 
-FORMATTING RULES:
-- Use PLAIN TEXT ONLY - NO LaTeX, NO math notation like \\[, \\], \\text{}, \\times
-- For mathematical expressions, use simple text: "Expected Wins = 140 × 0.08 = 11.2 projects"
-- Use Unicode symbols for multiplication (×), division (÷), equals (=)
-- Write formulas inline with plain formatting
-- Use markdown for structure (headers, lists, bold) but NEVER LaTeX math blocks`;
+RESPONSE FORMAT RULES (MANDATORY):
+1. Start with a concise **one-line answer** in bold - the direct answer to the question
+2. Follow with a brief summary paragraph (2-3 sentences max)
+3. Use markdown tables (| col1 | col2 |) for any multi-row data comparisons
+4. Use ## for major sections, ### for subsections
+5. Use **bold** for key values, metrics, and important terms
+6. Use > blockquotes for key takeaways or conclusions
+7. Keep it concise - no verbose step-by-step arithmetic. Show the result, not every calculation step
+8. NO LaTeX, NO math notation like \\[, \\], \\text{}
+9. For formulas, write inline: "Combined Fee = $4,357.7M + $23,750.3M + $8,112.7M = $36,220.7M"
+10. Use numbered lists only for distinct sequential steps or ranked items
+11. Use bullet lists for related facts or details
+12. Always format dollar values with commas and appropriate suffix (M, B, K)
+13. Always format percentages with one decimal place
+
+STRUCTURE TEMPLATE (adapt as needed):
+## Answer
+> **[Direct one-line answer with the key number/finding]**
+
+## Breakdown
+| Category | Total Fee | % of Pipeline |
+|----------|-----------|---------------|
+| Type A   | $X.XM     | X.X%          |
+
+## Key Insights
+- Insight 1
+- Insight 2
+
+## Notes
+- Any caveats or limitations`;
 
       // Get balanced samples from each status (not just top by fee)
       const samplesByStatus: Record<string, any[]> = {};
@@ -21771,9 +21790,12 @@ INSTRUCTIONS:
 - When comparing project types (e.g., Hospitals, Higher Education, K-12), use "BREAKDOWN BY PROJECT TYPE"
 - IMPORTANT: Category and Project Type are DIFFERENT columns. Match the user's terms to the correct breakdown
 - Provide actionable insights based on the actual data
-- Use PLAIN TEXT for all calculations (NO LaTeX notation)
+- Use PLAIN TEXT only (NO LaTeX notation)
+- Use markdown tables for any data comparisons with 2+ items
+- Start with a direct answer, then provide supporting detail
+- Be concise - executives read this, not academics
 
-Provide comprehensive analysis addressing the question above using the exact data provided.`;
+Answer the question using the exact data provided. Format your response professionally using the structure template from your instructions.`;
 
       console.log(`[AI Analysis] Calling GPT-5 for insights...`);
       

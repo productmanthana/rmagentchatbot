@@ -191,6 +191,10 @@ function MarkdownRenderer({ content }: { content: string }) {
   let listItems: JSX.Element[] = [];
   let listType: 'ordered' | 'unordered' | null = null;
   let listKey = 0;
+  let inTable = false;
+  let tableRows: string[][] = [];
+  let tableKey = 0;
+  let tableHasSeparator = false;
   
   const flushList = () => {
     if (inList && listItems.length > 0) {
@@ -202,7 +206,7 @@ function MarkdownRenderer({ content }: { content: string }) {
         );
       } else {
         elements.push(
-          <ul key={`list-${listKey++}`} className="ml-8 mb-4 space-y-2 list-none">
+          <ul key={`list-${listKey++}`} className="ml-4 mb-4 space-y-2 list-none">
             {listItems}
           </ul>
         );
@@ -213,15 +217,91 @@ function MarkdownRenderer({ content }: { content: string }) {
     }
   };
   
+  const flushTable = () => {
+    if (inTable && tableRows.length > 0 && tableHasSeparator) {
+      const headerRow = tableRows[0];
+      const bodyRows = tableRows.slice(1);
+      elements.push(
+        <div key={`table-${tableKey++}`} className="overflow-x-auto mb-4 rounded-lg border border-[#E5E7EB]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#F3F4F6] border-b border-[#E5E7EB]">
+                {headerRow.map((cell, ci) => (
+                  <th key={ci} className="px-4 py-2.5 text-left font-semibold text-[#374151]">
+                    {formatInlineMarkdown(cell.trim())}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            {bodyRows.length > 0 && (
+              <tbody>
+                {bodyRows.map((row, ri) => (
+                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-[#F9FAFB]'}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-4 py-2 text-[#374151] border-t border-[#F3F4F6]">
+                        {formatInlineMarkdown(cell.trim())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            )}
+          </table>
+        </div>
+      );
+    } else if (inTable && tableRows.length > 0) {
+      tableRows.forEach((row, ri) => {
+        const lineText = '| ' + row.join(' | ') + ' |';
+        elements.push(
+          <p key={`tbl-fallback-${tableKey}-${ri}`} className="text-[#374151] mb-2 leading-relaxed">
+            {formatInlineMarkdown(lineText)}
+          </p>
+        );
+      });
+    }
+    tableRows = [];
+    inTable = false;
+    tableHasSeparator = false;
+  };
+  
   lines.forEach((line, index) => {
     const trimmed = line.trim();
     
+    // Table separator row (|---|---|) — mark table as valid, skip rendering
+    if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
+      if (inTable) tableHasSeparator = true;
+      return;
+    }
+    
+    // Table rows (| col1 | col2 |)
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      flushList();
+      inTable = true;
+      const cells = trimmed.slice(1, -1).split('|');
+      tableRows.push(cells);
+      return;
+    }
+    
+    if (inTable) {
+      flushTable();
+    }
+    
+    // H2 headers (##)
+    if (/^## (?!#)/.test(trimmed)) {
+      flushList();
+      const text = trimmed.replace(/^##\s+/, '');
+      elements.push(
+        <h2 key={index} className="text-lg font-bold text-[#111827] mt-6 mb-3 pb-2 border-b border-[#E5E7EB] first:mt-0">
+          {formatInlineMarkdown(text)}
+        </h2>
+      );
+    }
     // H3 headers (###)
-    if (trimmed.startsWith('### ')) {
+    else if (trimmed.startsWith('### ')) {
       flushList();
       const text = trimmed.replace(/^###\s+/, '');
       elements.push(
-        <h3 key={index} className="text-xl font-bold text-[#111827] mt-6 mb-3 first:mt-0">
+        <h3 key={index} className="text-base font-bold text-[#111827] mt-5 mb-2 first:mt-0">
           {formatInlineMarkdown(text)}
         </h3>
       );
@@ -231,24 +311,39 @@ function MarkdownRenderer({ content }: { content: string }) {
       flushList();
       const text = trimmed.replace(/^####\s+/, '');
       elements.push(
-        <h4 key={index} className="text-lg font-semibold text-[#374151] mt-4 mb-2">
+        <h4 key={index} className="text-sm font-semibold text-[#374151] mt-4 mb-2 uppercase tracking-wide">
           {formatInlineMarkdown(text)}
         </h4>
       );
     }
+    // Horizontal rules
+    else if (/^[-*_]{3,}$/.test(trimmed)) {
+      flushList();
+      elements.push(<hr key={index} className="my-4 border-[#E5E7EB]" />);
+    }
+    // Blockquotes (>)
+    else if (trimmed.startsWith('> ')) {
+      flushList();
+      const text = trimmed.replace(/^>\s+/, '');
+      elements.push(
+        <blockquote key={index} className="border-l-4 border-[#8BC34A] bg-[#F0FDF4] pl-4 py-2 pr-3 my-3 rounded-r-lg text-[#374151] italic">
+          {formatInlineMarkdown(text)}
+        </blockquote>
+      );
+    }
     // Numbered lists (1., 2., etc.)
-    else if (/^\d+\.\s+/.test(trimmed)) {
+    else if (/^\d+[\.)]\s+/.test(trimmed)) {
       if (!inList || listType !== 'ordered') {
         flushList();
         inList = true;
         listType = 'ordered';
       }
-      const number = trimmed.match(/^\d+\./)?.[0] || '';
-      const text = trimmed.replace(/^\d+\.\s+/, '');
+      const number = trimmed.match(/^\d+[\.)]/)?.[0]?.replace(')', '.') || '';
+      const text = trimmed.replace(/^\d+[\.)]\s+/, '');
       listItems.push(
-        <li key={index} className="flex items-start gap-2">
-          <span className="text-[#8BC34A] font-semibold flex-shrink-0">{number}</span>
-          <span className="text-[#374151]">{formatInlineMarkdown(text)}</span>
+        <li key={index} className="flex items-start gap-3 py-0.5">
+          <span className="bg-[#8BC34A] text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">{number.replace('.', '')}</span>
+          <span className="text-[#374151] flex-1">{formatInlineMarkdown(text)}</span>
         </li>
       );
     }
@@ -261,9 +356,9 @@ function MarkdownRenderer({ content }: { content: string }) {
       }
       const text = trimmed.replace(/^[-*]\s+/, '');
       listItems.push(
-        <li key={index} className="flex items-start gap-2">
-          <span className="text-cyan-400 mt-1 flex-shrink-0">•</span>
-          <span className="text-[#374151]">{formatInlineMarkdown(text)}</span>
+        <li key={index} className="flex items-start gap-2 py-0.5">
+          <span className="text-[#8BC34A] mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#8BC34A]" />
+          <span className="text-[#374151] flex-1">{formatInlineMarkdown(text)}</span>
         </li>
       );
     }
@@ -283,47 +378,61 @@ function MarkdownRenderer({ content }: { content: string }) {
     }
   });
   
-  // Flush any remaining list
   flushList();
+  flushTable();
   
   return <div className="space-y-1">{elements}</div>;
 }
 
-// Format inline markdown (bold, italic, code, etc.)
+// Highlight dollar values and percentages in text
+function highlightValues(text: string, keyPrefix: string = 'v'): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  let key = 0;
+  const valRegex = /(\$[\d,]+(?:\.\d+)?[MBKmkbn]*\b)|(\b\d+(?:\.\d+)?%)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = valRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.substring(lastIndex, match.index));
+    if (match[1]) {
+      parts.push(<span key={`${keyPrefix}-${key++}`} className="font-semibold text-[#059669]">{match[1]}</span>);
+    } else if (match[2]) {
+      parts.push(<span key={`${keyPrefix}-${key++}`} className="font-semibold text-[#2563EB]">{match[2]}</span>);
+    }
+    lastIndex = valRegex.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.substring(lastIndex));
+  return parts.length > 0 ? parts : [text];
+}
+
+// Format inline markdown (bold, italic, code, dollar values, percentages)
 function formatInlineMarkdown(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
   let key = 0;
   
-  // Combined regex for bold, italic, and inline code
   const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)/g;
   let lastIndex = 0;
   let match;
   
   while ((match = regex.exec(text)) !== null) {
-    // Add text before the match
     if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index));
+      parts.push(...highlightValues(text.substring(lastIndex, match.index), `pre-${key}`));
     }
     
-    // Check which pattern matched
     if (match[1]) {
-      // Bold text (**)
       parts.push(
-        <strong key={key++} className="font-semibold text-[#8BC34A]">
-          {match[2]}
+        <strong key={key++} className="font-semibold text-[#111827]">
+          {highlightValues(match[2], `b-${key}`)}
         </strong>
       );
     } else if (match[3]) {
-      // Italic text (*)
       parts.push(
         <em key={key++} className="italic text-[#6B7280]">
           {match[4]}
         </em>
       );
     } else if (match[5]) {
-      // Inline code (`)
       parts.push(
-        <code key={key++} className="px-1.5 py-0.5 rounded bg-white/10 text-cyan-300 font-mono text-sm">
+        <code key={key++} className="px-1.5 py-0.5 rounded bg-[#F3F4F6] text-[#7C3AED] font-mono text-sm border border-[#E5E7EB]">
           {match[6]}
         </code>
       );
@@ -332,9 +441,8 @@ function formatInlineMarkdown(text: string): (string | JSX.Element)[] {
     lastIndex = regex.lastIndex;
   }
   
-  // Add remaining text
   if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+    parts.push(...highlightValues(text.substring(lastIndex), `end-${key}`));
   }
   
   return parts.length > 0 ? parts : [text];
