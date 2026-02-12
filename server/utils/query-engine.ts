@@ -14018,9 +14018,13 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         else if (atLeastMatch) minProjects = parseNumOrWord(atLeastMatch[1]);
         
         console.log(`[QueryEngine] 📅 TIME PERIOD CLUSTERING OVERRIDE: Detected period clustering query → forcing get_clients_by_time_period (period=${periodMonths}mo, min_projects=${minProjects})`);
+        const timePeriodArgs = mergeExtractedHints({ period_months: periodMonths, min_projects: minProjects });
+        delete timePeriodArgs.start_date;
+        delete timePeriodArgs.end_date;
+        delete timePeriodArgs.year;
         classification = {
           function_name: 'get_clients_by_time_period',
-          arguments: mergeExtractedHints({ period_months: periodMonths, min_projects: minProjects })
+          arguments: timePeriodArgs
         };
       } else {
         // Use request queue to limit concurrent OpenAI requests
@@ -14049,6 +14053,20 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         if (asksForIndividualProjects && asksWhichEntityForThem) {
           console.log(`[QueryEngine] 🔄 POST-LLM CORRECTION: LLM chose "${classification.function_name}" but user wants individual projects with entity column visible. Rerouting to get_projects_by_combined_filters.`);
           classification.function_name = 'get_projects_by_combined_filters';
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // TIME PERIOD CLUSTERING: Strip date range filters — "within one year" means
+      // the bucketing period, NOT a date range filter. The period is encoded in
+      // period_months param, not start_date/end_date.
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (classification.function_name === 'get_clients_by_time_period') {
+        if (classification.arguments.start_date || classification.arguments.end_date || classification.arguments.year) {
+          console.log(`[QueryEngine] 📅 TIME PERIOD DATE STRIP: Removing date filters (start_date=${classification.arguments.start_date}, end_date=${classification.arguments.end_date}, year=${classification.arguments.year}) — period is encoded in period_months param`);
+          delete classification.arguments.start_date;
+          delete classification.arguments.end_date;
+          delete classification.arguments.year;
         }
       }
 
