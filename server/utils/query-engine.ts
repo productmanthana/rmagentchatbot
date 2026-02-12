@@ -10331,7 +10331,10 @@ Return ONLY valid JSON, no explanation.`;
       const hasCommonKeyword = topLevelCommonKeyword.test(userQuestion);
       const hasClientContext = topLevelClientContext.test(userQuestion);
       const hasMetricContext = topLevelMetricExclusion.test(userQuestion);
-      const isLikelyCommonClients = hasCommonKeyword && topLevelUniqueCompanies.length >= 2 && (hasClientContext || !hasMetricContext);
+      // "client of X and Y" or "clients of X and Y" pattern implies common/shared clients
+      const clientOfPattern = /\b(?:clients?|customers?)\s+(?:of|for|between)\s+/i;
+      const hasClientOfWithMultipleCompanies = clientOfPattern.test(userQuestion) && topLevelUniqueCompanies.length >= 2;
+      const isLikelyCommonClients = (hasCommonKeyword || hasClientOfWithMultipleCompanies) && topLevelUniqueCompanies.length >= 2 && (hasClientContext || !hasMetricContext);
       if (isLikelyCommonClients) {
         console.log(`[QueryEngine] 🔀 TOP-LEVEL COMMON CLIENTS: Detected companies: ${JSON.stringify(topLevelUniqueCompanies)} - routing directly to common_clients_between_companies`);
         const commonClientsArgs: Record<string, any> = {
