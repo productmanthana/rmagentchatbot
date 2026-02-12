@@ -21492,6 +21492,19 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         delete args._category_already_applied;
       }
 
+      // ACTIVE OPPORTUNITY EXPANSION: When user says "active opportunity/opportunities",
+      // they mean all non-closed statuses. The LLM inconsistently maps "active" to 
+      // various statuses ("In Progress", "Pursuing", etc.) - none reliable.
+      // Always expand "active opportunity" to all open statuses regardless of LLM choice.
+      // Note: executeQuery may have already converted status to an array via CACHE STATUS EXPANSION.
+      const originalQ = (args._original_question || args.analysis_question || '').toLowerCase();
+      if (args.status && /\bactive\s+opportunit/i.test(originalQ)) {
+        const allOpenStatuses = ["Proposal Development", "Qualified Lead", "Submitted", "Won", "Lead", "In Progress", "Hold"];
+        const currentStatus = Array.isArray(args.status) ? args.status.join(', ') : args.status;
+        args.status = allOpenStatuses;
+        console.log(`[AI Analysis] 📊 ACTIVE OPPORTUNITY EXPANSION: "active opportunity" → expanded status from "${currentStatus}" to all open statuses`);
+      }
+
       const { analysis_question, status, categories, project_type, tags, min_fee, max_fee, time_reference, start_date, end_date } = args;
       
       // Parse time_reference if provided
@@ -21512,6 +21525,26 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         }
       }
       
+      // MULTI-YEAR EXPANSION: When the analysis question spans multiple years,
+      // expand the date range to cover all mentioned years so the AI gets full data.
+      // e.g., "clients in 2026... sectors in 2025" → date range 2025-01-01 to 2026-12-31
+      const combinedText = `${analysis_question || ''} ${args._original_question || ''}`;
+      const yearMatches = combinedText.match(/\b(20\d{2})\b/g);
+      if (yearMatches && yearMatches.length > 0) {
+        const uniqueYears = [...new Set(yearMatches.map(Number))].filter(y => y >= 2000 && y <= 2099);
+        if (uniqueYears.length >= 2) {
+          const minYear = Math.min(...uniqueYears);
+          const maxYear = Math.max(...uniqueYears);
+          const expandedStart = `${minYear}-01-01`;
+          const expandedEnd = `${maxYear}-12-31`;
+          if (actualStartDate !== expandedStart || actualEndDate !== expandedEnd) {
+            console.log(`[AI Analysis] 📅 MULTI-YEAR EXPANSION: Question spans years [${uniqueYears.join(', ')}] → expanding date range from ${actualStartDate}..${actualEndDate} to ${expandedStart}..${expandedEnd}`);
+            actualStartDate = expandedStart;
+            actualEndDate = expandedEnd;
+          }
+        }
+      }
+
       console.log(`[AI Analysis] Question: "${analysis_question}"`);
       console.log(`[AI Analysis] Filters:`, { status, categories, project_type, tags, min_fee, max_fee, start_date: actualStartDate, end_date: actualEndDate });
       
@@ -21553,12 +21586,12 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         console.log(`[AI Analysis] Project Type filter applied: ${project_type}`);
       }
       
-      if (min_fee !== undefined) {
+      if (min_fee !== undefined && min_fee !== 0 && min_fee !== null) {
         whereClauses.push(`CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex++}`);
         params.push(min_fee);
       }
       
-      if (max_fee !== undefined) {
+      if (max_fee !== undefined && max_fee !== 0 && max_fee !== null) {
         whereClauses.push(`CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex++}`);
         params.push(max_fee);
       }
@@ -23085,6 +23118,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
       // Special handling for AI-powered data analysis (predictive/analytical queries)
       if (functionName === "ai_data_analysis") {
+        args._original_question = userQuestion;
         return await this.handleAIDataAnalysis(args, externalDbQuery);
       }
       
