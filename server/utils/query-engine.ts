@@ -5224,6 +5224,30 @@ export class QueryEngine {
         chart_field: "total_value",
       },
 
+      common_clients_between_companies: {
+        sql: `SELECT c."Client",
+              COUNT(*) as project_count,
+              SUM(CAST(NULLIF(c."Fee", '') AS NUMERIC)) as total_value,
+              AVG(CAST(NULLIF(c."Fee", '') AS NUMERIC)) as avg_project_value,
+              AVG(CAST(NULLIF(c."ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              FROM "${TABLE}" c
+              WHERE c."Client" IN (
+                SELECT a."Client" FROM "${TABLE}" a WHERE a."Company" LIKE '%' + @p1 + '%'
+                INTERSECT
+                SELECT b."Client" FROM "${TABLE}" b WHERE b."Company" LIKE '%' + @p2 + '%'
+              )
+              {status_filter}
+              {additional_filters}
+              GROUP BY c."Client"
+              ORDER BY total_value DESC`,
+        params: ["company1", "company2"],
+        param_types: ["str", "str"],
+        optional_params: ["start_date", "end_date", "status"],
+        excludeParams: ["company1", "company2", "company", "organization", "status"],
+        chart_type: "bar",
+        chart_field: "total_value",
+      },
+
       compare_quarters: {
         sql: `SELECT 
               YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
@@ -16759,7 +16783,12 @@ Response (JSON only):`;
           }
           // Ensure the flag is set
           args[`_${headChefResult.entity.paramName}_already_applied`] = true;
-          functionName = headChefResult.functionName;
+          // Preserve common_clients_between_companies function - don't let HeadChef overwrite it
+          if (args._common_clients_query && classification.function_name === 'common_clients_between_companies') {
+            functionName = 'common_clients_between_companies';
+          } else {
+            functionName = headChefResult.functionName;
+          }
           
           // Apply status if resolved
           if (headChefResult.status && headChefResult.status.length > 0) {
@@ -18515,6 +18544,25 @@ Response (JSON only):`;
       if (isEmptyOrFallback) {
         console.log(`[QueryEngine] 🎯 ENTERING 0-RESULTS BLOCK - args.poc=${args.poc}, args.status=${JSON.stringify(args.status)}, previousContext=${!!previousContext}, _disambiguation_column=${!!args._disambiguation_column}`);
         console.log(`[QueryEngine] 🎯 0-RESULTS DEBUG: project_type=${args.project_type}, _project_type_already_applied=${args._project_type_already_applied}`);
+        if (args._common_clients_query) {
+          console.log(`[QueryEngine] 🔗 COMMON CLIENTS: No shared clients found between ${args.company1} and ${args.company2}`);
+          return {
+            success: true,
+            data: [{
+              type: 'ai_analysis',
+              narrative: `Based on our database, there are no common clients shared between ${args.company1 || 'Company 1'} and ${args.company2 || 'Company 2'}. These companies appear to serve different client bases.`,
+              aggregates: { count: 0, totalFee: 0, avgFee: 0 },
+              samples: [],
+              question: userQuestion,
+              is_empty_result: true,
+            }],
+            row_count: 0,
+            summary: {},
+            chart_config: null,
+            function_name: 'common_clients_between_companies',
+            arguments: args,
+          };
+        }
         // EARLY ENTITY CHECK: For POC/company/org queries, return clean "no results" immediately
         // This bypasses all the retry/self-correction logic for entity-based queries
         // FOLLOW-UP CHECK: For follow-up queries with previousContext, return clean no-results with SQL
@@ -18884,7 +18932,7 @@ Response (JSON only):`;
         // SELF-CORRECTION LOOP: Re-classify with error feedback before fallback
         // This gives the LLM a chance to correct its classification mistake
         // ═══════════════════════════════════════════════════════════════
-        if (!args.__selfCorrectionPerformed) {
+        if (!args.__selfCorrectionPerformed && !args._common_clients_query) {
           console.log(`[QueryEngine] 🔄 Attempting self-correction loop...`);
           
           try {
@@ -20033,7 +20081,23 @@ Response (JSON only):`;
     const companyPattern = /\b(ais|gafcon|gei|hill|liro|palladium|stobg)\b/i;
     const companyMatch = userQuestion.match(companyPattern);
     console.log(`[DEBUG] Company Detection: userQuestion="${userQuestion}", companyMatch=${JSON.stringify(companyMatch)}, args.organization=${args.organization}, args._organization_already_applied=${args._organization_already_applied}`);
-    if (companyMatch && !args.organization && !args._organization_already_applied) {
+    // GUARD: Skip company detection for "clients in common" / "shared clients between companies" queries
+    const isCommonBetweenCompanies = /\b(both|common|shared|overlap|intersect)\b/i.test(userQuestion) && (userQuestion.match(new RegExp(companyPattern.source, "gi")) || []).length >= 2;
+    if (isCommonBetweenCompanies) {
+      console.log(`[Company Detection Guard] SKIPPING - query asks for common/shared entities between multiple companies`);
+      const allCompanyMatches = userQuestion.match(new RegExp(companyPattern.source, 'gi')) || [];
+      const uniqueCompanies = [...new Set(allCompanyMatches.map(c => c.toUpperCase()))];
+      console.log(`[Common Clients] Detected companies: ${JSON.stringify(uniqueCompanies)}`);
+      if (uniqueCompanies.length >= 2) {
+        classification.function_name = 'common_clients_between_companies';
+        args.company1 = uniqueCompanies[0];
+        args.company2 = uniqueCompanies[1];
+        args._common_clients_query = true;
+        delete args.clients;
+        delete args.companies;
+      }
+    }
+    if (companyMatch && !args.organization && !args._organization_already_applied && !isCommonBetweenCompanies) {
       const detectedCompany = companyMatch[1];
       // Check if query is asking about this as a company (not using it as a word in another context)
       const isCompanyContext = /\b(projects?|deals?|opportunities?|work|portfolio|revenue|fee|client)\s*(of|for|from|by|at)?\s*(ais|gafcon|gei|hill|liro|palladium|stobg)\b|\b(ais|gafcon|gei|hill|liro|palladium|stobg)\s*(projects?|deals?|opportunities?|company|work|portfolio)/i.test(userQuestion);
@@ -22622,7 +22686,7 @@ DATABASE CONTEXT (for reference):
       // Pass template.params to avoid duplicating filters in {additional_filters}
       // IMPORTANT: Also exclude plural forms (category→categories, tag→tags) since normalizeFilterArgs
       // converts singular to plural before buildSql is called
-      const excludeParams = [...template.params];
+      const excludeParams = [...template.params, ...(template.excludeParams || [])];
       if (template.params.includes('category')) {
         excludeParams.push('categories'); // Exclude both singular and plural
       }
