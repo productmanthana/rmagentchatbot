@@ -23047,25 +23047,21 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       try { fs.writeFileSync("/tmp/full_sql.log", sql + "\nPARAMS: " + JSON.stringify(sqlParams)); } catch(e) {}
 
       // ═══════════════════════════════════════════════════════════════
-      // LLM SQL REVIEW: Ask the LLM to verify the query before execution
+      // LLM SQL REVIEW: Log-only diagnostic - never auto-corrects
       // ═══════════════════════════════════════════════════════════════
       const skipReviewFunctions = new Set([
         'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response'
       ]);
       if (userQuestion && !skipReviewFunctions.has(functionName) && !args._llm_review_done) {
         args._llm_review_done = true;
-        const review = await this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args);
-        if (review.corrected) {
-          console.log(`[LLM-SQL-Review] 🔄 Applying corrections: ${review.reason}`);
-          sql = review.sql;
-          sqlParams = review.params;
-          const correctedDisplaySql = convertPlaceholders(sql);
-          console.log(`\n${'='.repeat(80)}`);
-          console.log(`[QueryEngine] CORRECTED SQL QUERY (MS SQL):`);
-          console.log(`${'='.repeat(80)}`);
-          console.log(correctedDisplaySql);
-          console.log(`${'='.repeat(80)}\n`);
-        }
+        this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args)
+          .then(review => {
+            if (review.corrected) {
+              console.log(`[LLM-SQL-Review] ⚠️ DIAGNOSTIC ONLY (not applied): ${review.reason}`);
+              try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, suggestedSql: review.sql?.substring(0, 500) }) + '\n'); } catch(e) {}
+            }
+          })
+          .catch(() => {});
       }
 
       let results: any[]; try { results = await externalDbQuery(sql, sqlParams); } catch(dbErr: any) { fs.appendFileSync("/tmp/exec_debug.log", "DB_QUERY_ERROR:" + String(dbErr) + "\n"); throw dbErr; }
