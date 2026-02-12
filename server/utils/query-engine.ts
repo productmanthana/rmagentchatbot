@@ -3481,6 +3481,7 @@ export class QueryEngine {
         sql: `SELECT "Company",
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
               AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_size,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
               ROUND(SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) * 100.0 / NULLIF(SUM(SUM(CAST(NULLIF("Fee", '') AS NUMERIC))) OVER(), 0), 1) as pct_of_total_pipeline
@@ -5008,6 +5009,7 @@ export class QueryEngine {
         sql: `SELECT "ProjectType" as project_type,
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
               AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
               FROM "${TABLE}"
@@ -5029,6 +5031,7 @@ export class QueryEngine {
         sql: `SELECT "ProjectType",
               COUNT(*) as project_count,
               SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
               AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
               AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
               FROM "${TABLE}"
