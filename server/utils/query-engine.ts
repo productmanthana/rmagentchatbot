@@ -21471,6 +21471,17 @@ Based on ${aggregates.count} projects:
           continue;
         }
         
+        // Skip common English words that appear at end of phrases (e.g., "have in common", "results for all")
+        const commonNonFilterWords = new Set([
+          'common', 'total', 'all', 'general', 'detail', 'details', 'order',
+          'summary', 'comparison', 'both', 'each', 'every', 'them', 'those',
+          'these', 'list', 'table', 'chart', 'data', 'results', 'answer',
+          'descending', 'ascending', 'alphabetical', 'reverse', 'value',
+        ]);
+        if (commonNonFilterWords.has(term)) {
+          continue;
+        }
+        
         // This looks like an unrecognized filter term
         return {
           hasUnrecognizedTerm: true,
