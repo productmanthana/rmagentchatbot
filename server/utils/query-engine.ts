@@ -2893,7 +2893,25 @@ export class QueryEngine {
       entitySource = 'keyword';
     }
     
-    console.log(`[HeadChef] Entity term: "${entityTerm}" (source: ${entitySource})`);
+
+    // Guard: If the entity term IS a column keyword (e.g., "company", "company and", "client", "each company"),
+    // the LLM mistakenly extracted the column name as a search value. Strip it and let the query
+    // route to the correct aggregation function instead.
+    if (entityTerm) {
+      const columnKeywords = ['company', 'companies', 'client', 'clients', 'poc', 'point of contact', 'status', 'category', 'type', 'project type', 'division', 'department', 'module'];
+      const cleanedTerm = entityTerm.replace(/\b(and|or|the|each|every|all|by|for|of|with|per|in|from|their|its|our|what|how|does|do|is|are|which)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (columnKeywords.includes(cleanedTerm)) {
+        console.log(`[HeadChef] ⚠ Entity term "${entityTerm}" is a column keyword (cleaned: "${cleanedTerm}"), stripping to avoid false disambiguation`);
+        if (entitySource === 'company') delete args.company;
+        else if (entitySource === 'client') delete args.client;
+        else if (entitySource === 'poc') delete args.poc;
+        else if (entitySource === 'keyword') delete args.keyword;
+        entityTerm = null;
+        entitySource = '';
+      }
+    }
+
+        console.log(`[HeadChef] Entity term: "${entityTerm}" (source: ${entitySource})`);
     
     // Step 5: Run cache detection on ALL columns
     if (entityTerm && externalDbQuery) {
