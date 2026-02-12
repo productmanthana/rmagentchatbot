@@ -22440,6 +22440,147 @@ DATABASE CONTEXT (for reference):
     };
     }
 
+  /**
+   * LLM SQL REVIEW: Before executing a query, ask the LLM to verify the SQL
+   * matches the user's intent. If the LLM detects a mismatch, it suggests corrections.
+   * This catches cases where parameters were routed to the wrong columns.
+   */
+  private async llmSqlReview(
+    userQuestion: string,
+    sql: string,
+    params: any[],
+    functionName: string,
+    args: Record<string, any>
+  ): Promise<{ corrected: boolean; sql: string; params: any[]; reason?: string }> {
+    try {
+      const startTime = Date.now();
+      const columnReference = `
+Available columns in vw_ChatBotData:
+- "Client" = Client/customer name (e.g., "NYU Langone Medical Center")
+- "Company" = OPCO/company name (e.g., "STOBG", "Hill", "GEI")
+- "RequestCategory" = Broad sector (e.g., "Healthcare", "Education", "Mission Critical", "Aviation", "Transportation")
+- "ProjectType" = Specific project type (e.g., "Hospitals", "Bridges", "Higher Education", "Solar")
+- "Division" = Internal division/department name (e.g., "SPM", "Dallas", "Ajax")
+- "Department" = Department name
+- "PointOfContact" = POC/contact person name
+- "StatusChoice" = Project status (e.g., "Won", "Lost", "Submitted", "Qualified Lead")
+- "Fee" = Project fee/revenue value
+- "WinPercentage" = Win probability percentage
+- "State" = US state
+- "Region" = Geographic region
+- "Title" = Project title/name
+- "Tags" = Comma-separated tags
+- "ModuleName" = Module (Opportunity, Tracked Work, Construction)
+IMPORTANT RULES:
+- "opportunities" in user questions refers to RequestCategory, NOT ModuleName
+- Sectors like "Mission Critical", "Healthcare", "Aviation" etc. should filter RequestCategory column
+- Company names like "STOBG", "Hill", "GEI" filter the Company column
+- Client names are typically longer organization names
+`;
+
+      const reviewPrompt = `You are a SQL query reviewer. Check if this SQL query correctly answers the user's question.
+
+User Question: "${userQuestion}"
+Function: ${functionName}
+
+SQL Query:
+${sql}
+
+Parameters: ${JSON.stringify(params)}
+
+Extracted Args (what the system decided): ${JSON.stringify(
+        Object.fromEntries(Object.entries(args).filter(([k]) => !k.startsWith('_') && !k.startsWith('debug')))
+      )}
+
+${columnReference}
+
+TASK: Check if the WHERE clause filters match the user's intent. Look for these common errors:
+1. A sector name (like "Mission Critical") being used as a Client filter instead of RequestCategory
+2. A company name being used as a Client filter or vice versa
+3. Missing filters that the user clearly asked for
+4. Wrong column being filtered (e.g., filtering ProjectType when user said "category/sector")
+5. "client of X and Y" meaning common/shared clients between companies X and Y
+
+If the query is CORRECT, respond with exactly: {"corrected": false}
+
+If the query needs CORRECTION, respond with:
+{
+  "corrected": true,
+  "reason": "brief explanation",
+  "fixes": [
+    {"type": "replace_column", "wrong_column": "Client", "correct_column": "RequestCategory", "param_index": 0},
+    {"type": "add_filter", "column": "Company", "value": "STOBG", "operator": "LIKE"},
+    {"type": "remove_filter", "column": "Client", "param_index": 0}
+  ]
+}
+
+Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY valid JSON.`;
+
+      const response = await this.openaiClient.chat(
+        [
+          { role: "system", content: "You are a precise SQL query reviewer. Return only valid JSON." },
+          { role: "user", content: reviewPrompt }
+        ],
+        { model: "gpt-5.1", max_completion_tokens: 500 }
+      );
+
+      const duration = Date.now() - startTime;
+      const content = (response || '').trim();
+      
+      let jsonStr = content;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) jsonStr = jsonMatch[0];
+      
+      const review = JSON.parse(jsonStr);
+      
+      if (!review.corrected) {
+        console.log(`[LLM-SQL-Review] ✅ Query approved (${duration}ms)`);
+        return { corrected: false, sql, params };
+      }
+
+      console.log(`[LLM-SQL-Review] ⚠️ Correction needed (${duration}ms): ${review.reason}`);
+      
+      let correctedSql = sql;
+      let correctedParams = [...params];
+
+      for (const fix of (review.fixes || [])) {
+        if (fix.type === 'replace_column' && fix.wrong_column && fix.correct_column) {
+          const regex = new RegExp(`"${fix.wrong_column}"`, 'g');
+          correctedSql = correctedSql.replace(regex, `"${fix.correct_column}"`);
+          console.log(`[LLM-SQL-Review] 🔧 Replaced column: "${fix.wrong_column}" → "${fix.correct_column}"`);
+        }
+        else if (fix.type === 'add_filter' && fix.column && fix.value) {
+          const paramPlaceholder = `@p${correctedParams.length + 1}`;
+          const operator = fix.operator || 'LIKE';
+          const filterValue = operator === 'LIKE' ? `%${fix.value}%` : fix.value;
+          
+          const orderByIndex = correctedSql.indexOf('ORDER BY');
+          if (orderByIndex > -1) {
+            correctedSql = correctedSql.substring(0, orderByIndex) + 
+              `AND "${fix.column}" ${operator} ${paramPlaceholder}\n              ` + 
+              correctedSql.substring(orderByIndex);
+          } else {
+            correctedSql += `\nAND "${fix.column}" ${operator} ${paramPlaceholder}`;
+          }
+          correctedParams.push(filterValue);
+          console.log(`[LLM-SQL-Review] 🔧 Added filter: "${fix.column}" ${operator} "${fix.value}"`);
+        }
+        else if (fix.type === 'remove_filter' && fix.column) {
+          const removeRegex = new RegExp(`\\s*AND\\s+"${fix.column}"\\s+LIKE\\s+@p\\d+`, 'gi');
+          correctedSql = correctedSql.replace(removeRegex, '');
+          console.log(`[LLM-SQL-Review] 🔧 Removed filter on: "${fix.column}"`);
+        }
+      }
+
+      console.log(`[LLM-SQL-Review] 📝 Corrected SQL:\n${correctedSql}`);
+      return { corrected: true, sql: correctedSql, params: correctedParams, reason: review.reason };
+      
+    } catch (err: any) {
+      console.log(`[LLM-SQL-Review] ❌ Review failed (non-blocking): ${err.message}`);
+      return { corrected: false, sql, params };
+    }
+  }
+
   private async executeQuery(
     functionName: string,
     args: Record<string, any>,
@@ -22753,7 +22894,7 @@ DATABASE CONTEXT (for reference):
       }
 
       let sql = template.sql;
-      const sqlParams: any[] = [];
+      let sqlParams: any[] = [];
       try { fs.appendFileSync("/tmp/exec_debug.log", "SQL_ASSIGNED:" + functionName + " sql_len=" + sql.length + "\n"); } catch(e) {}
       
       // Handle column_name substitution for get_project_column_by_id
@@ -22904,6 +23045,29 @@ DATABASE CONTEXT (for reference):
 
       try { fs.appendFileSync('/tmp/exec_debug.log', JSON.stringify({ ts: new Date().toISOString(), functionName, sql: sql.substring(0, 500), sqlParams, paramCount: sqlParams.length }) + '\n'); } catch(e) {}
       try { fs.writeFileSync("/tmp/full_sql.log", sql + "\nPARAMS: " + JSON.stringify(sqlParams)); } catch(e) {}
+
+      // ═══════════════════════════════════════════════════════════════
+      // LLM SQL REVIEW: Ask the LLM to verify the query before execution
+      // ═══════════════════════════════════════════════════════════════
+      const skipReviewFunctions = new Set([
+        'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response'
+      ]);
+      if (userQuestion && !skipReviewFunctions.has(functionName) && !args._llm_review_done) {
+        args._llm_review_done = true;
+        const review = await this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args);
+        if (review.corrected) {
+          console.log(`[LLM-SQL-Review] 🔄 Applying corrections: ${review.reason}`);
+          sql = review.sql;
+          sqlParams = review.params;
+          const correctedDisplaySql = convertPlaceholders(sql);
+          console.log(`\n${'='.repeat(80)}`);
+          console.log(`[QueryEngine] CORRECTED SQL QUERY (MS SQL):`);
+          console.log(`${'='.repeat(80)}`);
+          console.log(correctedDisplaySql);
+          console.log(`${'='.repeat(80)}\n`);
+        }
+      }
+
       let results: any[]; try { results = await externalDbQuery(sql, sqlParams); } catch(dbErr: any) { fs.appendFileSync("/tmp/exec_debug.log", "DB_QUERY_ERROR:" + String(dbErr) + "\n"); throw dbErr; }
 
       try { fs.appendFileSync('/tmp/exec_debug.log', 'RESULT_COUNT:' + results.length + '\n'); } catch(e) {}
