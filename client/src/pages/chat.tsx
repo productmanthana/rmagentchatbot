@@ -183,16 +183,11 @@ function formatCellValue(value: any, columnName: string): string {
   return String(value);
 }
 
-// Parse markdown into structured sections then render with cards
 function MarkdownRenderer({ content }: { content: string }) {
   const lines = content.split('\n');
 
-  interface Section {
-    type: 'h2';
-    title: string;
-    children: ParsedBlock[];
-  }
-  interface ParsedBlock {
+  interface Section { title: string; blocks: PBlock[] }
+  interface PBlock {
     type: 'paragraph' | 'blockquote' | 'table' | 'ordered-list' | 'unordered-list' | 'h3' | 'h4' | 'hr' | 'spacer';
     content?: string;
     items?: string[];
@@ -200,16 +195,10 @@ function MarkdownRenderer({ content }: { content: string }) {
   }
 
   const sections: Section[] = [];
-  let topBlocks: ParsedBlock[] = [];
-  let currentSection: Section | null = null;
+  let topBlocks: PBlock[] = [];
+  let cur: Section | null = null;
 
-  const pushBlock = (block: ParsedBlock) => {
-    if (currentSection) {
-      currentSection.children.push(block);
-    } else {
-      topBlocks.push(block);
-    }
-  };
+  const push = (b: PBlock) => { cur ? cur.blocks.push(b) : topBlocks.push(b); };
 
   let listItems: string[] = [];
   let listType: 'ordered' | 'unordered' | null = null;
@@ -218,115 +207,101 @@ function MarkdownRenderer({ content }: { content: string }) {
 
   const flushList = () => {
     if (listItems.length > 0 && listType) {
-      pushBlock({ type: listType === 'ordered' ? 'ordered-list' : 'unordered-list', items: [...listItems] });
-      listItems = [];
-      listType = null;
+      push({ type: listType === 'ordered' ? 'ordered-list' : 'unordered-list', items: [...listItems] });
+      listItems = []; listType = null;
     }
   };
   const flushTable = () => {
     if (tableRows.length > 0 && tableHasSep) {
-      pushBlock({ type: 'table', rows: [...tableRows] });
+      push({ type: 'table', rows: [...tableRows] });
     } else if (tableRows.length > 0) {
-      tableRows.forEach(row => {
-        pushBlock({ type: 'paragraph', content: '| ' + row.join(' | ') + ' |' });
-      });
+      tableRows.forEach(row => push({ type: 'paragraph', content: '| ' + row.join(' | ') + ' |' }));
     }
-    tableRows = [];
-    tableHasSep = false;
+    tableRows = []; tableHasSep = false;
   };
 
   lines.forEach(line => {
-    const trimmed = line.trim();
-
-    if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-      if (tableRows.length > 0) tableHasSep = true;
-      return;
-    }
-
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      flushList();
-      const cells = trimmed.slice(1, -1).split('|');
-      tableRows.push(cells);
-      return;
-    }
-
+    const t = line.trim();
+    if (/^\|[\s\-:|]+\|$/.test(t)) { if (tableRows.length > 0) tableHasSep = true; return; }
+    if (t.startsWith('|') && t.endsWith('|')) { flushList(); tableRows.push(t.slice(1, -1).split('|')); return; }
     if (tableRows.length > 0) flushTable();
 
-    if (/^## (?!#)/.test(trimmed)) {
+    if (/^## (?!#)/.test(t)) {
       flushList();
-      if (currentSection) sections.push(currentSection);
-      currentSection = { type: 'h2', title: trimmed.replace(/^##\s+/, ''), children: [] };
-    } else if (trimmed.startsWith('### ')) {
-      flushList();
-      pushBlock({ type: 'h3', content: trimmed.replace(/^###\s+/, '') });
-    } else if (trimmed.startsWith('#### ')) {
-      flushList();
-      pushBlock({ type: 'h4', content: trimmed.replace(/^####\s+/, '') });
-    } else if (/^[-*_]{3,}$/.test(trimmed)) {
-      flushList();
-      pushBlock({ type: 'hr' });
-    } else if (trimmed.startsWith('> ')) {
-      flushList();
-      pushBlock({ type: 'blockquote', content: trimmed.replace(/^>\s+/, '') });
-    } else if (/^\d+[\.)]\s+/.test(trimmed)) {
-      if (listType !== 'ordered') { flushList(); listType = 'ordered'; }
-      listItems.push(trimmed.replace(/^\d+[\.)]\s+/, ''));
-    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      if (listType !== 'unordered') { flushList(); listType = 'unordered'; }
-      listItems.push(trimmed.replace(/^[-*]\s+/, ''));
-    } else if (trimmed === '') {
-      flushList();
-      pushBlock({ type: 'spacer' });
-    } else {
-      flushList();
-      pushBlock({ type: 'paragraph', content: trimmed });
-    }
+      if (cur) sections.push(cur);
+      cur = { title: t.replace(/^##\s+/, ''), blocks: [] };
+    } else if (t.startsWith('### ')) { flushList(); push({ type: 'h3', content: t.replace(/^###\s+/, '') }); }
+    else if (t.startsWith('#### ')) { flushList(); push({ type: 'h4', content: t.replace(/^####\s+/, '') }); }
+    else if (/^[-*_]{3,}$/.test(t)) { flushList(); push({ type: 'hr' }); }
+    else if (t.startsWith('> ')) { flushList(); push({ type: 'blockquote', content: t.replace(/^>\s+/, '') }); }
+    else if (/^\d+[\.)]\s+/.test(t)) { if (listType !== 'ordered') { flushList(); listType = 'ordered'; } listItems.push(t.replace(/^\d+[\.)]\s+/, '')); }
+    else if (t.startsWith('- ') || t.startsWith('* ')) { if (listType !== 'unordered') { flushList(); listType = 'unordered'; } listItems.push(t.replace(/^[-*]\s+/, '')); }
+    else if (t === '') { flushList(); push({ type: 'spacer' }); }
+    else { flushList(); push({ type: 'paragraph', content: t }); }
   });
+  flushList(); flushTable();
+  if (cur) sections.push(cur);
 
-  flushList();
-  flushTable();
-  if (currentSection) sections.push(currentSection);
+  const sectionIcons: Record<string, { icon: JSX.Element; color: string; bgFrom: string; bgTo: string; border: string }> = {
+    'answer': {
+      icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+      color: '#059669', bgFrom: '#F0FDF4', bgTo: '#ECFDF5', border: '#86EFAC'
+    },
+    'breakdown': {
+      icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+      color: '#2563EB', bgFrom: '#EFF6FF', bgTo: '#DBEAFE', border: '#93C5FD'
+    },
+    'insights': {
+      icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
+      color: '#D97706', bgFrom: '#FFFBEB', bgTo: '#FEF3C7', border: '#FCD34D'
+    },
+    'notes': {
+      icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+      color: '#7C3AED', bgFrom: '#F5F3FF', bgTo: '#EDE9FE', border: '#C4B5FD'
+    },
+  };
+  const defaultStyle = {
+    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
+    color: '#475569', bgFrom: '#F8FAFC', bgTo: '#F1F5F9', border: '#CBD5E1'
+  };
 
-  const sectionColors = [
-    { border: '#8BC34A', bg: '#F0FDF4', icon: '#059669' },
-    { border: '#3B82F6', bg: '#EFF6FF', icon: '#2563EB' },
-    { border: '#F59E0B', bg: '#FFFBEB', icon: '#D97706' },
-    { border: '#8B5CF6', bg: '#F5F3FF', icon: '#7C3AED' },
-    { border: '#EC4899', bg: '#FDF2F8', icon: '#DB2777' },
-    { border: '#06B6D4', bg: '#ECFEFF', icon: '#0891B2' },
-  ];
+  const getSectionStyle = (title: string) => {
+    const lower = title.toLowerCase();
+    if (lower.includes('answer') || lower.includes('summary') || lower.includes('result')) return sectionIcons['answer'];
+    if (lower.includes('breakdown') || lower.includes('comparison') || lower.includes('detail') || lower.includes('data')) return sectionIcons['breakdown'];
+    if (lower.includes('insight') || lower.includes('key') || lower.includes('highlight') || lower.includes('takeaway') || lower.includes('finding')) return sectionIcons['insights'];
+    if (lower.includes('note') || lower.includes('caveat') || lower.includes('limitation') || lower.includes('context')) return sectionIcons['notes'];
+    return defaultStyle;
+  };
 
-  const renderBlock = (block: ParsedBlock, key: string) => {
+  const renderBlock = (block: PBlock, key: string) => {
     switch (block.type) {
       case 'paragraph':
-        return <p key={key} className="text-[#374151] mb-2 leading-relaxed">{formatInlineMarkdown(block.content || '')}</p>;
+        return <p key={key} className="text-[#374151] mb-2 leading-relaxed text-[14px]">{formatInlineMarkdown(block.content || '')}</p>;
       case 'blockquote':
         return (
-          <div key={key} className="bg-gradient-to-r from-[#F0FDF4] to-[#ECFDF5] border border-[#BBF7D0] rounded-lg p-4 my-3 flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#8BC34A] flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            </div>
-            <div className="text-[#065F46] font-medium text-[15px] leading-relaxed">{formatInlineMarkdown(block.content || '')}</div>
+          <div key={key} className="bg-gradient-to-r from-[#F0FDF4] to-[#ECFDF5] border-l-4 border-[#34D399] rounded-md p-3.5 my-3">
+            <div className="text-[#065F46] font-semibold text-[14.5px] leading-relaxed">{formatInlineMarkdown(block.content || '')}</div>
           </div>
         );
-      case 'table':
+      case 'table': {
         if (!block.rows || block.rows.length === 0) return null;
         const hdr = block.rows[0];
         const body = block.rows.slice(1);
         return (
-          <div key={key} className="overflow-x-auto my-3 rounded-lg border border-[#E5E7EB] shadow-sm">
-            <table className="w-full text-sm">
+          <div key={key} className="overflow-x-auto my-3 rounded-md border border-[#E2E8F0]">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="bg-gradient-to-r from-[#1E293B] to-[#334155]">
-                  {hdr.map((c, i) => <th key={i} className="px-4 py-3 text-left font-semibold text-white text-xs uppercase tracking-wider">{formatInlineMarkdown(c.trim())}</th>)}
+                <tr className="bg-[#1E293B]">
+                  {hdr.map((c, i) => <th key={i} className="px-3 py-2.5 text-left font-semibold text-white text-xs uppercase tracking-wider">{formatInlineMarkdown(c.trim())}</th>)}
                 </tr>
               </thead>
               {body.length > 0 && (
                 <tbody>
                   {body.map((row, ri) => (
-                    <tr key={ri} className={`${ri % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]'} hover:bg-[#F1F5F9] transition-colors`}>
+                    <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]'}>
                       {row.map((c, ci) => (
-                        <td key={ci} className={`px-4 py-2.5 border-t border-[#E2E8F0] ${ci === 0 ? 'font-medium text-[#1E293B]' : 'text-[#475569]'}`}>
+                        <td key={ci} className={`px-3 py-2 border-t border-[#F1F5F9] ${ci === 0 ? 'font-medium text-[#1E293B]' : 'text-[#475569]'}`}>
                           {formatInlineMarkdown(c.trim())}
                         </td>
                       ))}
@@ -337,61 +312,72 @@ function MarkdownRenderer({ content }: { content: string }) {
             </table>
           </div>
         );
+      }
       case 'ordered-list':
         return (
-          <ol key={key} className="ml-2 mb-3 space-y-2 list-none">
+          <ol key={key} className="mb-2 space-y-1.5 list-none">
             {(block.items || []).map((item, i) => (
-              <li key={i} className="flex items-start gap-3 py-0.5">
-                <span className="bg-gradient-to-br from-[#8BC34A] to-[#689F38] text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">{i + 1}</span>
-                <span className="text-[#374151] flex-1 leading-relaxed">{formatInlineMarkdown(item)}</span>
+              <li key={i} className="flex items-start gap-2.5">
+                <span className="bg-[#8BC34A] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                <span className="text-[#374151] flex-1 leading-relaxed text-[14px]">{formatInlineMarkdown(item)}</span>
               </li>
             ))}
           </ol>
         );
       case 'unordered-list':
         return (
-          <ul key={key} className="ml-2 mb-3 space-y-1.5 list-none">
+          <ul key={key} className="mb-2 space-y-1 list-none">
             {(block.items || []).map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5 py-0.5">
-                <span className="mt-2 flex-shrink-0 w-2 h-2 rounded-full bg-gradient-to-br from-[#8BC34A] to-[#689F38]" />
-                <span className="text-[#374151] flex-1 leading-relaxed">{formatInlineMarkdown(item)}</span>
+              <li key={i} className="flex items-start gap-2.5">
+                <span className="mt-[7px] flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#8BC34A]" />
+                <span className="text-[#374151] flex-1 leading-relaxed text-[14px]">{formatInlineMarkdown(item)}</span>
               </li>
             ))}
           </ul>
         );
       case 'h3':
-        return <h3 key={key} className="text-[15px] font-bold text-[#1E293B] mt-4 mb-2">{formatInlineMarkdown(block.content || '')}</h3>;
+        return <h3 key={key} className="text-[14px] font-bold text-[#1E293B] mt-3 mb-1.5">{formatInlineMarkdown(block.content || '')}</h3>;
       case 'h4':
-        return <h4 key={key} className="text-sm font-semibold text-[#64748B] mt-3 mb-1.5 uppercase tracking-wider">{formatInlineMarkdown(block.content || '')}</h4>;
+        return <h4 key={key} className="text-[13px] font-semibold text-[#64748B] mt-2 mb-1 uppercase tracking-wider">{formatInlineMarkdown(block.content || '')}</h4>;
       case 'hr':
-        return <hr key={key} className="my-3 border-[#E2E8F0]" />;
+        return null;
       case 'spacer':
-        return <div key={key} className="h-1" />;
+        return <div key={key} className="h-0.5" />;
       default:
         return null;
     }
   };
 
   const renderSection = (section: Section, idx: number) => {
-    const color = sectionColors[idx % sectionColors.length];
+    const style = getSectionStyle(section.title);
+    const hasContent = section.blocks.filter(b => b.type !== 'spacer' && b.type !== 'hr').length > 0;
+    if (!hasContent) return null;
     return (
-      <div key={`section-${idx}`} className="rounded-lg border border-[#E2E8F0] overflow-hidden my-4 shadow-sm bg-white">
-        <div className="px-4 py-3 flex items-center gap-2" style={{ backgroundColor: color.bg, borderBottom: `2px solid ${color.border}` }}>
-          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color.border }} />
-          <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: color.icon }}>
-            {formatInlineMarkdown(section.title)}
+      <div key={`section-${idx}`} className="rounded-md overflow-hidden" style={{ border: `1px solid ${style.border}` }}>
+        <div className="px-3.5 py-2.5 flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${style.bgFrom}, ${style.bgTo})`, borderBottom: `1px solid ${style.border}` }}>
+          <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: style.color, color: 'white' }}>
+            {style.icon}
+          </div>
+          <h2 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: style.color }}>
+            {section.title}
           </h2>
         </div>
-        <div className="px-4 py-3">
-          {section.children.map((block, bi) => renderBlock(block, `s${idx}-b${bi}`))}
+        <div className="px-3.5 py-3 bg-white">
+          {section.blocks.filter(b => b.type !== 'hr').map((block, bi) => renderBlock(block, `s${idx}-b${bi}`))}
         </div>
       </div>
     );
   };
 
+  const hasTopContent = topBlocks.filter(b => b.type !== 'spacer' && b.type !== 'hr').length > 0;
+
   return (
-    <div className="space-y-1">
-      {topBlocks.map((block, i) => renderBlock(block, `top-${i}`))}
+    <div className="space-y-3">
+      {hasTopContent && (
+        <div className="text-[14px]">
+          {topBlocks.map((block, i) => renderBlock(block, `top-${i}`))}
+        </div>
+      )}
       {sections.map((section, i) => renderSection(section, i))}
     </div>
   );

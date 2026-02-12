@@ -21689,38 +21689,43 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
 
 CRITICAL: All statistics have been pre-calculated from the COMPLETE dataset. Use these numbers directly.
 
-RESPONSE FORMAT — YOU MUST FOLLOW THIS EXACTLY:
+RESPONSE FORMAT — MANDATORY (violating these rules is a critical failure):
 
-RULE 1: ALWAYS use ## headers to create sections. Every response MUST have at least 2-3 sections with ## headers.
-RULE 2: ALWAYS start with a "## Answer" section containing a > blockquote with the direct answer.
-RULE 3: ALWAYS use a markdown table (| col | col |) when comparing 2+ items with numbers.
-RULE 4: Use **bold** for ALL key metrics, values, names, and important terms throughout.
-RULE 5: Keep it CONCISE. No step-by-step arithmetic. Show results, not calculation steps.
-RULE 6: NO LaTeX. Write formulas inline: "Combined = $4,357.7M + $23,750.3M = $28,108.0M"
-RULE 7: Format money with $ and suffix (M/B/K). Format percentages with 1 decimal.
-RULE 8: Use bullet lists for insights. Use numbered lists only for rankings.
-RULE 9: End with a brief "## Notes" section for any caveats (2-3 bullets max).
+RULE 1: ALWAYS use ## headers to create distinct sections. Every response MUST have 2-4 sections with ## headers.
+RULE 2: Start with "## Answer" containing a > blockquote with the direct one-line answer.
+RULE 3: Use markdown tables (| col | col |) when comparing 2+ items.
+RULE 4: Use **bold** for key metrics and values.
+RULE 5: NEVER show step-by-step arithmetic, division, multiplication, or intermediate calculations. NEVER write lines like "X ÷ Y = Z" or "doing that division". Just state the final result.
+RULE 6: NO LaTeX. Write values inline with $ prefix and M/B/K suffix.
+RULE 7: Format money as $X.XM. Format percentages as X.X%.
+RULE 8: Keep each section SHORT — max 3-5 bullet points or a small table. No walls of text.
+RULE 9: Separate each ## section with --- (horizontal rule) for visual clarity.
 
-MANDATORY TEMPLATE — follow this structure:
+TEMPLATE — use this exact structure:
 
 ## Answer
-> **[One sentence with the key number. Example: "48.3% of total pipeline Fee is in Aviation, Hospitals, and Higher Education combined."]**
+> **[Direct answer in one sentence with the key number/percentage.]**
 
-[1-2 sentence summary with bold key values]
+---
 
 ## Breakdown
-| Category | Total Fee | % of Pipeline |
-|----------|-----------|---------------|
+| Category | Total Fee | Share |
+|----------|-----------|-------|
 | **Type A** | $X.XM | **X.X%** |
 | **Type B** | $X.XM | **X.X%** |
-| **Combined** | **$X.XM** | **X.X%** |
+
+---
 
 ## Key Insights
-- **Insight 1** with specific numbers
-- **Insight 2** with specific numbers
+- **Insight 1** — brief context
+- **Insight 2** — brief context
 
-## Notes
-- Any caveats or limitations (keep brief)`;
+ABSOLUTE PROHIBITIONS:
+- NEVER show formulas like "Percentage = X ÷ Y × 100"
+- NEVER show multi-step calculations or "To answer this we need to..."
+- NEVER explain HOW you calculated something — just give the result
+- NEVER use numbered lists for calculation steps
+- Keep total response under 200 words`;
 
       // Get balanced samples from each status (not just top by fee)
       const samplesByStatus: Record<string, any[]> = {};
