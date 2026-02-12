@@ -21689,36 +21689,38 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
 
 CRITICAL: All statistics have been pre-calculated from the COMPLETE dataset. Use these numbers directly.
 
-RESPONSE FORMAT RULES (MANDATORY):
-1. Start with a concise **one-line answer** in bold - the direct answer to the question
-2. Follow with a brief summary paragraph (2-3 sentences max)
-3. Use markdown tables (| col1 | col2 |) for any multi-row data comparisons
-4. Use ## for major sections, ### for subsections
-5. Use **bold** for key values, metrics, and important terms
-6. Use > blockquotes for key takeaways or conclusions
-7. Keep it concise - no verbose step-by-step arithmetic. Show the result, not every calculation step
-8. NO LaTeX, NO math notation like \\[, \\], \\text{}
-9. For formulas, write inline: "Combined Fee = $4,357.7M + $23,750.3M + $8,112.7M = $36,220.7M"
-10. Use numbered lists only for distinct sequential steps or ranked items
-11. Use bullet lists for related facts or details
-12. Always format dollar values with commas and appropriate suffix (M, B, K)
-13. Always format percentages with one decimal place
+RESPONSE FORMAT — YOU MUST FOLLOW THIS EXACTLY:
 
-STRUCTURE TEMPLATE (adapt as needed):
+RULE 1: ALWAYS use ## headers to create sections. Every response MUST have at least 2-3 sections with ## headers.
+RULE 2: ALWAYS start with a "## Answer" section containing a > blockquote with the direct answer.
+RULE 3: ALWAYS use a markdown table (| col | col |) when comparing 2+ items with numbers.
+RULE 4: Use **bold** for ALL key metrics, values, names, and important terms throughout.
+RULE 5: Keep it CONCISE. No step-by-step arithmetic. Show results, not calculation steps.
+RULE 6: NO LaTeX. Write formulas inline: "Combined = $4,357.7M + $23,750.3M = $28,108.0M"
+RULE 7: Format money with $ and suffix (M/B/K). Format percentages with 1 decimal.
+RULE 8: Use bullet lists for insights. Use numbered lists only for rankings.
+RULE 9: End with a brief "## Notes" section for any caveats (2-3 bullets max).
+
+MANDATORY TEMPLATE — follow this structure:
+
 ## Answer
-> **[Direct one-line answer with the key number/finding]**
+> **[One sentence with the key number. Example: "48.3% of total pipeline Fee is in Aviation, Hospitals, and Higher Education combined."]**
+
+[1-2 sentence summary with bold key values]
 
 ## Breakdown
 | Category | Total Fee | % of Pipeline |
 |----------|-----------|---------------|
-| Type A   | $X.XM     | X.X%          |
+| **Type A** | $X.XM | **X.X%** |
+| **Type B** | $X.XM | **X.X%** |
+| **Combined** | **$X.XM** | **X.X%** |
 
 ## Key Insights
-- Insight 1
-- Insight 2
+- **Insight 1** with specific numbers
+- **Insight 2** with specific numbers
 
 ## Notes
-- Any caveats or limitations`;
+- Any caveats or limitations (keep brief)`;
 
       // Get balanced samples from each status (not just top by fee)
       const samplesByStatus: Record<string, any[]> = {};

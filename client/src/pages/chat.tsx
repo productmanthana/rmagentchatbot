@@ -183,205 +183,218 @@ function formatCellValue(value: any, columnName: string): string {
   return String(value);
 }
 
-// Markdown renderer for AI Analysis with beautiful colors
+// Parse markdown into structured sections then render with cards
 function MarkdownRenderer({ content }: { content: string }) {
   const lines = content.split('\n');
-  const elements: JSX.Element[] = [];
-  let inList = false;
-  let listItems: JSX.Element[] = [];
+
+  interface Section {
+    type: 'h2';
+    title: string;
+    children: ParsedBlock[];
+  }
+  interface ParsedBlock {
+    type: 'paragraph' | 'blockquote' | 'table' | 'ordered-list' | 'unordered-list' | 'h3' | 'h4' | 'hr' | 'spacer';
+    content?: string;
+    items?: string[];
+    rows?: string[][];
+  }
+
+  const sections: Section[] = [];
+  let topBlocks: ParsedBlock[] = [];
+  let currentSection: Section | null = null;
+
+  const pushBlock = (block: ParsedBlock) => {
+    if (currentSection) {
+      currentSection.children.push(block);
+    } else {
+      topBlocks.push(block);
+    }
+  };
+
+  let listItems: string[] = [];
   let listType: 'ordered' | 'unordered' | null = null;
-  let listKey = 0;
-  let inTable = false;
   let tableRows: string[][] = [];
-  let tableKey = 0;
-  let tableHasSeparator = false;
-  
+  let tableHasSep = false;
+
   const flushList = () => {
-    if (inList && listItems.length > 0) {
-      if (listType === 'ordered') {
-        elements.push(
-          <ol key={`list-${listKey++}`} className="ml-4 mb-4 space-y-2 list-none">
-            {listItems}
-          </ol>
-        );
-      } else {
-        elements.push(
-          <ul key={`list-${listKey++}`} className="ml-4 mb-4 space-y-2 list-none">
-            {listItems}
-          </ul>
-        );
-      }
+    if (listItems.length > 0 && listType) {
+      pushBlock({ type: listType === 'ordered' ? 'ordered-list' : 'unordered-list', items: [...listItems] });
       listItems = [];
-      inList = false;
       listType = null;
     }
   };
-  
   const flushTable = () => {
-    if (inTable && tableRows.length > 0 && tableHasSeparator) {
-      const headerRow = tableRows[0];
-      const bodyRows = tableRows.slice(1);
-      elements.push(
-        <div key={`table-${tableKey++}`} className="overflow-x-auto mb-4 rounded-lg border border-[#E5E7EB]">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#F3F4F6] border-b border-[#E5E7EB]">
-                {headerRow.map((cell, ci) => (
-                  <th key={ci} className="px-4 py-2.5 text-left font-semibold text-[#374151]">
-                    {formatInlineMarkdown(cell.trim())}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            {bodyRows.length > 0 && (
-              <tbody>
-                {bodyRows.map((row, ri) => (
-                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-[#F9FAFB]'}>
-                    {row.map((cell, ci) => (
-                      <td key={ci} className="px-4 py-2 text-[#374151] border-t border-[#F3F4F6]">
-                        {formatInlineMarkdown(cell.trim())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            )}
-          </table>
-        </div>
-      );
-    } else if (inTable && tableRows.length > 0) {
-      tableRows.forEach((row, ri) => {
-        const lineText = '| ' + row.join(' | ') + ' |';
-        elements.push(
-          <p key={`tbl-fallback-${tableKey}-${ri}`} className="text-[#374151] mb-2 leading-relaxed">
-            {formatInlineMarkdown(lineText)}
-          </p>
-        );
+    if (tableRows.length > 0 && tableHasSep) {
+      pushBlock({ type: 'table', rows: [...tableRows] });
+    } else if (tableRows.length > 0) {
+      tableRows.forEach(row => {
+        pushBlock({ type: 'paragraph', content: '| ' + row.join(' | ') + ' |' });
       });
     }
     tableRows = [];
-    inTable = false;
-    tableHasSeparator = false;
+    tableHasSep = false;
   };
-  
-  lines.forEach((line, index) => {
+
+  lines.forEach(line => {
     const trimmed = line.trim();
-    
-    // Table separator row (|---|---|) — mark table as valid, skip rendering
+
     if (/^\|[\s\-:|]+\|$/.test(trimmed)) {
-      if (inTable) tableHasSeparator = true;
+      if (tableRows.length > 0) tableHasSep = true;
       return;
     }
-    
-    // Table rows (| col1 | col2 |)
+
     if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
       flushList();
-      inTable = true;
       const cells = trimmed.slice(1, -1).split('|');
       tableRows.push(cells);
       return;
     }
-    
-    if (inTable) {
-      flushTable();
-    }
-    
-    // H2 headers (##)
+
+    if (tableRows.length > 0) flushTable();
+
     if (/^## (?!#)/.test(trimmed)) {
       flushList();
-      const text = trimmed.replace(/^##\s+/, '');
-      elements.push(
-        <h2 key={index} className="text-lg font-bold text-[#111827] mt-6 mb-3 pb-2 border-b border-[#E5E7EB] first:mt-0">
-          {formatInlineMarkdown(text)}
-        </h2>
-      );
-    }
-    // H3 headers (###)
-    else if (trimmed.startsWith('### ')) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = { type: 'h2', title: trimmed.replace(/^##\s+/, ''), children: [] };
+    } else if (trimmed.startsWith('### ')) {
       flushList();
-      const text = trimmed.replace(/^###\s+/, '');
-      elements.push(
-        <h3 key={index} className="text-base font-bold text-[#111827] mt-5 mb-2 first:mt-0">
-          {formatInlineMarkdown(text)}
-        </h3>
-      );
-    }
-    // H4 headers (####)
-    else if (trimmed.startsWith('#### ')) {
+      pushBlock({ type: 'h3', content: trimmed.replace(/^###\s+/, '') });
+    } else if (trimmed.startsWith('#### ')) {
       flushList();
-      const text = trimmed.replace(/^####\s+/, '');
-      elements.push(
-        <h4 key={index} className="text-sm font-semibold text-[#374151] mt-4 mb-2 uppercase tracking-wide">
-          {formatInlineMarkdown(text)}
-        </h4>
-      );
-    }
-    // Horizontal rules
-    else if (/^[-*_]{3,}$/.test(trimmed)) {
+      pushBlock({ type: 'h4', content: trimmed.replace(/^####\s+/, '') });
+    } else if (/^[-*_]{3,}$/.test(trimmed)) {
       flushList();
-      elements.push(<hr key={index} className="my-4 border-[#E5E7EB]" />);
-    }
-    // Blockquotes (>)
-    else if (trimmed.startsWith('> ')) {
+      pushBlock({ type: 'hr' });
+    } else if (trimmed.startsWith('> ')) {
       flushList();
-      const text = trimmed.replace(/^>\s+/, '');
-      elements.push(
-        <blockquote key={index} className="border-l-4 border-[#8BC34A] bg-[#F0FDF4] pl-4 py-2 pr-3 my-3 rounded-r-lg text-[#374151] italic">
-          {formatInlineMarkdown(text)}
-        </blockquote>
-      );
-    }
-    // Numbered lists (1., 2., etc.)
-    else if (/^\d+[\.)]\s+/.test(trimmed)) {
-      if (!inList || listType !== 'ordered') {
-        flushList();
-        inList = true;
-        listType = 'ordered';
-      }
-      const number = trimmed.match(/^\d+[\.)]/)?.[0]?.replace(')', '.') || '';
-      const text = trimmed.replace(/^\d+[\.)]\s+/, '');
-      listItems.push(
-        <li key={index} className="flex items-start gap-3 py-0.5">
-          <span className="bg-[#8BC34A] text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">{number.replace('.', '')}</span>
-          <span className="text-[#374151] flex-1">{formatInlineMarkdown(text)}</span>
-        </li>
-      );
-    }
-    // Bullet points (-, *)
-    else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      if (!inList || listType !== 'unordered') {
-        flushList();
-        inList = true;
-        listType = 'unordered';
-      }
-      const text = trimmed.replace(/^[-*]\s+/, '');
-      listItems.push(
-        <li key={index} className="flex items-start gap-2 py-0.5">
-          <span className="text-[#8BC34A] mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#8BC34A]" />
-          <span className="text-[#374151] flex-1">{formatInlineMarkdown(text)}</span>
-        </li>
-      );
-    }
-    // Empty lines
-    else if (trimmed === '') {
+      pushBlock({ type: 'blockquote', content: trimmed.replace(/^>\s+/, '') });
+    } else if (/^\d+[\.)]\s+/.test(trimmed)) {
+      if (listType !== 'ordered') { flushList(); listType = 'ordered'; }
+      listItems.push(trimmed.replace(/^\d+[\.)]\s+/, ''));
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (listType !== 'unordered') { flushList(); listType = 'unordered'; }
+      listItems.push(trimmed.replace(/^[-*]\s+/, ''));
+    } else if (trimmed === '') {
       flushList();
-      elements.push(<div key={index} className="h-2" />);
-    }
-    // Regular paragraphs
-    else {
+      pushBlock({ type: 'spacer' });
+    } else {
       flushList();
-      elements.push(
-        <p key={index} className="text-[#374151] mb-2 leading-relaxed">
-          {formatInlineMarkdown(trimmed)}
-        </p>
-      );
+      pushBlock({ type: 'paragraph', content: trimmed });
     }
   });
-  
+
   flushList();
   flushTable();
-  
-  return <div className="space-y-1">{elements}</div>;
+  if (currentSection) sections.push(currentSection);
+
+  const sectionColors = [
+    { border: '#8BC34A', bg: '#F0FDF4', icon: '#059669' },
+    { border: '#3B82F6', bg: '#EFF6FF', icon: '#2563EB' },
+    { border: '#F59E0B', bg: '#FFFBEB', icon: '#D97706' },
+    { border: '#8B5CF6', bg: '#F5F3FF', icon: '#7C3AED' },
+    { border: '#EC4899', bg: '#FDF2F8', icon: '#DB2777' },
+    { border: '#06B6D4', bg: '#ECFEFF', icon: '#0891B2' },
+  ];
+
+  const renderBlock = (block: ParsedBlock, key: string) => {
+    switch (block.type) {
+      case 'paragraph':
+        return <p key={key} className="text-[#374151] mb-2 leading-relaxed">{formatInlineMarkdown(block.content || '')}</p>;
+      case 'blockquote':
+        return (
+          <div key={key} className="bg-gradient-to-r from-[#F0FDF4] to-[#ECFDF5] border border-[#BBF7D0] rounded-lg p-4 my-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#8BC34A] flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <div className="text-[#065F46] font-medium text-[15px] leading-relaxed">{formatInlineMarkdown(block.content || '')}</div>
+          </div>
+        );
+      case 'table':
+        if (!block.rows || block.rows.length === 0) return null;
+        const hdr = block.rows[0];
+        const body = block.rows.slice(1);
+        return (
+          <div key={key} className="overflow-x-auto my-3 rounded-lg border border-[#E5E7EB] shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gradient-to-r from-[#1E293B] to-[#334155]">
+                  {hdr.map((c, i) => <th key={i} className="px-4 py-3 text-left font-semibold text-white text-xs uppercase tracking-wider">{formatInlineMarkdown(c.trim())}</th>)}
+                </tr>
+              </thead>
+              {body.length > 0 && (
+                <tbody>
+                  {body.map((row, ri) => (
+                    <tr key={ri} className={`${ri % 2 === 0 ? 'bg-white' : 'bg-[#F8FAFC]'} hover:bg-[#F1F5F9] transition-colors`}>
+                      {row.map((c, ci) => (
+                        <td key={ci} className={`px-4 py-2.5 border-t border-[#E2E8F0] ${ci === 0 ? 'font-medium text-[#1E293B]' : 'text-[#475569]'}`}>
+                          {formatInlineMarkdown(c.trim())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              )}
+            </table>
+          </div>
+        );
+      case 'ordered-list':
+        return (
+          <ol key={key} className="ml-2 mb-3 space-y-2 list-none">
+            {(block.items || []).map((item, i) => (
+              <li key={i} className="flex items-start gap-3 py-0.5">
+                <span className="bg-gradient-to-br from-[#8BC34A] to-[#689F38] text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">{i + 1}</span>
+                <span className="text-[#374151] flex-1 leading-relaxed">{formatInlineMarkdown(item)}</span>
+              </li>
+            ))}
+          </ol>
+        );
+      case 'unordered-list':
+        return (
+          <ul key={key} className="ml-2 mb-3 space-y-1.5 list-none">
+            {(block.items || []).map((item, i) => (
+              <li key={i} className="flex items-start gap-2.5 py-0.5">
+                <span className="mt-2 flex-shrink-0 w-2 h-2 rounded-full bg-gradient-to-br from-[#8BC34A] to-[#689F38]" />
+                <span className="text-[#374151] flex-1 leading-relaxed">{formatInlineMarkdown(item)}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      case 'h3':
+        return <h3 key={key} className="text-[15px] font-bold text-[#1E293B] mt-4 mb-2">{formatInlineMarkdown(block.content || '')}</h3>;
+      case 'h4':
+        return <h4 key={key} className="text-sm font-semibold text-[#64748B] mt-3 mb-1.5 uppercase tracking-wider">{formatInlineMarkdown(block.content || '')}</h4>;
+      case 'hr':
+        return <hr key={key} className="my-3 border-[#E2E8F0]" />;
+      case 'spacer':
+        return <div key={key} className="h-1" />;
+      default:
+        return null;
+    }
+  };
+
+  const renderSection = (section: Section, idx: number) => {
+    const color = sectionColors[idx % sectionColors.length];
+    return (
+      <div key={`section-${idx}`} className="rounded-lg border border-[#E2E8F0] overflow-hidden my-4 shadow-sm bg-white">
+        <div className="px-4 py-3 flex items-center gap-2" style={{ backgroundColor: color.bg, borderBottom: `2px solid ${color.border}` }}>
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color.border }} />
+          <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: color.icon }}>
+            {formatInlineMarkdown(section.title)}
+          </h2>
+        </div>
+        <div className="px-4 py-3">
+          {section.children.map((block, bi) => renderBlock(block, `s${idx}-b${bi}`))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-1">
+      {topBlocks.map((block, i) => renderBlock(block, `top-${i}`))}
+      {sections.map((section, i) => renderSection(section, i))}
+    </div>
+  );
 }
 
 // Highlight dollar values and percentages in text
