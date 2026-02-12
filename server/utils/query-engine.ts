@@ -21412,10 +21412,13 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       const isPercentageQuery = /\b(?:percentage|percent|proportion|share|concentrated|concentration|breakdown|distribution)\b/i.test(userQ) || /\b(?:percentage|percent|proportion|share|concentrated|concentration|breakdown|distribution)\b/i.test(analysisQ);
       const multiTypePattern = /\b(?:and|,)\s+(?:hospitals?|higher\s+education|aviation|airports?|bridges?|transit|k-12|industrial|water|government|corporate|healthcare|transportation|residential)\b/i;
       const hasMultipleTypes = multiTypePattern.test(userQ) || multiTypePattern.test(analysisQ);
-      if (isPercentageQuery && hasMultipleTypes && args.project_type) {
-        console.log(`[AI Analysis] 📊 MULTI-TYPE PERCENTAGE: Stripping project_type="${args.project_type}" — query asks about percentage across multiple types, need full dataset`);
+      if (isPercentageQuery && hasMultipleTypes && (args.project_type || args.categories || args.category)) {
+        console.log(`[AI Analysis] 📊 MULTI-TYPE PERCENTAGE: Stripping all type/category filters (project_type="${args.project_type}", categories=${JSON.stringify(args.categories)}, category="${args.category}") — query asks about percentage across multiple types, need full dataset`);
         delete args.project_type;
         delete args._project_type_explicit;
+        delete args.categories;
+        delete args.category;
+        delete args._category_already_applied;
       }
 
       const { analysis_question, status, categories, project_type, tags, min_fee, max_fee, time_reference, start_date, end_date } = args;
