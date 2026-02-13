@@ -11,11 +11,13 @@ SET GITHUB_URL=https://github.com/productmanthana/rmagentchatbot.git
 SET BRANCH=main
 SET CHECK_INTERVAL=60
 SET LOG_FILE=C:\UGIT\RMOneAgent\auto-pull.log
-SET GIT="C:\Program Files\Git\cmd\git.exe"
+SET GIT_EXE=C:\Program Files\Git\cmd\git.exe
+SET NPM_EXE=C:\nvm4w\nodejs\npm.cmd
+SET PM2_EXE=C:\nvm4w\nodejs\pm2.cmd
 REM ---- END CONFIGURATION ----
 
-REM Add Git and Node to PATH for SYSTEM account
-SET PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\nvm4w\nodejs
+REM Force PATH to include Git and Node for SYSTEM account
+SET "PATH=C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\nvm4w\nodejs;C:\nvm4w;C:\Windows\System32;C:\Windows;%PATH%"
 
 echo ============================================
 echo  RMOne AI - GitHub Auto-Pull Watcher
@@ -31,7 +33,7 @@ REM Check if repo directory exists
 IF NOT EXIST "%REPO_DIR%\.git" (
     echo Repository not found at %REPO_DIR%
     echo Cloning from GitHub...
-    git clone %GITHUB_URL% %REPO_DIR%
+    "%GIT_EXE%" clone %GITHUB_URL% %REPO_DIR%
     IF %ERRORLEVEL% NEQ 0 (
         echo ERROR: Failed to clone repository!
         echo Make sure the GitHub URL is correct and you have access.
@@ -40,9 +42,9 @@ IF NOT EXIST "%REPO_DIR%\.git" (
     )
     echo Clone successful!
     cd /d %REPO_DIR%
-    call npm install --production
-    call npm run build
-    call pm2 start npm --name "rmone-ai" -- run start
+    call "%NPM_EXE%" install --production
+    call "%NPM_EXE%" run build
+    call "%PM2_EXE%" start npm --name "rmone-ai" -- run start
     echo Initial setup complete!
     echo.
 )
@@ -51,7 +53,7 @@ cd /d %REPO_DIR%
 
 REM Verify git remote matches the configured URL
 echo Verifying git remote...
-git remote set-url origin %GITHUB_URL% >nul 2>&1
+"%GIT_EXE%" remote set-url origin %GITHUB_URL% >nul 2>&1
 echo Remote set to: %GITHUB_URL%
 echo.
 echo Watching for changes... (Press Ctrl+C to stop)
@@ -66,50 +68,48 @@ REM Navigate to repo directory
 cd /d %REPO_DIR%
 
 REM Step 1: Fetch latest commits from GitHub (does NOT change local files)
-REM This asks GitHub: "What is the latest commit on the branch?"
-git fetch origin %BRANCH% >nul 2>&1
+"%GIT_EXE%" fetch origin %BRANCH% >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
     echo [%TIMESTAMP%] WARNING: Could not reach GitHub. Will retry...
-    echo [%TIMESTAMP%] WARNING: Could not reach GitHub >> %LOG_FILE%
+    echo [%TIMESTAMP%] WARNING: Could not reach GitHub >> "%LOG_FILE%"
     goto WAIT
 )
 
 REM Step 2: Compare local code vs GitHub code
-REM If they differ, it means new changes were pushed to GitHub
-git diff HEAD origin/%BRANCH% --quiet >nul 2>&1
+"%GIT_EXE%" diff HEAD origin/%BRANCH% --quiet >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
     echo [%TIMESTAMP%] =============================================
     echo [%TIMESTAMP%] CHANGES DETECTED on GitHub!
     echo [%TIMESTAMP%] =============================================
-    echo [%TIMESTAMP%] Changes detected on GitHub >> %LOG_FILE%
+    echo [%TIMESTAMP%] Changes detected on GitHub >> "%LOG_FILE%"
 
     REM Show what changed
     echo [%TIMESTAMP%] Changed files:
-    git diff HEAD origin/%BRANCH% --name-only
+    "%GIT_EXE%" diff HEAD origin/%BRANCH% --name-only
     echo.
 
-    REM Step 3: Pull the new code (download + apply changes)
-    git reset --hard origin/%BRANCH%
+    REM Step 3: Update the code
+    "%GIT_EXE%" reset --hard origin/%BRANCH%
     echo [%TIMESTAMP%] Code updated to latest. Rebuilding...
-    echo [%TIMESTAMP%] Code updated successfully >> %LOG_FILE%
+    echo [%TIMESTAMP%] Code updated successfully >> "%LOG_FILE%"
 
     REM Step 4: Install any new dependencies
-    call npm install --production
+    call "%NPM_EXE%" install --production
 
     REM Step 5: Rebuild the application
-    call npm run build
+    call "%NPM_EXE%" run build
 
     REM Step 6: Restart the running application
-    call pm2 restart rmone-ai 2>nul
+    call "%PM2_EXE%" restart rmone-ai 2>nul
     IF %ERRORLEVEL% NEQ 0 (
         echo [%TIMESTAMP%] PM2 process not found. Starting fresh...
-        call pm2 start npm --name "rmone-ai" -- run start
+        call "%PM2_EXE%" start npm --name "rmone-ai" -- run start
     )
 
     echo [%TIMESTAMP%] =============================================
     echo [%TIMESTAMP%] DEPLOYMENT COMPLETE!
     echo [%TIMESTAMP%] =============================================
-    echo [%TIMESTAMP%] Deployment complete >> %LOG_FILE%
+    echo [%TIMESTAMP%] Deployment complete >> "%LOG_FILE%"
 ) ELSE (
     echo [%TIMESTAMP%] No changes. Next check in %CHECK_INTERVAL%s...
 )
