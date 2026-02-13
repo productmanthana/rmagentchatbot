@@ -21972,6 +21972,92 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         .map(([pt, g]) => `  - ${pt}: ${g.count} projects, Avg Fee: $${(g.avgFee / 1000000).toFixed(2)}M, Total: $${(g.totalFee / 1000000).toFixed(1)}M`)
         .join('\n');
       
+      // Build per-client aggregation (top 25 clients by total fee with % of grand total)
+      const clientGroups: Record<string, { count: number; totalFee: number; categories: Record<string, number>; projectTypes: Record<string, number> }> = {};
+      data.forEach(p => {
+        const cl = p.client || 'Unknown';
+        if (!clientGroups[cl]) {
+          clientGroups[cl] = { count: 0, totalFee: 0, categories: {}, projectTypes: {} };
+        }
+        clientGroups[cl].count++;
+        clientGroups[cl].totalFee += parseFloat(p.fee) || 0;
+        const cat = p.category || 'Unknown';
+        clientGroups[cl].categories[cat] = (clientGroups[cl].categories[cat] || 0) + (parseFloat(p.fee) || 0);
+        const pt = p.project_type || 'Unknown';
+        clientGroups[cl].projectTypes[pt] = (clientGroups[cl].projectTypes[pt] || 0) + (parseFloat(p.fee) || 0);
+      });
+      const grandTotalFee = aggregates.totalFee || 1;
+      const clientBreakdown = Object.entries(clientGroups)
+        .sort((a, b) => b[1].totalFee - a[1].totalFee)
+        .slice(0, 25)
+        .map(([cl, g]) => {
+          const pct = ((g.totalFee / grandTotalFee) * 100).toFixed(1);
+          const topCat = Object.entries(g.categories).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => c).join(', ');
+          return `  - ${cl}: ${g.count} projects, Total: $${(g.totalFee / 1000000).toFixed(1)}M, Share: ${pct}%, Top Categories: ${topCat}`;
+        })
+        .join('\n');
+
+      // Build client × category cross-tabulation (top 15 clients × their category distribution)
+      const clientCategoryCrossTab = Object.entries(clientGroups)
+        .sort((a, b) => b[1].totalFee - a[1].totalFee)
+        .slice(0, 15)
+        .map(([cl, g]) => {
+          const catDetails = Object.entries(g.categories)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([cat, fee]) => `${cat}: $${(fee / 1000000).toFixed(1)}M`)
+            .join(', ');
+          return `  - ${cl} ($${(g.totalFee / 1000000).toFixed(1)}M total): ${catDetails}`;
+        })
+        .join('\n');
+
+      // Build per-year breakdowns when data spans multiple years
+      let yearlyClientBreakdown = '';
+      let yearlyCategoryBreakdown = '';
+      const dataYears = [...new Set(data.map(p => {
+        const d = p.start_date ? new Date(p.start_date) : null;
+        return d && !isNaN(d.getTime()) ? d.getFullYear() : null;
+      }).filter(Boolean))].sort() as number[];
+      if (dataYears.length >= 2) {
+        const yearClientData: Record<number, Record<string, { count: number; totalFee: number }>> = {};
+        const yearCatData: Record<number, Record<string, { count: number; totalFee: number }>> = {};
+        data.forEach(p => {
+          const d = p.start_date ? new Date(p.start_date) : null;
+          const yr = d && !isNaN(d.getTime()) ? d.getFullYear() : null;
+          if (!yr) return;
+          if (!yearClientData[yr]) yearClientData[yr] = {};
+          if (!yearCatData[yr]) yearCatData[yr] = {};
+          const cl = p.client || 'Unknown';
+          if (!yearClientData[yr][cl]) yearClientData[yr][cl] = { count: 0, totalFee: 0 };
+          yearClientData[yr][cl].count++;
+          yearClientData[yr][cl].totalFee += parseFloat(p.fee) || 0;
+          const cat = p.category || 'Unknown';
+          if (!yearCatData[yr][cat]) yearCatData[yr][cat] = { count: 0, totalFee: 0 };
+          yearCatData[yr][cat].count++;
+          yearCatData[yr][cat].totalFee += parseFloat(p.fee) || 0;
+        });
+        yearlyClientBreakdown = '\nBREAKDOWN BY YEAR × CLIENT (top 10 clients per year):\n' +
+          dataYears.map(yr => {
+            const yearTotal = Object.values(yearClientData[yr] || {}).reduce((s, g) => s + g.totalFee, 0) || 1;
+            const clients = Object.entries(yearClientData[yr] || {})
+              .sort((a, b) => b[1].totalFee - a[1].totalFee)
+              .slice(0, 10)
+              .map(([cl, g]) => `    ${cl}: $${(g.totalFee / 1000000).toFixed(1)}M (${((g.totalFee / yearTotal) * 100).toFixed(1)}%), ${g.count} projects`)
+              .join('\n');
+            return `  ${yr} (Total: $${(yearTotal / 1000000).toFixed(1)}M):\n${clients}`;
+          }).join('\n');
+        yearlyCategoryBreakdown = '\nBREAKDOWN BY YEAR × CATEGORY (top categories per year):\n' +
+          dataYears.map(yr => {
+            const yearTotal = Object.values(yearCatData[yr] || {}).reduce((s, g) => s + g.totalFee, 0) || 1;
+            const cats = Object.entries(yearCatData[yr] || {})
+              .sort((a, b) => b[1].totalFee - a[1].totalFee)
+              .slice(0, 8)
+              .map(([cat, g]) => `    ${cat}: $${(g.totalFee / 1000000).toFixed(1)}M (${((g.totalFee / yearTotal) * 100).toFixed(1)}%), ${g.count} projects`)
+              .join('\n');
+            return `  ${yr} (Total: $${(yearTotal / 1000000).toFixed(1)}M):\n${cats}`;
+          }).join('\n');
+      }
+
       // Build cross-tabulation for status × category (if multiple statuses)
       let crossTabulation = '';
       const uniqueStatuses = Object.keys(statusGroups);
@@ -22099,6 +22185,13 @@ For example, "Healthcare" is a Category, while "Hospitals" is a Project Type wit
 "Education" is a Category, while "Higher Education" and "K-12" are Project Types within it.
 "Aviation" can be both a Category and a Project Type. When the user asks about specific types like
 "Hospitals" or "Higher Education", use the PROJECT TYPE breakdown above, NOT the Category breakdown.
+BREAKDOWN BY CLIENT (TOP 25 BY TOTAL FEE, with % of grand total):
+${clientBreakdown}
+
+CLIENT × CATEGORY DETAIL (TOP 15 CLIENTS — category distribution of their projects):
+${clientCategoryCrossTab}
+${yearlyClientBreakdown}
+${yearlyCategoryBreakdown}
 ${crossTabulation}
 
 SAMPLE PROJECTS (balanced across statuses):
@@ -22110,6 +22203,8 @@ INSTRUCTIONS:
 - When comparing statuses, use the pre-calculated averages from "BREAKDOWN BY STATUS"
 - When comparing categories, use the pre-calculated averages from "BREAKDOWN BY CATEGORY"
 - When comparing project types (e.g., Hospitals, Higher Education, K-12), use "BREAKDOWN BY PROJECT TYPE"
+- When identifying top clients by fee, share of total, or % of pipeline, use "BREAKDOWN BY CLIENT" — each client's exact share % is pre-calculated
+- When analyzing which sectors/categories a specific client is concentrated in, use "CLIENT × CATEGORY DETAIL"
 - IMPORTANT: Category and Project Type are DIFFERENT columns. Match the user's terms to the correct breakdown
 - Provide actionable insights based on the actual data
 - Use PLAIN TEXT only (NO LaTeX notation)
