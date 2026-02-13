@@ -4,6 +4,7 @@ import { queryExternalDb } from "./mssql-db";
 import { QueryEngine } from "./utils/query-engine";
 import { OpenAIClient } from "./utils/openai-client";
 import { RAGVectorStore } from "./utils/rag-store";
+import { buildExampleDocuments } from "./utils/rag-document-builder";
 import { openaiQueue } from "./utils/request-queue";
 import { QueryRequestSchema, insertChatSchema, insertMessageSchema, AIAnalysisMessageSchema, updateMessageFAQSchema, insertErrorLogSchema, insertEmbedLinkSchema } from "@shared/schema";
 import { z } from "zod";
@@ -56,6 +57,16 @@ async function initializeRAG(openaiClient: OpenAIClient): Promise<RAGVectorStore
     console.log('[RAG] ✅ RAG vector store initialized successfully');
     console.log('[RAG] 📊 Using OpenAI text-embedding-3-large (3072 dimensions)');
     console.log('[RAG] 📊 Enhanced query classification with semantic search enabled');
+    
+    try {
+      const exampleDocs = buildExampleDocuments();
+      console.log(`[RAG] 📝 Populating ${exampleDocs.length} example documents...`);
+      await store.upsertDocuments(exampleDocs);
+      console.log(`[RAG] ✅ Example documents populated successfully`);
+    } catch (populateError) {
+      console.error('[RAG] ⚠️ Failed to populate example documents (non-blocking):', populateError);
+    }
+    
     return store;
   } catch (error) {
     console.error('[RAG] ❌ Failed to initialize RAG:', error);

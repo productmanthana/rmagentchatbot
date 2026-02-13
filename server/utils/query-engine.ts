@@ -6784,7 +6784,7 @@ export class QueryEngine {
             },
             status: {
               type: "string",
-              description: "Project status to filter data (optional). Use only when filtering to a single status, not for comparisons.",
+              description: "Project status to filter data (optional). Use only when filtering to a SPECIFIC named status (e.g., 'won projects' → 'Won'). CRITICAL: Do NOT set status for 'active opportunity/opportunities' or 'open pipeline' - leave null and let the system handle it. 'Pursuing' is NOT a valid status. Valid statuses: Won, Lost, Lead, Submitted, In Progress, Proposal Development, Qualified Lead, Hold, No-Go, Unqualified, Closed.",
             },
             categories: {
               type: "array",
@@ -6802,11 +6802,11 @@ export class QueryEngine {
             },
             min_fee: {
               type: "number",
-              description: "Minimum fee to filter data (optional). WARNING: Do NOT use together with max_fee for 'versus' comparisons - that creates impossible filter (Fee >= X AND Fee <= Y where X > Y). For 'fee equal to X' or 'fee exactly X' queries, set BOTH min_fee AND max_fee to X.",
+              description: "Minimum fee to filter data (optional). ONLY set when user explicitly mentions a fee/cost constraint. NEVER default to 0. WARNING: Do NOT use together with max_fee for 'versus' comparisons.",
             },
             max_fee: {
               type: "number",
-              description: "Maximum fee to filter data (optional). WARNING: Do NOT use together with min_fee for 'versus' comparisons - that creates impossible filter. For 'fee equal to X' or 'fee exactly X' queries, set BOTH min_fee AND max_fee to X.",
+              description: "Maximum fee to filter data (optional). ONLY set when user explicitly mentions a fee/cost constraint. NEVER default to 0. WARNING: Do NOT use together with min_fee for 'versus' comparisons.",
             },
           },
           required: ["analysis_question"],
@@ -9511,6 +9511,16 @@ FEE/COST HANDLING:
 - "between 1M and 5M" → min_fee: 1000000, max_fee: 5000000
 - "fee over 2 million" → min_fee: 2000000
 - K = 1000, M = 1000000, B = 1000000000
+- CRITICAL: NEVER default min_fee or max_fee to 0! Only set fee filters when the user EXPLICITLY mentions a fee/cost/budget constraint. If the question doesn't mention fees, leave min_fee and max_fee as null.
+
+STATUS INTERPRETATION RULES:
+- "active opportunity" / "active opportunities" / "open pipeline" / "active pipeline" → status should be null (let the system expand to all open statuses). Do NOT guess a single status like "In Progress" or "Pursuing".
+- "Pursuing" is NOT a valid database status. Valid statuses are ONLY: Won, Lost, Lead, Submitted, In Progress, Proposal Development, Qualified Lead, Hold, No-Go, Unqualified, Closed.
+- Only extract status when the user explicitly names a specific status (e.g., "won projects", "submitted proposals", "projects in progress").
+
+MULTI-YEAR DATE HANDLING:
+- When the question mentions MULTIPLE years (e.g., "value in 2026... sectors in 2025"), set start_date to January 1 of the EARLIEST year and end_date to December 31 of the LATEST year. This ensures all data needed for the analysis is captured.
+- Example: "clients in 2026 and sectors in 2025" → start_date: "2025-01-01", end_date: "2026-12-31"
 
 WIN RATE HANDLING:
 - "win rate above 50%" / "high probability" → min_win: 50
@@ -9617,6 +9627,41 @@ CRITICAL RULES:
    - "education sector" → category: "Education", project_type: null
    - "healthcare sector" → category: "Healthcare", project_type: null
    - NEVER set both category AND project_type to the same value for sector queries!
+10. "ACTIVE" STATUS RULE: "active opportunity", "active opportunities", "open pipeline", "active pipeline" are general terms meaning ALL non-closed statuses. Do NOT extract a specific status for these! Return status: null.
+   - ONLY extract status when user names a SPECIFIC status: "won", "lost", "submitted", "in progress", etc.
+   - "Pursuing" is NOT a valid status! Never return "Pursuing" as a status value.
+11. FEE DEFAULTS: NEVER set min_fee: 0 or max_fee: 0 as defaults. If the user doesn't mention fees/cost/budget, leave both as null.
+
+FEW-SHOT EXAMPLES (ACTIVE OPPORTUNITIES):
+Query: "active opportunities in 2026"
+Output: {"status": null, "start_date": "2026-01-01", "end_date": "2026-12-31"}
+EXPLANATION: "active opportunity" is generic - do NOT extract a specific status! Let the system handle it.
+
+Query: "which clients represent more than 5% of total active opportunity value in 2026 and sectors in 2025"
+Output: {"status": null, "start_date": "2025-01-01", "end_date": "2026-12-31"}
+EXPLANATION: "active opportunity" → no specific status. Multiple years (2025, 2026) → date range spans both. No fee mentioned → no fee filter.
+
+Query: "total pipeline value of active opportunities"
+Output: {"status": null}
+EXPLANATION: "active opportunities" is generic → status: null. No fee constraint mentioned → no min_fee/max_fee.
+
+FEW-SHOT EXAMPLES (MULTI-YEAR):
+Query: "compare revenue in 2024 versus 2025"
+Output: {"start_date": "2024-01-01", "end_date": "2025-12-31"}
+EXPLANATION: Two years mentioned → date range covers both years.
+
+Query: "which projects grew between 2023 and 2026"
+Output: {"start_date": "2023-01-01", "end_date": "2026-12-31"}
+EXPLANATION: Date range covers all years in the range.
+
+FEW-SHOT EXAMPLES (FEE DEFAULTS):
+Query: "analyze project win rates by category"
+Output: {"min_fee": null, "max_fee": null}
+EXPLANATION: No fee constraint mentioned → both fee fields are null. NEVER default to 0.
+
+Query: "predict which projects will close this quarter"
+Output: {"min_fee": null, "max_fee": null, "time_reference": "this quarter"}
+EXPLANATION: No fee mentioned → null. Do NOT set min_fee: 0 or max_fee: 0.
 
 User Query: "${userQuestion}"
 
@@ -9635,6 +9680,64 @@ Return ONLY valid JSON, no explanation.`;
       
       const duration = Date.now() - startTime;
       console.log(`[LLM-Extract] ✅ Entity extraction completed in ${duration}ms:`, JSON.stringify(extracted, null, 2));
+      
+      // ═══════════════════════════════════════════════════════════════
+      // POST-EXTRACTION VALIDATOR: Rule-based checks to catch common LLM mistakes
+      // This is a lightweight safety net that runs BEFORE the cleaned output is used
+      // ═══════════════════════════════════════════════════════════════
+      const questionLowerForValidation = (userQuestion || '').toLowerCase();
+      
+      // VALIDATOR 1: Status validation - reject invalid statuses and "active opportunity" misinterpretation
+      const validStatuses = new Set(['won', 'lost', 'lead', 'submitted', 'in progress', 'proposal development', 'qualified lead', 'hold', 'no-go', 'unqualified', 'closed']);
+      if (extracted.status) {
+        const statusLower = extracted.status.toLowerCase();
+        if (!validStatuses.has(statusLower)) {
+          console.log(`[LLM-Validator] ⚠️ INVALID STATUS "${extracted.status}" → removed (not in valid status list)`);
+          extracted.status = null;
+        }
+        if (/\bactive\s+(opportunit|pipeline)/i.test(questionLowerForValidation)) {
+          console.log(`[LLM-Validator] ⚠️ "active opportunity/pipeline" detected → removing specific status "${extracted.status}" (system will expand to all open statuses)`);
+          extracted.status = null;
+        }
+      }
+      
+      // VALIDATOR 2: Multi-year date range - ensure all mentioned years are covered
+      const yearMatches = questionLowerForValidation.match(/\b(20\d{2})\b/g);
+      if (yearMatches && yearMatches.length >= 2) {
+        const years = [...new Set(yearMatches.map(Number))].sort();
+        const minYear = years[0];
+        const maxYear = years[years.length - 1];
+        const expectedStart = `${minYear}-01-01`;
+        const expectedEnd = `${maxYear}-12-31`;
+        
+        if (extracted.start_date && extracted.end_date) {
+          const extractedStartYear = parseInt(extracted.start_date.substring(0, 4));
+          const extractedEndYear = parseInt(extracted.end_date.substring(0, 4));
+          if (extractedStartYear > minYear || extractedEndYear < maxYear) {
+            console.log(`[LLM-Validator] ⚠️ DATE RANGE MISMATCH: LLM extracted ${extracted.start_date}..${extracted.end_date} but question mentions years ${years.join(', ')} → expanding to ${expectedStart}..${expectedEnd}`);
+            extracted.start_date = expectedStart;
+            extracted.end_date = expectedEnd;
+          }
+        }
+      }
+      
+      // VALIDATOR 3: Fee defaults - strip zero fee values when no fee terms in question
+      const hasFeeTerms = /\b(fee|cost|budget|revenue|value|worth|price|amount|dollar|\$|million|billion|[0-9]+[kmb]\b)/i.test(questionLowerForValidation) && 
+                          /\b(over|under|above|below|more|less|between|at least|at most|minimum|maximum|greater|equal|exactly)\b/i.test(questionLowerForValidation);
+      if (!hasFeeTerms) {
+        if (extracted.min_fee === 0 || extracted.min_fee === null) {
+          if (extracted.min_fee === 0) console.log(`[LLM-Validator] ⚠️ REMOVING min_fee=0 default (no fee constraint in question)`);
+          extracted.min_fee = null;
+        }
+        if (extracted.max_fee === 0 || extracted.max_fee === null) {
+          if (extracted.max_fee === 0) console.log(`[LLM-Validator] ⚠️ REMOVING max_fee=0 default (no fee constraint in question)`);
+          extracted.max_fee = null;
+        }
+      }
+      
+      console.log(`[LLM-Extract] ✅ Final validated entities:`, JSON.stringify(
+        Object.fromEntries(Object.entries(extracted).filter(([_, v]) => v !== null && v !== undefined)), null, 2
+      ));
       
       // Clean up null values and normalize
       const cleaned: Record<string, any> = {};

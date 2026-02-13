@@ -544,6 +544,118 @@ export function buildExampleDocuments(): VectorDocument[] {
         complete: true,
         category: 'successful_query'
       }
+    },
+    {
+      id: 'example_active_opp_1',
+      type: 'example',
+      content: {
+        question: 'Which clients represent more than 5% of our total active opportunity value in 2026, and what sectors are they concentrated in 2025',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Identify which clients represent more than 5% of total active opportunity fee value in 2026, and analyze sector concentration in 2025', status: null, start_date: '2025-01-01', end_date: '2026-12-31', min_fee: null, max_fee: null },
+        success: true,
+        notes: 'active opportunity = no specific status filter (system expands to all open statuses). Multi-year = date range spans both 2025 and 2026. No fee filter needed.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_active_opp_2',
+      type: 'example',
+      content: {
+        question: 'What is the total pipeline value of active opportunities',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Calculate total pipeline value of all active opportunities', status: null, min_fee: null, max_fee: null },
+        success: true,
+        notes: 'active opportunities = no specific status. No fee constraint. System expands to all open statuses.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_multi_year_1',
+      type: 'example',
+      content: {
+        question: 'Compare revenue by category in 2024 versus 2025',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Compare revenue by category between 2024 and 2025', start_date: '2024-01-01', end_date: '2025-12-31' },
+        success: true,
+        notes: 'Multi-year comparison: date range must cover both years mentioned.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_multi_year_2',
+      type: 'example',
+      content: {
+        question: 'How has win rate changed from 2023 to 2026',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Analyze win rate trends from 2023 to 2026', start_date: '2023-01-01', end_date: '2026-12-31' },
+        success: true,
+        notes: 'Multi-year range: covers all years from 2023 through 2026.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_no_fee_filter',
+      type: 'example',
+      content: {
+        question: 'Predict which projects will close this quarter',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Predict which projects are most likely to close this quarter', min_fee: null, max_fee: null, time_reference: 'this quarter' },
+        success: true,
+        notes: 'No fee mentioned in question = no fee filter. Never default min_fee/max_fee to 0.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_active_pipeline',
+      type: 'example',
+      content: {
+        question: 'Analyze our active pipeline by region',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Analyze the active pipeline by region', status: null },
+        success: true,
+        notes: 'active pipeline = no specific status (system expands to all open statuses). No fee constraint.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
+    },
+    {
+      id: 'example_percentage_share',
+      type: 'example',
+      content: {
+        question: 'Which companies account for the largest share of total revenue in 2025',
+        function: 'ai_data_analysis',
+        params: { analysis_question: 'Identify which companies account for the largest share of total revenue in 2025', start_date: '2025-01-01', end_date: '2025-12-31', min_fee: null, max_fee: null },
+        success: true,
+        notes: 'Percentage/share analysis. No fee filter needed - analyzing all projects for share calculation.'
+      },
+      metadata: {
+        atomic: true,
+        complete: true,
+        category: 'successful_query'
+      }
     }
   ];
 }
