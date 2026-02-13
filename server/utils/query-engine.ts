@@ -14240,7 +14240,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         };
       } else if (/\b(?:same|within\s+(?:the\s+)?(?:a\s+)?(?:single\s+)?)\s*(?:\d+[\s-]*month|quarter(?:ly)?|half[\s-]*year|semi[\s-]*annual|6[\s-]*month|3[\s-]*month|annual|year(?:ly)?)\s*(?:period|window|span|time\s*frame)?\b/i.test(userQuestion) &&
                  /\b(?:client|clients|company|companies)\b/i.test(userQuestion) &&
-                 /\b(?:more\s+than|at\s+least|over|\d+\+?\s+projects?|multiple|several)\b/i.test(userQuestion) &&
+                 /\b(?:more\s+th[ae]n|at\s+least|over|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\+?\s+projects?|multiple|several)\b/i.test(userQuestion) &&
                  /\b(?:projects?|opportunities|pursuits|starting|start)\b/i.test(userQuestion)) {
         // ═══════════════════════════════════════════════════════════════
         // TIME PERIOD CLUSTERING OVERRIDE: Route to get_clients_by_time_period
@@ -14253,7 +14253,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         let minProjects = 3;
         const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
         const parseNumOrWord = (val: string): number => parseInt(val) || wordToNum[val.toLowerCase()] || 2;
-        const minMatch = userQuestion.match(/\bmore\s+than\s+(\w+)/i) || userQuestion.match(/\bover\s+(\w+)/i);
+        const minMatch = userQuestion.match(/\bmore\s+th[ae]n\s+(\w+)/i) || userQuestion.match(/\bover\s+(\w+)/i);
         const atLeastMatch = userQuestion.match(/\bat\s+least\s+(\w+)/i) || userQuestion.match(/\b(\d+)\s+or\s+more/i);
         if (minMatch) minProjects = parseNumOrWord(minMatch[1]) + 1;
         else if (atLeastMatch) minProjects = parseNumOrWord(atLeastMatch[1]);
@@ -14424,6 +14424,10 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       
       for (const key of hintsToMerge) {
         if (extractedHints[key] !== undefined && classification.arguments[key] === undefined) {
+          if (classification.function_name === 'get_clients_by_time_period' && (key === 'start_date' || key === 'end_date')) {
+            console.log(`[QueryEngine] 🔗 HINT MERGE SKIP: Not adding ${key} to get_clients_by_time_period — "within X month period" is a bucketing period, not a date range filter`);
+            continue;
+          }
           classification.arguments[key] = extractedHints[key];
           console.log(`[QueryEngine] 🔗 HINT MERGE: Added ${key}=${JSON.stringify(extractedHints[key])} from regex extraction`);
           mergedAnyHints = true;
