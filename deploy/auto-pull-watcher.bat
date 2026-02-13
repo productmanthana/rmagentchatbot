@@ -85,32 +85,27 @@ IF %ERRORLEVEL% NEQ 0 (
     echo.
 
     REM Step 3: Pull the new code (download + apply changes)
-    git pull origin %BRANCH%
-    IF %ERRORLEVEL% EQU 0 (
-        echo [%TIMESTAMP%] Pull successful. Rebuilding...
-        echo [%TIMESTAMP%] Pull successful >> %LOG_FILE%
+    git reset --hard origin/%BRANCH%
+    echo [%TIMESTAMP%] Code updated to latest. Rebuilding...
+    echo [%TIMESTAMP%] Code updated successfully >> %LOG_FILE%
 
-        REM Step 4: Install any new dependencies
-        call npm install --production
+    REM Step 4: Install any new dependencies
+    call npm install --production
 
-        REM Step 5: Rebuild the application
-        call npm run build
+    REM Step 5: Rebuild the application
+    call npm run build
 
-        REM Step 6: Restart the running application
-        call pm2 restart rmone-ai 2>nul
-        IF %ERRORLEVEL% NEQ 0 (
-            echo [%TIMESTAMP%] PM2 process not found. Starting fresh...
-            call pm2 start npm --name "rmone-ai" -- run start
-        )
-
-        echo [%TIMESTAMP%] =============================================
-        echo [%TIMESTAMP%] DEPLOYMENT COMPLETE!
-        echo [%TIMESTAMP%] =============================================
-        echo [%TIMESTAMP%] Deployment complete >> %LOG_FILE%
-    ) ELSE (
-        echo [%TIMESTAMP%] ERROR: Git pull failed!
-        echo [%TIMESTAMP%] ERROR: Git pull failed >> %LOG_FILE%
+    REM Step 6: Restart the running application
+    call pm2 restart rmone-ai 2>nul
+    IF %ERRORLEVEL% NEQ 0 (
+        echo [%TIMESTAMP%] PM2 process not found. Starting fresh...
+        call pm2 start npm --name "rmone-ai" -- run start
     )
+
+    echo [%TIMESTAMP%] =============================================
+    echo [%TIMESTAMP%] DEPLOYMENT COMPLETE!
+    echo [%TIMESTAMP%] =============================================
+    echo [%TIMESTAMP%] Deployment complete >> %LOG_FILE%
 ) ELSE (
     echo [%TIMESTAMP%] No changes. Next check in %CHECK_INTERVAL%s...
 )
