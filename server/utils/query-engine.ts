@@ -23187,6 +23187,16 @@ Extracted Args (what the system decided): ${JSON.stringify(
 
 ${columnReference}
 
+CRITICAL DATE COLUMN RULES - DO NOT CHANGE DATE COLUMNS INCORRECTLY:
+- "starting before/after [date]", "began before", "commenced" → ConstStartDate is CORRECT. Do NOT change to ClosedDate.
+- "closed" in the context of status (e.g. "closed opportunities", "closed projects") refers to StatusChoice values (Lost/No Go/Cancelled), NOT to a date column. The system already expands "closed" to the correct status values.
+- Only use ClosedDate if the user explicitly says "closed on [date]", "closed before/after [date]", or "date closed".
+- If the query already uses ConstStartDate and the user said "starting", that is CORRECT - do not replace it.
+
+CRITICAL STATUS RULES:
+- "closed" status is correctly expanded to Lost/No Go/Cancelled by the system. Do NOT flag this as wrong.
+- The StatusChoice filter values are already validated. Do not suggest changing them.
+
 TASK: Check if the WHERE clause filters match the user's intent. Look for these common errors:
 1. A sector name (like "Mission Critical") being used as a Client filter instead of RequestCategory
 2. A company name being used as a Client filter or vice versa
