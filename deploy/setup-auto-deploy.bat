@@ -6,7 +6,7 @@ REM the auto-pull watcher as a scheduled task
 REM that starts automatically on VM boot
 REM ============================================
 
-SET REPO_DIR=C:\RMOneAI
+SET REPO_DIR=C:\UGIT\RMOneAgent\rmagentchatbot
 SET TASK_NAME=RMOneAI-AutoDeploy
 
 echo ============================================
