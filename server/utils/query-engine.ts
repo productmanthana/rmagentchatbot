@@ -18344,7 +18344,7 @@ Response (JSON only):`;
       if (functionName === 'search_projects_by_keyword' && userQuestion) {
         // Extract entity from question by removing common query words
         let extractedKeyword = userQuestion
-          .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide)\b/gi, '')
+          .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide|on|about|regarding|related|to|tell|what|is|are|can|you|i|want|need|see|look|up|into|at|an?|any)\b/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
         // Strip any surrounding quotes
@@ -18825,11 +18825,16 @@ Response (JSON only):`;
       if (functionName === 'search_projects_by_keyword' && args._keyword_already_applied && !args.keyword) {
         // Extract keyword from question by removing common query words
         let extractedKeyword = userQuestion
-          .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide|to)\b/gi, '')
+          .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide|on|about|regarding|related|to|tell|what|is|are|can|you|i|want|need|see|look|up|into|at|an?|any)\b/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
         // Strip surrounding quotes
         extractedKeyword = extractedKeyword.replace(/^["']+|["']+$/g, '');
+        // Strip column keyword prefixes
+        const preExecColumnPrefixes = /^(?:title|client|company|module|sector|category|division|department|region|state|country|details|info|information)\s+/i;
+        if (preExecColumnPrefixes.test(extractedKeyword)) {
+          extractedKeyword = extractedKeyword.replace(preExecColumnPrefixes, '').trim();
+        }
         if (extractedKeyword.length > 2) {
           console.log(`[processQuery] 🔧 PRE-EXECUTE KEYWORD RECOVERY: Setting keyword="${extractedKeyword}"`);
           args.keyword = extractedKeyword;
@@ -23476,11 +23481,16 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
         if (!args.keyword && userQuestion) {
           // Extract entity from question by removing common query words
           let extractedKeyword = userQuestion
-            .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide)\b/gi, '')
+            .replace(/\b(show|display|list|get|find|search|all|the|projects?|data|for|of|with|from|by|me|give|provide|on|about|regarding|related|to|tell|what|is|are|can|you|i|want|need|see|look|up|into|at|an?|any)\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
           // Strip any surrounding quotes
           extractedKeyword = extractedKeyword.replace(/^["']+|["']+$/g, '');
+          // Strip column keyword prefixes like "information", "details", "info"
+          const buildSqlColumnPrefixes = /^(?:title|client|company|module|sector|category|division|department|region|state|country|details|info|information)\s+/i;
+          if (buildSqlColumnPrefixes.test(extractedKeyword)) {
+            extractedKeyword = extractedKeyword.replace(buildSqlColumnPrefixes, '').trim();
+          }
           if (extractedKeyword.length > 2) {
             args.keyword = extractedKeyword;
             console.log(`[buildSql] 🔧 KEYWORD RECOVERY: Extracted keyword "${extractedKeyword}" from question`);
