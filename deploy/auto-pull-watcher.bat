@@ -10,7 +10,7 @@ SET REPO_DIR=C:\UGIT\RMOneAgent\rmagentchatbot
 SET GITHUB_URL=https://github.com/productmanthana/rmagentchatbot.git
 SET BRANCH=main
 SET CHECK_INTERVAL=60
-SET LOG_FILE=C:\UGIT\RMOneAgent\rmagentchatbot\auto-pull.log
+SET LOG_FILE=C:\UGIT\RMOneAgent\auto-pull.log
 REM ---- END CONFIGURATION ----
 
 echo ============================================
