@@ -22946,7 +22946,7 @@ DATABASE CONTEXT (for reference):
     try {
       const startTime = Date.now();
       const columnReference = `
-Available columns in vw_ChatBotData:
+Available columns in vw_ChatBotData (ONLY these columns exist - do NOT invent others):
 - "Client" = Client/customer name (e.g., "NYU Langone Medical Center")
 - "Company" = OPCO/company name (e.g., "STOBG", "Hill", "GEI")
 - "RequestCategory" = Broad sector (e.g., "Healthcare", "Education", "Mission Critical", "Aviation", "Transportation")
@@ -22956,17 +22956,29 @@ Available columns in vw_ChatBotData:
 - "PointOfContact" = POC/contact person name
 - "StatusChoice" = Project status (e.g., "Won", "Lost", "Submitted", "Qualified Lead")
 - "Fee" = Project fee/revenue value
-- "WinPercentage" = Win probability percentage
+- "ChanceOfSuccess" = Win probability/win rate percentage (NOT "WinPercentage" - that column does NOT exist)
+- "ConstStartDate" = Project start date (NOT "OpportunityStartDate" or "StartDate" - those do NOT exist)
 - "State" = US state
 - "Region" = Geographic region
 - "Title" = Project title/name
 - "Tags" = Comma-separated tags
 - "ModuleName" = Module (Opportunity, Tracked Work, Construction)
+- "ServiceType" = Type of service
+- "City" = City name
+- "Country" = Country name
+- "ProposalDate" = Date proposal was submitted
+- "ContractDate" = Contract date
+- "ClosedDate" = Date project was closed
+- "ProjectDuration" = Duration of project
+- "Currency" = Currency code
 IMPORTANT RULES:
 - "opportunities" in user questions refers to RequestCategory, NOT ModuleName
 - Sectors like "Mission Critical", "Healthcare", "Aviation" etc. should filter RequestCategory column
 - Company names like "STOBG", "Hill", "GEI" filter the Company column
 - Client names are typically longer organization names
+- NEVER replace "ChanceOfSuccess" with "WinPercentage" - "ChanceOfSuccess" IS the correct win rate column
+- NEVER replace "ConstStartDate" with any other date column name - "ConstStartDate" IS the correct start date column
+- Only suggest column replacements using columns from the list above
 `;
 
       const reviewPrompt = `You are a SQL query reviewer. Check if this SQL query correctly answers the user's question.
@@ -23031,16 +23043,35 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
       console.log(`[LLM-SQL-Review] ⚠️ Correction needed (${duration}ms): ${review.reason}`);
       
+      const validColumns = new Set([
+        'Client', 'Company', 'RequestCategory', 'ProjectType', 'Division', 'Department',
+        'PointOfContact', 'StatusChoice', 'Fee', 'ChanceOfSuccess', 'ConstStartDate',
+        'State', 'Region', 'Title', 'Tags', 'ModuleName', 'ServiceType', 'City',
+        'Country', 'ProposalDate', 'ContractDate', 'ClosedDate', 'ProjectDuration',
+        'Currency', 'TenantName', 'Closed', 'Deleted', 'InterestedUserNames',
+        'IsStrategicProject'
+      ]);
+      
       let correctedSql = sql;
       let correctedParams = [...params];
+      let hasInvalidColumn = false;
 
       for (const fix of (review.fixes || [])) {
         if (fix.type === 'replace_column' && fix.wrong_column && fix.correct_column) {
+          if (!validColumns.has(fix.correct_column)) {
+            console.log(`[LLM-SQL-Review] ❌ REJECTED column replacement: "${fix.wrong_column}" → "${fix.correct_column}" (column does not exist in database)`);
+            hasInvalidColumn = true;
+            continue;
+          }
           const regex = new RegExp(`"${fix.wrong_column}"`, 'g');
           correctedSql = correctedSql.replace(regex, `"${fix.correct_column}"`);
           console.log(`[LLM-SQL-Review] 🔧 Replaced column: "${fix.wrong_column}" → "${fix.correct_column}"`);
         }
         else if (fix.type === 'add_filter' && fix.column && fix.value) {
+          if (!validColumns.has(fix.column)) {
+            console.log(`[LLM-SQL-Review] ❌ REJECTED add_filter: column "${fix.column}" does not exist in database`);
+            continue;
+          }
           const paramPlaceholder = `@p${correctedParams.length + 1}`;
           const operator = fix.operator || 'LIKE';
           const filterValue = operator === 'LIKE' ? `%${fix.value}%` : fix.value;
@@ -23069,6 +23100,11 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
         }
       }
 
+      if (hasInvalidColumn && correctedSql === sql) {
+        console.log(`[LLM-SQL-Review] ❌ ALL column corrections were invalid - keeping original SQL`);
+        return { corrected: false, sql, params };
+      }
+      
       console.log(`[LLM-SQL-Review] 📝 Corrected SQL:\n${correctedSql}`);
       return { corrected: true, sql: correctedSql, params: correctedParams, reason: review.reason };
       
