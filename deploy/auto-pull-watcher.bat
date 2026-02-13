@@ -19,6 +19,11 @@ REM ---- END CONFIGURATION ----
 REM Force PATH to include Git and Node for SYSTEM account
 SET "PATH=C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\nvm4w\nodejs;C:\nvm4w;C:\Windows\System32;C:\Windows;%PATH%"
 
+REM Fix for SYSTEM account: Set HOME and disable SSL verify
+SET "HOME=C:\UGIT\RMOneAgent"
+SET "GIT_SSL_NO_VERIFY=true"
+SET "GIT_TERMINAL_PROMPT=0"
+
 echo ============================================
 echo  RMOne AI - GitHub Auto-Pull Watcher
 echo ============================================
@@ -68,10 +73,11 @@ REM Navigate to repo directory
 cd /d %REPO_DIR%
 
 REM Step 1: Fetch latest commits from GitHub (does NOT change local files)
-"%GIT_EXE%" fetch origin %BRANCH% >nul 2>&1
+"%GIT_EXE%" fetch origin %BRANCH% 2>"%REPO_DIR%\fetch-error.log"
 IF %ERRORLEVEL% NEQ 0 (
-    echo [%TIMESTAMP%] WARNING: Could not reach GitHub. Will retry...
-    echo [%TIMESTAMP%] WARNING: Could not reach GitHub >> "%LOG_FILE%"
+    SET /P FETCH_ERR=<"%REPO_DIR%\fetch-error.log"
+    echo [%TIMESTAMP%] WARNING: Could not reach GitHub. Error: %FETCH_ERR%
+    echo [%TIMESTAMP%] WARNING: Could not reach GitHub. Error: %FETCH_ERR% >> "%LOG_FILE%"
     goto WAIT
 )
 
