@@ -18585,7 +18585,8 @@ Response (JSON only):`;
         'compare_companies', 'get_top_pocs', 'get_size_distribution',
         'compare_years', 'get_revenue_by_month', 'get_revenue_by_state',
         'compare_states', 'compare_regions',
-        'get_clients_by_time_period', 'common_clients_between_companies', 'common_projects_between_companies'
+        'get_clients_by_time_period', 'common_clients_between_companies', 'common_projects_between_companies',
+        'get_projects_by_combined_filters', 'ai_data_analysis'
       ];
       
       // Use generic breakdown detection instead of hardcoded division/department only
@@ -23781,7 +23782,9 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           if (review.corrected && review.sql && review.sql !== sql) {
             const hasSyntaxCorruption = /\bWINDOW_LOGIC_DESCRIPTION\b/i.test(review.sql) ||
               /\bFROM\s+\w+\s+AND\b/i.test(review.sql) ||
-              /\bSELECT\s+AND\b/i.test(review.sql);
+              /\bSELECT\s+AND\b/i.test(review.sql) ||
+              /\bAND\s+"ChanceOfSuccess"\s*[<>=]/i.test(review.sql) ||
+              /\bAND\s+"Fee"\s*[<>=]/i.test(review.sql);
             if (hasSyntaxCorruption) {
               console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: Detected syntax corruption in corrected SQL. Keeping original.`);
               try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: false, rejected: 'syntax_corruption' }) + '\n'); } catch(e) {}
@@ -26381,7 +26384,15 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     
     if (showMatch) requestedText += ' ' + showMatch[1].toLowerCase();
     if (withMatch) requestedText += ' ' + withMatch[1].toLowerCase();
-    if (whichMatch) requestedText += ' ' + whichMatch[1].toLowerCase();
+    if (whichMatch) {
+      const hasProjectFilters = /\b(?:over|above|under|below|less than|greater than|more than|at least|between)\s+\$?\d/i.test(userQuestion) ||
+        /\b(?:fee|win|chance|probability|%|percent)\b/i.test(userQuestion);
+      if (hasProjectFilters && functionName === 'get_projects_by_combined_filters') {
+        console.log('[ColumnFilter] Skipping - "which X are these for" is an entity identification question with project-level filters, not a column restriction');
+        return data;
+      }
+      requestedText += ' ' + whichMatch[1].toLowerCase();
+    }
     
     if (!requestedText.trim()) return data;
 
