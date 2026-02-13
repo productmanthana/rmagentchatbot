@@ -1,3 +1,5 @@
+import { COLUMN_REFERENCE_PROMPT } from "./column-reference";
+
 /**
  * OpenAI Client
  * Direct OpenAI API integration (not Azure)
@@ -153,21 +155,7 @@ TODAY'S DATE: ${today}
 Your job is to select the BEST function and extract parameters from user questions.
 CRITICAL: For relative time phrases like "last N years", "past N months", calculate actual dates using today's date.
 
-═══════════════════════════════════════════════════════════════
-DATABASE SCHEMA REFERENCE (Actual Column Names):
-═══════════════════════════════════════════════════════════════
-- Title: Project name/title (e.g., "PID1234 - Highway Extension")
-- Fee: Dollar amount/value (e.g., 5000000 for $5M)
-- ChanceOfSuccess: Win probability percentage (0-100)
-- StatusChoice: Project status (values: "Won", "Lost", "Submitted", "Proposal", "Pursuing", "Dormant")
-- RequestCategory: Business category (values: "Transportation", "Water", "Healthcare", "Education", "Commercial", "Industrial")
-- ProjectType: Specific project type (values: "Hospitals", "Higher Education", "Bridges", "Solar", "Rail", "Aviation")
-- State: US state (e.g., "California", "Texas", "New York")
-- Client: Client/customer name
-- Company: Our company/contractor
-- PointOfContact: Sales rep/POC name
-- ConstStartDate: Construction start date
-- Tags: Comma-separated keywords
+${COLUMN_REFERENCE_PROMPT}
 
 ═══════════════════════════════════════════════════════════════
 CRITICAL INSTRUCTIONS:
@@ -634,6 +622,8 @@ Return ONLY valid JSON with "function_name" and "arguments" fields.`;
     console.log(`[SelfCorrection] Error: ${errorFeedback.errorType} - ${errorFeedback.errorMessage}`);
 
     const selfCorrectionPrompt = `You are an expert function classifier correcting a previous mistake.
+
+${COLUMN_REFERENCE_PROMPT}
 
 PREVIOUS ATTEMPT FAILED:
 - Function used: ${errorFeedback.previousFunction}

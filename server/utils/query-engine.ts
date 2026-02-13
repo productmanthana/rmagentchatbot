@@ -14,6 +14,7 @@ import { RAGVectorStore } from "./rag-store";
 import { openaiQueue } from "./request-queue";
 import { convertPlaceholders, getClientTableName } from "../mssql-db";
 import { columnCache } from "./column-cache";
+import { COLUMN_REFERENCE_PROMPT, VALID_COLUMN_NAMES } from "./column-reference";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLIENT TABLE CONFIGURATION
@@ -127,9 +128,11 @@ for (const [column, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
   for (const synonym of synonyms) {
     SYNONYM_TO_COLUMN[synonym.toLowerCase()] = column;
   }
-  // Also add the column name itself (lowercase)
   SYNONYM_TO_COLUMN[column.toLowerCase()] = column;
 }
+
+// Import shared column reference from column-reference.ts (used across all LLM prompts)
+// Imported inline below to avoid circular dependency
 
 /**
  * Normalize column references in user query
@@ -1793,6 +1796,8 @@ async function interpretFollowUp(
   
   const classificationPrompt = `Classify this follow-up question into ONE primary intent type.
 
+${COLUMN_REFERENCE_PROMPT}
+
 Follow-up: "${followUpQuestion}"
 Current filters: ${JSON.stringify(currentState.filters)}
 Today's date: ${today}
@@ -1848,6 +1853,8 @@ Return JSON: {"intent": "<intent_type>", "reason": "<brief explanation>"}`;
     console.log(`[InterpretFollowUp] Phase 2 - Allowed keys for "${intent}": ${JSON.stringify(allowedKeys)}`);
   
   const systemPrompt = `You are a query modification interpreter. Given a current query state and a follow-up question, determine what modifications to make.
+
+${COLUMN_REFERENCE_PROMPT}
 
 CLASSIFIED INTENT: "${intent}"
 ${intent !== 'mixed' && intent !== 'remove' && intent !== 'no_change' ? `IMPORTANT: Since this is a "${intent}" intent, you can ONLY use these keys: ${allowedKeys.join(', ')}` : ''}
@@ -9463,6 +9470,9 @@ export class QueryEngine {
     
     try {
       const extractionPrompt = `You are an entity extraction system for a project database query system.
+
+${COLUMN_REFERENCE_PROMPT}
+
 Extract ALL entities from the user's query. Return JSON with these fields (use null if not found):
 
 {
@@ -17022,6 +17032,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         try {
           const validationPrompt = `You are a filter validation assistant. Given this user query and extracted filters, confirm if they are correct.
 
+${COLUMN_REFERENCE_PROMPT}
+
 User Query: "${userQuestion}"
 
 Extracted Filters:
@@ -22945,41 +22957,7 @@ DATABASE CONTEXT (for reference):
   ): Promise<{ corrected: boolean; sql: string; params: any[]; reason?: string }> {
     try {
       const startTime = Date.now();
-      const columnReference = `
-Available columns in vw_ChatBotData (ONLY these columns exist - do NOT invent others):
-- "Client" = Client/customer name (e.g., "NYU Langone Medical Center")
-- "Company" = OPCO/company name (e.g., "STOBG", "Hill", "GEI")
-- "RequestCategory" = Broad sector (e.g., "Healthcare", "Education", "Mission Critical", "Aviation", "Transportation")
-- "ProjectType" = Specific project type (e.g., "Hospitals", "Bridges", "Higher Education", "Solar")
-- "Division" = Internal division/department name (e.g., "SPM", "Dallas", "Ajax")
-- "Department" = Department name
-- "PointOfContact" = POC/contact person name
-- "StatusChoice" = Project status (e.g., "Won", "Lost", "Submitted", "Qualified Lead")
-- "Fee" = Project fee/revenue value
-- "ChanceOfSuccess" = Win probability/win rate percentage (NOT "WinPercentage" - that column does NOT exist)
-- "ConstStartDate" = Project start date (NOT "OpportunityStartDate" or "StartDate" - those do NOT exist)
-- "State" = US state
-- "Region" = Geographic region
-- "Title" = Project title/name
-- "Tags" = Comma-separated tags
-- "ModuleName" = Module (Opportunity, Tracked Work, Construction)
-- "ServiceType" = Type of service
-- "City" = City name
-- "Country" = Country name
-- "ProposalDate" = Date proposal was submitted
-- "ContractDate" = Contract date
-- "ClosedDate" = Date project was closed
-- "ProjectDuration" = Duration of project
-- "Currency" = Currency code
-IMPORTANT RULES:
-- "opportunities" in user questions refers to RequestCategory, NOT ModuleName
-- Sectors like "Mission Critical", "Healthcare", "Aviation" etc. should filter RequestCategory column
-- Company names like "STOBG", "Hill", "GEI" filter the Company column
-- Client names are typically longer organization names
-- NEVER replace "ChanceOfSuccess" with "WinPercentage" - "ChanceOfSuccess" IS the correct win rate column
-- NEVER replace "ConstStartDate" with any other date column name - "ConstStartDate" IS the correct start date column
-- Only suggest column replacements using columns from the list above
-`;
+      const columnReference = COLUMN_REFERENCE_PROMPT;
 
       const reviewPrompt = `You are a SQL query reviewer. Check if this SQL query correctly answers the user's question.
 
@@ -23043,14 +23021,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
       console.log(`[LLM-SQL-Review] ⚠️ Correction needed (${duration}ms): ${review.reason}`);
       
-      const validColumns = new Set([
-        'Client', 'Company', 'RequestCategory', 'ProjectType', 'Division', 'Department',
-        'PointOfContact', 'StatusChoice', 'Fee', 'ChanceOfSuccess', 'ConstStartDate',
-        'State', 'Region', 'Title', 'Tags', 'ModuleName', 'ServiceType', 'City',
-        'Country', 'ProposalDate', 'ContractDate', 'ClosedDate', 'ProjectDuration',
-        'Currency', 'TenantName', 'Closed', 'Deleted', 'InterestedUserNames',
-        'IsStrategicProject'
-      ]);
+      const validColumns = VALID_COLUMN_NAMES;
       
       let correctedSql = sql;
       let correctedParams = [...params];
