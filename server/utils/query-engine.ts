@@ -10823,7 +10823,26 @@ Return ONLY valid JSON, no explanation.`;
       // COLUMN KEYWORD BYPASS: Skip early detection if query contains explicit column keywords
       // This ensures queries like "show projects with title Highway" use the column keyword detection path
       const hasExplicitColumnKeyword = /\b(?:title|client|company|poc|point\s+of\s+contact|service\s+type|project\s+type|division|department|category|sector|region|state|country)\s+\w/i.test(userQuestion);
-      if (!hasDisambiguationFilter && !hasExplicitColumnKeyword) {
+      // TIME PERIOD CLUSTERING BYPASS: Skip early detection for queries about clients/companies
+      // with multiple projects in a time period - these should go to get_clients_by_time_period
+      const isTimePeriodClusteringQuery = (() => {
+        const hc = /\b(?:client|clients|company|companies)\b/i.test(userQuestion);
+        const hp = /\b(?:projects?|opportunities|pursuits|starting|start)\b/i.test(userQuestion);
+        const pu = '(?:\\d+[\\s-]*months?|quarters?(?:ly)?|half[\\s-]*years?|semi[\\s-]*annual|6[\\s-]*months?|3[\\s-]*months?|annual|years?(?:ly)?)';
+        const ps = '(?:period|window|span|time\\s*frame)?';
+        const hpe = new RegExp('\\b(?:same|within\\s+(?:the\\s+)?(?:a\\s+)?(?:an?\\s+)?(?:single\\s+)?(?:any\\s+)?(?:given\\s+)?)\\s*' + pu + '\\s*' + ps + '\\b', 'i').test(userQuestion);
+        const hpi = new RegExp('\\b(?:in|per|every|each)\\s+(?:a\\s+(?:single\\s+)?|the\\s+(?:same\\s+)?|one\\s+|any\\s+(?:given\\s+)?|(?:the\\s+)?same\\s+|single\\s+)?\\s*' + pu + '\\s*' + ps + '\\b', 'i').test(userQuestion);
+        const hps = /\b(?:months?(?:ly)?|quarters?(?:ly)?|years?(?:ly)?|annual(?:ly)?)\b/i.test(userQuestion) && /\b(?:per|every|each)\b/i.test(userQuestion);
+        const hpx = /\b(?:yearly|monthly|quarterly|annually|per\s+year|per\s+month|per\s+quarter)\b/i.test(userQuestion);
+        const hasPer = hpe || hpi || hps || hpx;
+        const hasCnt = /\b(?:more\s+th[ae]n|at\s+least|over|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\+?\s+(?:or\s+more\s+)?projects?|multiple|several|repeat|(?:the\s+)?most|lots?\s+of|many|numerous|frequent)\b/i.test(userQuestion);
+        const hasIG = /\b(?:projects?\s+(?:per|by|in|every|each)\s+(?:year|month|quarter|period))\b/i.test(userQuestion);
+        return hc && hp && hasPer && (hasCnt || hasIG);
+      })();
+      if (isTimePeriodClusteringQuery) {
+        console.log(`[QueryEngine] ⏭️ EARLY DETECTION BYPASS: Time period clustering query detected - skipping early name/column detection`);
+      }
+      if (!hasDisambiguationFilter && !hasExplicitColumnKeyword && !isTimePeriodClusteringQuery) {
       // Pattern 0: "project with name X" / "project named X" / "project called X"
       // Must come BEFORE earlyDirectMatch to prevent "with" from being treated as a stop word
       const earlyNameMatch = userQuestion.match(/(?:provide|show|list|get|find|display|give)\s+(?:all\s+)?(?:the\s+)?projects?\s+(?:with\s+)?(?:name(?:d)?|called|titled)\s+(.+)/i);
@@ -12334,7 +12353,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       if (isAllFillerWords) {
         console.log('[QueryEngine] FILLER BYPASS: Extracted value "' + extractedValue + '" is all generic/filler words - skipping pattern match, letting LLM handle');
       }
-      const generalTermMatch = isAllFillerWords ? null : generalTermMatchRaw;
+      const generalTermMatch = (isAllFillerWords || isTimePeriodClusteringQuery) ? null : generalTermMatchRaw;
       if (generalTermMatch && generalTermMatch[1]) {
         const generalTerm = generalTermMatch[1].trim();
         // Skip known keywords that should go to specific handlers
@@ -14238,25 +14257,42 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           function_name: 'get_status_breakdown',
           arguments: mergeExtractedHints({})
         };
-      } else if (/\b(?:same|within\s+(?:the\s+)?(?:a\s+)?(?:single\s+)?)\s*(?:\d+[\s-]*month|quarter(?:ly)?|half[\s-]*year|semi[\s-]*annual|6[\s-]*month|3[\s-]*month|annual|year(?:ly)?)\s*(?:period|window|span|time\s*frame)?\b/i.test(userQuestion) &&
-                 /\b(?:client|clients|company|companies)\b/i.test(userQuestion) &&
-                 /\b(?:more\s+th[ae]n|at\s+least|over|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\+?\s+projects?|multiple|several)\b/i.test(userQuestion) &&
-                 /\b(?:projects?|opportunities|pursuits|starting|start)\b/i.test(userQuestion)) {
+      } else if ((() => {
+        const hasClient = /\b(?:client|clients|company|companies)\b/i.test(userQuestion);
+        const hasProject = /\b(?:projects?|opportunities|pursuits|starting|start)\b/i.test(userQuestion);
+        const periodUnit = '(?:\\d+[\\s-]*months?|quarters?(?:ly)?|half[\\s-]*years?|semi[\\s-]*annual|6[\\s-]*months?|3[\\s-]*months?|annual|years?(?:ly)?)';
+        const periodSuffix = '(?:period|window|span|time\\s*frame)?';
+        const hasPeriodExplicit = new RegExp('\\b(?:same|within\\s+(?:the\\s+)?(?:a\\s+)?(?:an?\\s+)?(?:single\\s+)?(?:any\\s+)?(?:given\\s+)?)\\s*' + periodUnit + '\\s*' + periodSuffix + '\\b', 'i').test(userQuestion);
+        const hasPeriodIn = new RegExp('\\b(?:in|per|every|each)\\s+(?:a\\s+(?:single\\s+)?|the\\s+(?:same\\s+)?|one\\s+|any\\s+(?:given\\s+)?|(?:the\\s+)?same\\s+|single\\s+)?\\s*' + periodUnit + '\\s*' + periodSuffix + '\\b', 'i').test(userQuestion);
+        const hasPeriodPerSuffix = /\b(?:months?(?:ly)?|quarters?(?:ly)?|years?(?:ly)?|annual(?:ly)?)\b/i.test(userQuestion) && /\b(?:per|every|each)\b/i.test(userQuestion);
+        const hasPeriodSuffix = /\b(?:yearly|monthly|quarterly|annually|per\s+year|per\s+month|per\s+quarter)\b/i.test(userQuestion);
+        const hasPeriod = hasPeriodExplicit || hasPeriodIn || hasPeriodPerSuffix || hasPeriodSuffix;
+        const hasCount = /\b(?:more\s+th[ae]n|at\s+least|over|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\+?\s+(?:or\s+more\s+)?projects?|multiple|several|repeat|(?:the\s+)?most|lots?\s+of|many|numerous|frequent)\b/i.test(userQuestion);
+        const hasImpliedGrouping = /\b(?:projects?\s+(?:per|by|in|every|each)\s+(?:year|month|quarter|period))\b/i.test(userQuestion);
+        return hasClient && hasProject && hasPeriod && (hasCount || hasImpliedGrouping);
+      })()) {
         // ═══════════════════════════════════════════════════════════════
         // TIME PERIOD CLUSTERING OVERRIDE: Route to get_clients_by_time_period
-        // Detects: "clients with more than X projects in the same 6-month period"
+        // Detects many natural phrasings like:
+        //   "clients with more than X projects in the same 6-month period"
+        //   "which clients had 3+ projects in a year"
+        //   "companies with multiple projects per quarter"
+        //   "clients projects per year average revenue"
+        //   "show me clients with repeat projects within 12 months"
         // ═══════════════════════════════════════════════════════════════
         let periodMonths = 6;
         if (/\bquarter(?:ly)?\b|3[\s-]*month/i.test(userQuestion)) periodMonths = 3;
-        else if (/\byear(?:ly)?\b|\bannual\b|12[\s-]*month/i.test(userQuestion)) periodMonths = 12;
+        else if (/\byear(?:ly)?\b|\bannual(?:ly)?\b|12[\s-]*month|per\s+year/i.test(userQuestion)) periodMonths = 12;
         
         let minProjects = 3;
         const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
         const parseNumOrWord = (val: string): number => parseInt(val) || wordToNum[val.toLowerCase()] || 2;
         const minMatch = userQuestion.match(/\bmore\s+th[ae]n\s+(\w+)/i) || userQuestion.match(/\bover\s+(\w+)/i);
         const atLeastMatch = userQuestion.match(/\bat\s+least\s+(\w+)/i) || userQuestion.match(/\b(\d+)\s+or\s+more/i);
+        const directNumMatch = !minMatch && !atLeastMatch ? userQuestion.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\+?\s+projects?\b/i) : null;
         if (minMatch) minProjects = parseNumOrWord(minMatch[1]) + 1;
         else if (atLeastMatch) minProjects = parseNumOrWord(atLeastMatch[1]);
+        else if (directNumMatch) minProjects = parseNumOrWord(directNumMatch[1]);
         
         console.log(`[QueryEngine] 📅 TIME PERIOD CLUSTERING OVERRIDE: Detected period clustering query → forcing get_clients_by_time_period (period=${periodMonths}mo, min_projects=${minProjects})`);
         const timePeriodArgs = mergeExtractedHints({ period_months: periodMonths, min_projects: minProjects });
@@ -18548,7 +18584,8 @@ Response (JSON only):`;
         'get_project_type_breakdown', 'get_status_breakdown', 'get_top_clients',
         'compare_companies', 'get_top_pocs', 'get_size_distribution',
         'compare_years', 'get_revenue_by_month', 'get_revenue_by_state',
-        'compare_states', 'compare_regions'
+        'compare_states', 'compare_regions',
+        'get_clients_by_time_period', 'common_clients_between_companies', 'common_projects_between_companies'
       ];
       
       // Use generic breakdown detection instead of hardcoded division/department only
