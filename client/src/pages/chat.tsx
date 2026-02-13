@@ -2707,7 +2707,7 @@ export default function ChatPage() {
         const isDisambiguation = data.function_name === "disambiguation_required";
         
         // Auto-log if any of these conditions are true (but never for disambiguation)
-        const shouldAutoLog = !isDisambiguation && (isActualError || isAIFallback || isAIAnalysis || hasNoData);
+        const shouldAutoLog = !isDisambiguation && (isActualError || isAIFallback || hasNoData);
         
         if (shouldAutoLog && chatId) {
           try {
@@ -3563,8 +3563,6 @@ export default function ChatPage() {
       const shouldAutoLog = !data.success || 
         data.function_name === 'ai_fallback' || 
         data.function_name === 'provide_simple_answer' ||
-        data.function_name === 'ai_data_analysis' ||
-        data.data?.[0]?.type === 'ai_analysis' ||
         data.data?.[0]?.is_fallback === true ||
         (data.data && data.data.length === 0) ||
         isFilterLoss;
