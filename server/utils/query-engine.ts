@@ -5428,6 +5428,27 @@ export class QueryEngine {
         chart_field: "total_value",
       },
 
+      common_projects_between_companies: {
+        sql: `SELECT p."Title", p."Client", p."Company", p."RequestCategory", p."ProjectType",
+              p."StatusChoice", p."Fee", p."ChanceOfSuccess", p."ConstStartDate", p."State"
+              FROM "${TABLE}" p
+              WHERE p."Client" IN (
+                SELECT a."Client" FROM "${TABLE}" a WHERE a."Company" LIKE '%' + @p1 + '%'
+                INTERSECT
+                SELECT b."Client" FROM "${TABLE}" b WHERE b."Company" LIKE '%' + @p2 + '%'
+              )
+              AND (p."Company" LIKE '%' + @p1 + '%' OR p."Company" LIKE '%' + @p2 + '%')
+              {status_filter}
+              {additional_filters}
+              ORDER BY CAST(NULLIF(p."Fee", '') AS NUMERIC) DESC`,
+        params: ["company1", "company2"],
+        param_types: ["str", "str"],
+        optional_params: ["start_date", "end_date", "status"],
+        excludeParams: ["company1", "company2", "company", "organization", "status"],
+        chart_type: "bar",
+        chart_field: "Fee",
+      },
+
       compare_quarters: {
         sql: `SELECT 
               YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
@@ -10576,12 +10597,64 @@ Return ONLY valid JSON, no explanation.`;
       const topLevelCompanyPattern = /\b(ais|gafcon|gei|hill|liro|palladium|stobg)\b/gi;
       const topLevelCommonKeyword = /\b(common|shared|both|overlap|intersect|same|mutual)\b/i;
       const topLevelClientContext = /\b(client|clients|customer|customers|clientele|accounts?)\b/i;
-      const topLevelMetricExclusion = /\b(revenue|fee|fees|win\s*rate|budget|cost|value|count|total|amount|profit|margin|score|volume|number|projects?)\b/i;
+      const topLevelProjectContext = /\b(projects?|opportunities?|deals?|work|engagements?|jobs?)\b/i;
+      const topLevelMetricExclusion = /\b(revenue|fee|fees|win\s*rate|budget|cost|value|count|total|amount|profit|margin|score|volume|number)\b/i;
       const topLevelCompanyMatches = userQuestion.match(topLevelCompanyPattern);
       const topLevelUniqueCompanies = topLevelCompanyMatches ? [...new Set(topLevelCompanyMatches.map((c: string) => c.toUpperCase()))] : [];
       const hasCommonKeyword = topLevelCommonKeyword.test(userQuestion);
       const hasClientContext = topLevelClientContext.test(userQuestion);
+      const hasProjectContext = topLevelProjectContext.test(userQuestion);
       const hasMetricContext = topLevelMetricExclusion.test(userQuestion);
+
+      // ═══════════════════════════════════════════════════════════════
+      // COMMON PROJECTS BETWEEN COMPANIES DETECTION
+      // "hill and gei same projects" / "common projects between X and Y"
+      // Must check BEFORE common clients detection
+      // ═══════════════════════════════════════════════════════════════
+      const isLikelyCommonProjects = hasCommonKeyword && topLevelUniqueCompanies.length >= 2 && hasProjectContext && !hasClientContext;
+      if (isLikelyCommonProjects) {
+        console.log(`[QueryEngine] 🔀 TOP-LEVEL COMMON PROJECTS: Detected companies: ${JSON.stringify(topLevelUniqueCompanies)} - routing to common_projects_between_companies`);
+        const commonProjectsArgs: Record<string, any> = {
+          company1: topLevelUniqueCompanies[0],
+          company2: topLevelUniqueCompanies[1],
+          _common_projects_query: true
+        };
+        const commonResult = await this.executeQuery('common_projects_between_companies', commonProjectsArgs, externalDbQuery, userQuestion);
+        if (commonResult.data && commonResult.data.length > 0) {
+          const chartConfig = this.generateChartConfig(commonResult.data, 'common_projects_between_companies');
+          return {
+            success: true,
+            data: commonResult.data,
+            row_count: commonResult.data.length,
+            question: userQuestion,
+            function_name: 'common_projects_between_companies',
+            arguments: commonProjectsArgs,
+            sql_query: commonResult.sql_query,
+            sql_params: commonResult.sql_params,
+            summary: commonResult.summary || {},
+            chart_config: chartConfig,
+          };
+        } else {
+          return {
+            success: true,
+            data: [{
+              type: 'ai_analysis',
+              narrative: `No shared projects found between ${topLevelUniqueCompanies[0]} and ${topLevelUniqueCompanies[1]}. These companies do not appear to have common clients or projects in the database.`,
+              aggregates: { count: 0, totalFee: 0, avgFee: 0 },
+              samples: [],
+              question: userQuestion,
+              is_empty_result: true
+            }],
+            row_count: 0,
+            question: userQuestion,
+            function_name: 'common_projects_between_companies',
+            arguments: commonProjectsArgs,
+            summary: {},
+            chart_config: null,
+          };
+        }
+      }
+
       // "client of X and Y" or "clients of X and Y" pattern implies common/shared clients
       const clientOfPattern = /\b(?:clients?|customers?)\s+(?:of|for|between)\s+/i;
       const hasClientOfWithMultipleCompanies = clientOfPattern.test(userQuestion) && topLevelUniqueCompanies.length >= 2;
@@ -17289,9 +17362,11 @@ Response (JSON only):`;
           }
           // Ensure the flag is set
           args[`_${headChefResult.entity.paramName}_already_applied`] = true;
-          // Preserve common_clients_between_companies function - don't let HeadChef overwrite it
+          // Preserve common_clients/common_projects function - don't let HeadChef overwrite it
           if (args._common_clients_query && classification.function_name === 'common_clients_between_companies') {
             functionName = 'common_clients_between_companies';
+          } else if (args._common_projects_query && classification.function_name === 'common_projects_between_companies') {
+            functionName = 'common_projects_between_companies';
           } else {
             functionName = headChefResult.functionName;
           }
