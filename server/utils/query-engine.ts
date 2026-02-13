@@ -23639,19 +23639,28 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       // LLM SQL REVIEW: Active mode - applies corrections before execution
       // ═══════════════════════════════════════════════════════════════
       const skipReviewFunctions = new Set([
-        'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response'
+        'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response',
+        'get_clients_by_time_period', 'common_clients_between_companies', 'common_projects_between_companies'
       ]);
       if (userQuestion && !skipReviewFunctions.has(functionName) && !args._llm_review_done) {
         args._llm_review_done = true;
         try {
           const review = await this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args);
           if (review.corrected && review.sql && review.sql !== sql) {
-            console.log(`[LLM-SQL-Review] ✅ APPLYING CORRECTION: ${review.reason}`);
-            console.log(`[LLM-SQL-Review] 📝 Original SQL:\n${sql}`);
-            sql = review.sql;
-            sqlParams = review.params;
-            console.log(`[LLM-SQL-Review] 📝 Corrected SQL:\n${sql}`);
-            try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: true, correctedSql: review.sql?.substring(0, 500) }) + '\n'); } catch(e) {}
+            const hasSyntaxCorruption = /\bWINDOW_LOGIC_DESCRIPTION\b/i.test(review.sql) ||
+              /\bFROM\s+\w+\s+AND\b/i.test(review.sql) ||
+              /\bSELECT\s+AND\b/i.test(review.sql);
+            if (hasSyntaxCorruption) {
+              console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: Detected syntax corruption in corrected SQL. Keeping original.`);
+              try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: false, rejected: 'syntax_corruption' }) + '\n'); } catch(e) {}
+            } else {
+              console.log(`[LLM-SQL-Review] ✅ APPLYING CORRECTION: ${review.reason}`);
+              console.log(`[LLM-SQL-Review] 📝 Original SQL:\n${sql}`);
+              sql = review.sql;
+              sqlParams = review.params;
+              console.log(`[LLM-SQL-Review] 📝 Corrected SQL:\n${sql}`);
+              try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: true, correctedSql: review.sql?.substring(0, 500) }) + '\n'); } catch(e) {}
+            }
           }
         } catch(reviewErr) {
           console.log(`[LLM-SQL-Review] ⚠️ Review error (non-blocking): ${reviewErr}`);
