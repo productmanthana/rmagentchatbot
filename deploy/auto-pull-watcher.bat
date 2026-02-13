@@ -7,7 +7,7 @@ REM ============================================
 
 REM ---- CONFIGURATION (Update these) ----
 SET REPO_DIR=C:\RMOneAI
-SET GITHUB_URL=https://github.com/YOUR_USERNAME/YOUR_REPO.git
+SET GITHUB_URL=https://github.com/productmanthana/rmagentchatbot.git
 SET BRANCH=main
 SET CHECK_INTERVAL=60
 SET LOG_FILE=C:\RMOneAI\auto-pull.log
