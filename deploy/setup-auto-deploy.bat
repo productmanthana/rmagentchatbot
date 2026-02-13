@@ -29,8 +29,8 @@ copy /Y "%~dp0auto-pull-watcher.bat" "%REPO_DIR%\auto-pull-watcher.bat"
 REM Delete existing task if it exists
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
-REM Create a scheduled task that runs at system startup
-schtasks /create /tn "%TASK_NAME%" /tr "\"%REPO_DIR%\auto-pull-watcher.bat\"" /sc onstart /ru SYSTEM /rl HIGHEST /f
+REM Create a scheduled task that runs at user logon (uses current user's Git credentials)
+schtasks /create /tn "%TASK_NAME%" /tr "\"%REPO_DIR%\auto-pull-watcher.bat\"" /sc onlogon /rl HIGHEST /f
 
 IF %ERRORLEVEL% EQU 0 (
     echo.
