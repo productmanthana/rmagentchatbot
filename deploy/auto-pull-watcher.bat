@@ -15,7 +15,7 @@ SET GIT="C:\Program Files\Git\cmd\git.exe"
 REM ---- END CONFIGURATION ----
 
 REM Add Git and Node to PATH for SYSTEM account
-SET PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\nodejs;C:\Program Files\Git\bin
+SET PATH=%PATH%;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;C:\nvm4w\nodejs
 
 echo ============================================
 echo  RMOne AI - GitHub Auto-Pull Watcher
