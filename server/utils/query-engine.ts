@@ -26385,10 +26385,8 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     if (showMatch) requestedText += ' ' + showMatch[1].toLowerCase();
     if (withMatch) requestedText += ' ' + withMatch[1].toLowerCase();
     if (whichMatch) {
-      const hasProjectFilters = /\b(?:over|above|under|below|less than|greater than|more than|at least|between)\s+\$?\d/i.test(userQuestion) ||
-        /\b(?:fee|win|chance|probability|%|percent)\b/i.test(userQuestion);
-      if (hasProjectFilters && functionName === 'get_projects_by_combined_filters') {
-        console.log('[ColumnFilter] Skipping - "which X are these for" is an entity identification question with project-level filters, not a column restriction');
+      if (functionName === 'get_projects_by_combined_filters') {
+        console.log('[ColumnFilter] Skipping - "which/what X are these for" is an entity identification question on project-level results, not a column restriction');
         return data;
       }
       requestedText += ' ' + whichMatch[1].toLowerCase();
@@ -26455,6 +26453,20 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     }
 
     const finalColumns = [...contextColumns, ...requestedColumns];
+
+    if (functionName === 'get_projects_by_combined_filters') {
+      const filterColDefs = [
+        { col: 'Fee', pattern: /\b(?:fee|revenue|value|\$|dollar|million|\bM\b)\b/i },
+        { col: 'ChanceOfSuccess', pattern: /\b(?:win|chance|probability|percent|%)\b/i },
+        { col: 'StatusChoice', pattern: /\b(?:status|lead|submitted|won|lost|proposal|qualified|hold|progress)\b/i },
+        { col: 'RequestCategory', pattern: /\b(?:category|categories|sector|type|segment)\b/i },
+      ];
+      for (const { col, pattern } of filterColDefs) {
+        if (pattern.test(userQuestion) && existingColumns.includes(col) && !finalColumns.includes(col)) {
+          finalColumns.push(col);
+        }
+      }
+    }
 
     console.log('[ColumnFilter] Showing only: ' + finalColumns.join(', ') + ' (user requested: ' + requestedColumns.join(', ') + ')');
 
