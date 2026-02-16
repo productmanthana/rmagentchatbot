@@ -5329,6 +5329,9 @@ export class QueryEngine {
               AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
+              SUM(ISNULL("Conflict", 0)) as conflict_count,
+              SUM(ISNULL("COOP", 0)) as coop_count,
+              SUM(ISNULL("Linked Projects", 0)) as linked_projects_count,
               MAX("ConstStartDate") as latest_project
               FROM "${TABLE}"
               WHERE "Client" IS NOT NULL AND "Client" != ''
@@ -26651,6 +26654,15 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
   private reorderColumnsByUserRequest(data: any[], userQuestion: string, functionName: string): any[] {
     if (!data || data.length === 0 || !userQuestion) return data;
     if (data[0]?.type === 'ai_analysis') return data;
+
+    const aggregatedFunctions = new Set([
+      'get_top_clients', 'compare_companies', 'get_quarterly_trends',
+      'get_monthly_trends', 'get_yearly_trends', 'get_category_breakdown',
+      'compare_categories', 'get_department_breakdown', 'get_division_breakdown',
+      'get_state_breakdown', 'get_region_breakdown', 'compare_states',
+      'get_status_breakdown', 'get_win_rate_analysis'
+    ]);
+    if (aggregatedFunctions.has(functionName)) return data;
 
     const existingColumns = Object.keys(data[0]);
     const isSelectStar = existingColumns.length > 10;
