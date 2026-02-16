@@ -16387,6 +16387,38 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         delete classification.arguments.analysis_question; // Remove AI analysis question since we're using direct query
       }
 
+      // Step 1.7d-2b: QUARTERLY COMPARISON ROUTING GUARD
+      // If user asks "which quarter" or "quarterly breakdown" with revenue/projects, route to get_quarterly_trends
+      // This catches cases where no specific quarter is extracted but user wants a quarter-by-quarter comparison
+      {
+        const isQuarterlyComparison = /\b(?:which\s+quarter|quarterly\s+(?:breakdown|comparison|trend|overview|summary|analysis)|(?:by|per|each|every)\s+quarter|quarter[\s-]*(?:by|over)[\s-]*quarter|all\s+quarters?)\b/i.test(userQuestion);
+        const hasRevenueOrProjects = /\b(?:revenue|revenues|fee|fees|projects?|opportunities|potential\s+(?:revenue|fee)|number\s+of\s+projects)\b/i.test(userQuestion);
+        const noSpecificQuarter = classification.arguments.quarter === undefined;
+        
+        if (isQuarterlyComparison && hasRevenueOrProjects && noSpecificQuarter &&
+            (classification.function_name === 'ai_data_analysis' || classification.function_name === 'ai_fallback')) {
+          console.log(`[QueryEngine] 📊 QUARTERLY COMPARISON GUARD: Rerouting ${classification.function_name} → get_quarterly_trends`);
+          classification.function_name = 'get_quarterly_trends';
+          
+          // Extract year if not already set
+          if (!classification.arguments.year) {
+            const yearMatch = userQuestion.match(/\b(20\d{2})\b/);
+            if (yearMatch) {
+              classification.arguments.year = parseInt(yearMatch[1], 10);
+            } else if (/\b(last|previous|prior)\s+year\b/i.test(userQuestion)) {
+              classification.arguments.year = new Date().getFullYear() - 1;
+            }
+          }
+          
+          // Clear AI analysis fields and limit (user wants to see all quarters for comparison)
+          delete classification.arguments.analysis_question;
+          delete classification.arguments.start_date;
+          delete classification.arguments.end_date;
+          delete classification.arguments.limit;
+          console.log(`[QueryEngine] 📊 QUARTERLY COMPARISON GUARD: year=${classification.arguments.year || 'all'}, limit cleared for full comparison`);
+        }
+      }
+
       // Step 1.7d-3: CONFLICT/COOP/LINKED PROJECTS EXTRACTION GUARD
       // If user mentions conflict/coop/linked projects in their question but LLM didn't extract the parameter, set it
       {
