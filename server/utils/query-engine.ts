@@ -107,8 +107,9 @@ const COLUMN_SYNONYMS: Record<string, string[]> = {
   
   // LP/Conflict/Co Op flags
   "LP": ["lp", "limited partner", "limited partnership"],
-  "Conflict": ["conflict", "conflicts", "conflict of interest"],
-  "CoOp": ["co op", "coop", "co-op", "cooperative", "cooperation"],
+  "Conflict": ["conflict", "conflicts", "conflict of interest", "conflict flag", "conflict check", "conflict exposure", "conflict status", "conflicted", "has conflict"],
+  "COOP": ["coop", "co-op", "co op", "cooperative", "cooperation", "coop flag", "coop status", "cooperative flag", "co-operative", "joint venture", "co-operative project"],
+  "Linked Projects": ["linked projects", "linked", "related projects", "associated projects", "linked project count", "connections", "project links", "cross-referenced", "related", "linked count"],
   
   // Group Criteria
   "GroupCriteria": ["group criteria", "criteria", "grouping criteria"],
@@ -6836,6 +6837,9 @@ export class QueryEngine {
               type: "number",
               description: "Maximum fee to filter data (optional). ONLY set when user explicitly mentions a fee/cost constraint. NEVER default to 0. WARNING: Do NOT use together with min_fee for 'versus' comparisons.",
             },
+            conflict: { type: "integer", description: "Filter by Conflict flag (0=no conflict, >0=has conflict). For 'conflict exposure analysis', 'projects with conflicts' → 1." },
+            coop: { type: "integer", description: "Filter by COOP flag (0=not cooperative, >0=cooperative). For 'cooperative project analysis' → 1." },
+            linked_projects: { type: "integer", description: "Filter by Linked Projects count (0=none, >0=has links). For 'linked project analysis' → 1." },
           },
           required: ["analysis_question"],
         },
@@ -6845,7 +6849,7 @@ export class QueryEngine {
       {
         name: "get_projects_by_combined_filters",
         description:
-          "Get projects matching MULTIPLE filters simultaneously. PRIMARY FUNCTION for: (1) Time-based queries with status/win rate (e.g., 'Submitted projects starting in next 30 days', 'projects likely to be won soon', 'high win rate projects beginning this month'), (2) Complex queries with size, tags, status, dates, Is Updated field, project title, etc. (4) TITLE SEARCH: 'projects under title X', 'titled X', 'title contains X' → use title parameter for partial matching, (3) CHRONOLOGICAL QUERIES: 'first project ever', 'oldest project', 'earliest project', 'newest project', 'most recent project', 'latest project' → set sort_field='start_date' and sort_direction='ASC' for oldest/first/earliest or 'DESC' for newest/latest/most recent. Use start_date/end_date for ANY time reference ('next X days', 'within 60 days', 'starting soon', 'this quarter'). **CRITICAL EXCLUSION**: DO NOT use for DURATION-IN-STATUS queries like 'stuck in [status] for X days', 'been in Proposal Development for over 60 days', 'projects in pipeline longer than X days' - use get_stalled_deals instead. DO NOT use for ranking/sorting queries like 'top by win rate' or 'sorted by fee' - use specific ranking functions instead. Use 'tags' parameter ONLY when user explicitly mentions 'tags' or 'tagged'. For general keywords without 'tags' mention, use get_projects_by_category instead. For Client (Client ID), use 'client' field, NOT 'company'. DO NOT use this for person names - use get_projects_by_poc instead. CRITICAL: Use 'exclude_categories' for negations like 'NOT in Healthcare', 'except Transportation', 'excluding Corporate'. **IMPORTANT**: 'Is Updated' is a DATABASE COLUMN (values: '0' or '1'), NOT a tag - use is_updated parameter, NOT exclude_tags! **MULTI-STATUS QUERIES**: When user asks for multiple statuses with OR logic (e.g., 'Proposal Development OR Submitted', 'Won or Lost'), you MUST pass status as an ARRAY of individual statuses: ['Proposal Development', 'Submitted']. Never pass comma-separated strings. IMPORTANT: When user says 'identify all opportunities/projects with [filters]' and asks 'which clients are these for' or 'who are the clients', use THIS function — user wants individual project rows with Client column visible, NOT client aggregation.",
+          "Get projects matching MULTIPLE filters simultaneously. PRIMARY FUNCTION for: (1) Time-based queries with status/win rate (e.g., 'Submitted projects starting in next 30 days', 'projects likely to be won soon', 'high win rate projects beginning this month'), (2) Complex queries with size, tags, status, dates, Is Updated, Conflict, COOP, Linked Projects fields, project title, etc. SUPPORTS FLAGS: conflict (0=no conflict, >0=has conflict), coop (0=not cooperative, >0=cooperative), linked_projects (0=no links, >0=has links). Use for 'conflict exposure', 'cooperative projects', 'linked project analysis', 'show all flagged projects'. (4) TITLE SEARCH: 'projects under title X', 'titled X', 'title contains X' → use title parameter for partial matching, (3) CHRONOLOGICAL QUERIES: 'first project ever', 'oldest project', 'earliest project', 'newest project', 'most recent project', 'latest project' → set sort_field='start_date' and sort_direction='ASC' for oldest/first/earliest or 'DESC' for newest/latest/most recent. Use start_date/end_date for ANY time reference ('next X days', 'within 60 days', 'starting soon', 'this quarter'). **CRITICAL EXCLUSION**: DO NOT use for DURATION-IN-STATUS queries like 'stuck in [status] for X days', 'been in Proposal Development for over 60 days', 'projects in pipeline longer than X days' - use get_stalled_deals instead. DO NOT use for ranking/sorting queries like 'top by win rate' or 'sorted by fee' - use specific ranking functions instead. Use 'tags' parameter ONLY when user explicitly mentions 'tags' or 'tagged'. For general keywords without 'tags' mention, use get_projects_by_category instead. For Client (Client ID), use 'client' field, NOT 'company'. DO NOT use this for person names - use get_projects_by_poc instead. CRITICAL: Use 'exclude_categories' for negations like 'NOT in Healthcare', 'except Transportation', 'excluding Corporate'. **IMPORTANT**: 'Is Updated' is a DATABASE COLUMN (values: '0' or '1'), NOT a tag - use is_updated parameter, NOT exclude_tags! **MULTI-STATUS QUERIES**: When user asks for multiple statuses with OR logic (e.g., 'Proposal Development OR Submitted', 'Won or Lost'), you MUST pass status as an ARRAY of individual statuses: ['Proposal Development', 'Submitted']. Never pass comma-separated strings. IMPORTANT: When user says 'identify all opportunities/projects with [filters]' and asks 'which clients are these for' or 'who are the clients', use THIS function — user wants individual project rows with Client column visible, NOT client aggregation.",
         parameters: {
           type: "object",
           properties: {
@@ -6893,6 +6897,9 @@ export class QueryEngine {
             min_win: { type: "integer", description: "Minimum win percentage" },
             max_win: { type: "integer", description: "Maximum win percentage" },
             is_updated: { type: "string", description: "Filter by 'Is Updated' column: '0' (not updated) or '1' (updated). Use for queries like 'projects marked as Is Updated = 0'. This is a COLUMN, NOT a tag!" },
+            conflict: { type: "integer", description: "Filter by Conflict flag column (integer). Use 0 for 'no conflict', or >0 (e.g., 1) for 'has conflict'. For 'conflict greater than 0', 'flagged as conflict', 'with conflict', 'conflict exposure' → set conflict=1. For 'no conflict', 'conflict-free' → set conflict=0." },
+            coop: { type: "integer", description: "Filter by COOP (cooperative) flag column (integer). Use 0 for 'not cooperative/no coop', or >0 (e.g., 1) for 'is cooperative/has coop'. For 'cooperative projects', 'coop flagged', 'joint venture' → set coop=1. For 'non-cooperative', 'no coop' → set coop=0." },
+            linked_projects: { type: "integer", description: "Filter by Linked Projects column (integer count). Use 0 for 'no linked projects', or >0 (e.g., 1) for 'has linked projects'. For 'projects with links', 'has related projects', 'linked to other projects' → set linked_projects=1. For 'standalone', 'no links', 'unlinked' → set linked_projects=0." },
             project_type: { type: "string", description: "**DEFAULT FIELD** for type filtering. Use for ANY 'type' query: 'education type', 'higher education', 'Hospitals', 'Bridges', 'Solar'. ALWAYS prefer this over categories unless user explicitly says 'category'." },
             project_types: { type: "array", items: { type: "string" }, description: "Array of Project Types for OR logic (e.g., ['Hospitals', 'Pharma'] for 'hospitals or pharma type'). ALWAYS prefer this over categories unless user explicitly says 'category'." },
             time_reference: {
@@ -6941,6 +6948,9 @@ export class QueryEngine {
             max_win: { type: "integer", description: "Maximum win percentage filter" },
             regions: { type: "array", items: { type: "string" }, description: "Region column values to filter by (e.g., ['NA - West', 'NA - South']). Use for region-based queries like 'top projects in west region'." },
             title: { type: "string", description: "Project title to filter by. Use LIKE matching for partial title search. Use when user says 'projects under title X', 'title contains X', 'projects titled X', or mentions a specific project name." },
+            conflict: { type: "integer", description: "Filter by Conflict flag (0=no conflict, >0=has conflict). For 'with conflict' → 1, 'no conflict' → 0." },
+            coop: { type: "integer", description: "Filter by COOP flag (0=not cooperative, >0=cooperative). For 'cooperative projects' → 1, 'no coop' → 0." },
+            linked_projects: { type: "integer", description: "Filter by Linked Projects count (0=none, >0=has links). For 'with linked projects' → 1, 'no links' → 0." },
           },
           required: [],
         },
@@ -8908,7 +8918,7 @@ export class QueryEngine {
       
       {
         name: "get_project_column_by_id",
-        description: "Get a SPECIFIC COLUMN value for a SINGLE PROJECT by PROJECT ID (PID). Use ONLY for single-project lookups like 'description of PID 1061', 'fee for PID 5', 'status of project ABC'. DO NOT use for CLIENT-level queries - if user mentions 'client', 'Client', or asks for 'average', use get_projects_by_client instead. This is for INDIVIDUAL PROJECT lookups only, NOT client aggregation. Column names: Request Category, Module Name, LP, Conflict, Co Op, Project Name, Client, Status, Group Criteria, Fee, Group, Company, Email, Point Of Contact, Win %, Project Type, Start Date, Description, State Lookup, Internal Id, Is Updated, Tags",
+        description: "Get a SPECIFIC COLUMN value for a SINGLE PROJECT by PROJECT ID (PID). Use ONLY for single-project lookups like 'description of PID 1061', 'fee for PID 5', 'status of project ABC'. DO NOT use for CLIENT-level queries - if user mentions 'client', 'Client', or asks for 'average', use get_projects_by_client instead. This is for INDIVIDUAL PROJECT lookups only, NOT client aggregation. Column names: Request Category, Module Name, LP, Conflict, COOP, Linked Projects, Project Name, Client, Status, Group Criteria, Fee, Group, Company, Email, Point Of Contact, Win %, Project Type, Start Date, Description, State Lookup, Internal Id, Is Updated, Tags",
         parameters: {
           type: "object",
           properties: {
@@ -24315,6 +24325,42 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       paramIndex++;
     }
 
+    // Conflict flag filter (INT column: 0 = no conflict, >0 = has conflict)
+    if (args.conflict !== undefined && args.conflict !== null) {
+      const conflictVal = parseInt(String(args.conflict));
+      if (!isNaN(conflictVal)) {
+        if (conflictVal === 0) {
+          filters.push(`ISNULL("Conflict", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("Conflict", 0) > 0`);
+        }
+      }
+    }
+
+    // COOP flag filter (INT column: 0 = not cooperative, >0 = cooperative)
+    if (args.coop !== undefined && args.coop !== null) {
+      const coopVal = parseInt(String(args.coop));
+      if (!isNaN(coopVal)) {
+        if (coopVal === 0) {
+          filters.push(`ISNULL("COOP", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("COOP", 0) > 0`);
+        }
+      }
+    }
+
+    // Linked Projects filter (INT column: 0 = no links, >0 = has linked projects)
+    if (args.linked_projects !== undefined && args.linked_projects !== null) {
+      const linkedVal = parseInt(String(args.linked_projects));
+      if (!isNaN(linkedVal)) {
+        if (linkedVal === 0) {
+          filters.push(`ISNULL("Linked Projects", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("Linked Projects", 0) > 0`);
+        }
+      }
+    }
+
     // Title filter - case-insensitive LIKE match for project title
     if (args.title && !excludeParams.includes("title")) {
       filters.push(`"Title" LIKE @p${paramIndex}`);
@@ -24761,6 +24807,42 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
         filters.push(`"IsUpdated" = @p${paramIndex}`);
         params.push(normalized);
         paramIndex++;
+      }
+    }
+
+    // Conflict flag filter (INT column: 0 = no conflict, >0 = has conflict)
+    if (args.conflict !== undefined && args.conflict !== null) {
+      const conflictVal = parseInt(String(args.conflict));
+      if (!isNaN(conflictVal)) {
+        if (conflictVal === 0) {
+          filters.push(`ISNULL("Conflict", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("Conflict", 0) > 0`);
+        }
+      }
+    }
+
+    // COOP flag filter (INT column: 0 = not cooperative, >0 = cooperative)
+    if (args.coop !== undefined && args.coop !== null) {
+      const coopVal = parseInt(String(args.coop));
+      if (!isNaN(coopVal)) {
+        if (coopVal === 0) {
+          filters.push(`ISNULL("COOP", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("COOP", 0) > 0`);
+        }
+      }
+    }
+
+    // Linked Projects filter (INT column: 0 = no links, >0 = has linked projects)
+    if (args.linked_projects !== undefined && args.linked_projects !== null) {
+      const linkedVal = parseInt(String(args.linked_projects));
+      if (!isNaN(linkedVal)) {
+        if (linkedVal === 0) {
+          filters.push(`ISNULL("Linked Projects", 0) = 0`);
+        } else {
+          filters.push(`ISNULL("Linked Projects", 0) > 0`);
+        }
       }
     }
 
@@ -25649,6 +25731,42 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           filters.push(`"IsUpdated" = @p${paramIndex}`);
           params.push(normalized);
           paramIndex++;
+        }
+      }
+
+      // Conflict flag filter (INT column: 0 = no conflict, >0 = has conflict)
+      if (args.conflict !== undefined && args.conflict !== null) {
+        const conflictVal = parseInt(String(args.conflict));
+        if (!isNaN(conflictVal)) {
+          if (conflictVal === 0) {
+            filters.push(`ISNULL("Conflict", 0) = 0`);
+          } else {
+            filters.push(`ISNULL("Conflict", 0) > 0`);
+          }
+        }
+      }
+
+      // COOP flag filter (INT column: 0 = not cooperative, >0 = cooperative)
+      if (args.coop !== undefined && args.coop !== null) {
+        const coopVal = parseInt(String(args.coop));
+        if (!isNaN(coopVal)) {
+          if (coopVal === 0) {
+            filters.push(`ISNULL("COOP", 0) = 0`);
+          } else {
+            filters.push(`ISNULL("COOP", 0) > 0`);
+          }
+        }
+      }
+
+      // Linked Projects filter (INT column: 0 = no links, >0 = has linked projects)
+      if (args.linked_projects !== undefined && args.linked_projects !== null) {
+        const linkedVal = parseInt(String(args.linked_projects));
+        if (!isNaN(linkedVal)) {
+          if (linkedVal === 0) {
+            filters.push(`ISNULL("Linked Projects", 0) = 0`);
+          } else {
+            filters.push(`ISNULL("Linked Projects", 0) > 0`);
+          }
         }
       }
 
