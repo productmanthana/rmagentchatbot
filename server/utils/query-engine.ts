@@ -16419,6 +16419,41 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         }
       }
 
+      // Step 1.7d-2c: CONFLICT/COOP/LINKED PROJECTS → STRUCTURED DATA ROUTING GUARD
+      // When user asks for conflict/coop/linked data with "by client", "by status", etc., route to structured functions
+      // instead of ai_data_analysis so they get proper data tables
+      {
+        const hasConflictCoop = classification.arguments.conflict !== undefined || 
+                                classification.arguments.coop !== undefined || 
+                                classification.arguments.linked_projects !== undefined ||
+                                /\b(?:conflict|coop|co[\s-]*op|cooperative|linked\s*project)/i.test(userQuestion);
+        
+        if (hasConflictCoop && classification.function_name === 'ai_data_analysis') {
+          const byClient = /\b(?:by\s+client|per\s+client|each\s+client|client[\s-]*wise|group(?:ed)?\s+by\s+client|aggregate.*client)\b/i.test(userQuestion);
+          const byStatus = /\b(?:by\s+status|per\s+status|each\s+status|status[\s-]*wise|group(?:ed)?\s+by\s+status)\b/i.test(userQuestion);
+          const byCategory = /\b(?:by\s+category|per\s+category|each\s+category|category[\s-]*wise|group(?:ed)?\s+by\s+category)\b/i.test(userQuestion);
+          const listAll = /\b(?:list\s+all|show\s+all|display\s+all|all\s+(?:opportunities|projects))\b/i.test(userQuestion);
+          
+          if (byClient) {
+            console.log(`[QueryEngine] 📊 CONFLICT→STRUCTURED GUARD: Rerouting ai_data_analysis → get_top_clients (by client)`);
+            classification.function_name = 'get_top_clients';
+            delete classification.arguments.analysis_question;
+          } else if (byStatus) {
+            console.log(`[QueryEngine] 📊 CONFLICT→STRUCTURED GUARD: Rerouting ai_data_analysis → get_status_breakdown (by status)`);
+            classification.function_name = 'get_status_breakdown';
+            delete classification.arguments.analysis_question;
+          } else if (byCategory) {
+            console.log(`[QueryEngine] 📊 CONFLICT→STRUCTURED GUARD: Rerouting ai_data_analysis → get_revenue_by_project_type (by category)`);
+            classification.function_name = 'get_revenue_by_project_type';
+            delete classification.arguments.analysis_question;
+          } else if (listAll && !byClient && !byStatus && !byCategory) {
+            console.log(`[QueryEngine] 📊 CONFLICT→STRUCTURED GUARD: Rerouting ai_data_analysis → get_projects_by_combined_filters (list all)`);
+            classification.function_name = 'get_projects_by_combined_filters';
+            delete classification.arguments.analysis_question;
+          }
+        }
+      }
+
       // Step 1.7d-3: CONFLICT/COOP/LINKED PROJECTS EXTRACTION GUARD
       // If user mentions conflict/coop/linked projects in their question but LLM didn't extract the parameter, set it
       {
