@@ -811,11 +811,11 @@ export class ProjectSizeCalculator {
           MAX(numeric_fee) OVER () as max_fee,
           COUNT(*) OVER () as total_projects
         FROM (
-          SELECT CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+          SELECT ISNULL("Fee", 0) as numeric_fee
           FROM "${tableName}"
           WHERE "Fee" IS NOT NULL 
           AND "Fee" != ''
-          AND TRY_CAST("Fee" AS NUMERIC) > 10000
+          AND ISNULL("Fee", 0) > 10000
         ) fee_data
       `;
       
@@ -877,10 +877,10 @@ export class ProjectSizeCalculator {
       console.warn("[ProjectSizeCalculator] Using fallback thresholds (percentiles not available or invalid)");
       // Fallback if calculation fails - return just category names without ranges
       return `CASE 
-        WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 100000 THEN 'Micro'
-        WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 1000000 THEN 'Small'
-        WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 10000000 THEN 'Medium'
-        WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 50000000 THEN 'Large'
+        WHEN ISNULL("Fee", 0) < 100000 THEN 'Micro'
+        WHEN ISNULL("Fee", 0) < 1000000 THEN 'Small'
+        WHEN ISNULL("Fee", 0) < 10000000 THEN 'Medium'
+        WHEN ISNULL("Fee", 0) < 50000000 THEN 'Large'
         ELSE 'Mega'
       END`;
     }
@@ -896,13 +896,13 @@ export class ProjectSizeCalculator {
 
     // Return category names only (no fee ranges) for WHERE clause matching
     return `CASE 
-      WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < ${p.p20} 
+      WHEN ISNULL("Fee", 0) < ${p.p20} 
         THEN 'Micro'
-      WHEN CAST(NULLIF("Fee", '') AS NUMERIC) >= ${p.p20} AND CAST(NULLIF("Fee", '') AS NUMERIC) < ${p.p40} 
+      WHEN ISNULL("Fee", 0) >= ${p.p20} AND ISNULL("Fee", 0) < ${p.p40} 
         THEN 'Small'
-      WHEN CAST(NULLIF("Fee", '') AS NUMERIC) >= ${p.p40} AND CAST(NULLIF("Fee", '') AS NUMERIC) < ${p.p60} 
+      WHEN ISNULL("Fee", 0) >= ${p.p40} AND ISNULL("Fee", 0) < ${p.p60} 
         THEN 'Medium'
-      WHEN CAST(NULLIF("Fee", '') AS NUMERIC) >= ${p.p60} AND CAST(NULLIF("Fee", '') AS NUMERIC) < ${p.p80} 
+      WHEN ISNULL("Fee", 0) >= ${p.p60} AND ISNULL("Fee", 0) < ${p.p80} 
         THEN 'Large'
       ELSE 'Mega'
     END`;

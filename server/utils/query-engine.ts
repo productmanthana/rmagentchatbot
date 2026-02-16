@@ -3042,14 +3042,14 @@ export class QueryEngine {
     try {
       // Load categories
       const categoryResult = await externalDbQuery(
-        `SELECT TOP 100 DISTINCT "RequestCategory" as value FROM "${TABLE}" WHERE "RequestCategory" IS NOT NULL AND "RequestCategory" != ''`,
+        `SELECT DISTINCT TOP 100 "RequestCategory" as value FROM "${TABLE}" WHERE "RequestCategory" IS NOT NULL AND "RequestCategory" != ''`,
         []
       );
       this.categoryCache = categoryResult.map(r => r.value).filter(Boolean);
       
       // Load project types
       const typeResult = await externalDbQuery(
-        `SELECT TOP 200 DISTINCT "ProjectType" as value FROM "${TABLE}" WHERE "ProjectType" IS NOT NULL AND "ProjectType" != ''`,
+        `SELECT DISTINCT TOP 200 "ProjectType" as value FROM "${TABLE}" WHERE "ProjectType" IS NOT NULL AND "ProjectType" != ''`,
         []
       );
       this.projectTypeCache = typeResult.map(r => r.value).filter(Boolean);
@@ -3200,7 +3200,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["year"],
         param_types: ["int"],
@@ -3218,7 +3218,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["start_date", "end_date"],
         param_types: ["str", "str"],
@@ -3236,7 +3236,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["year", "quarter"],
         param_types: ["int", "int"],
@@ -3253,7 +3253,7 @@ export class QueryEngine {
               AND "ConstStartDate" > '2000-01-01'
               {status_filter}
               {additional_filters}
-              ORDER BY "ConstStartDate", CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY "ConstStartDate", ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["years"],
         param_types: ["array"],
@@ -3273,7 +3273,7 @@ export class QueryEngine {
               WHERE "Title" IN (SELECT value FROM STRING_SPLIT(@p1, ','))
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) {sort_direction}
+              ORDER BY ISNULL("Fee", 0) {sort_direction}
               {limit_clause}`,
         params: ["pids"],
         param_types: ["array"],
@@ -3294,7 +3294,7 @@ export class QueryEngine {
               {date_filter}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST("Fee" AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3308,11 +3308,11 @@ export class QueryEngine {
       get_smallest_projects: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST("Fee" AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {date_filter}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST("Fee" AS NUMERIC) ASC
+              ORDER BY ISNULL("Fee", 0) ASC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3329,7 +3329,7 @@ export class QueryEngine {
               AND "Fee" IS NOT NULL AND "Fee" != ''
               {status_filter}
               {additional_filters}
-              ORDER BY CAST("Fee" AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3346,7 +3346,7 @@ export class QueryEngine {
               AND "Fee" IS NOT NULL AND "Fee" != ''
               {status_filter}
               {additional_filters}
-              ORDER BY CAST("Fee" AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3366,7 +3366,7 @@ export class QueryEngine {
               WHERE {category_or_type_condition}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3382,7 +3382,7 @@ export class QueryEngine {
               WHERE {project_type_condition}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3398,7 +3398,7 @@ export class QueryEngine {
               WHERE {service_type_condition}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3414,7 +3414,7 @@ export class QueryEngine {
               WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(@p1, ',') s WHERE "RequestCategory" LIKE '%' + LTRIM(RTRIM(s.value)) + '%')
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["categories"],
         param_types: ["array"],
@@ -3434,8 +3434,8 @@ export class QueryEngine {
       get_top_titles: {
         sql: `SELECT "Title" as title,
                      COUNT(*) as project_count,
-                     SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                     AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                     SUM(ISNULL("Fee", 0)) as total_value,
+                     AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Title" IS NOT NULL AND "Title" != ''
               {additional_filters}
@@ -3457,7 +3457,7 @@ export class QueryEngine {
               WHERE 1=1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -3476,11 +3476,11 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(MAX("Company"), @p1) as "Company",
               COUNT(*) as "Project Count",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Total Fee",
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Average Fee",
-              MIN(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Min Fee",
-              MAX(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Max Fee",
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as "Avg Win Rate"
+              SUM(ISNULL("Fee", 0)) as "Total Fee",
+              AVG(ISNULL("Fee", 0)) as "Average Fee",
+              MIN(ISNULL("Fee", 0)) as "Min Fee",
+              MAX(ISNULL("Fee", 0)) as "Max Fee",
+              AVG(ISNULL("ChanceOfSuccess", 0)) as "Avg Win Rate"
               FROM "${TABLE}"
               WHERE "Company" LIKE @p1
               {additional_filters}`,
@@ -3496,7 +3496,7 @@ export class QueryEngine {
               WHERE "Company" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["company"],
         param_types: ["str"],
@@ -3508,11 +3508,11 @@ export class QueryEngine {
       compare_companies: {
         sql: `SELECT "Company",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_size,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
-              ROUND(SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) * 100.0 / NULLIF(SUM(SUM(CAST(NULLIF("Fee", '') AS NUMERIC))) OVER(), 0), 1) as pct_of_total_pipeline
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100.0) as weighted_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_project_size,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
+              ROUND(SUM(ISNULL("Fee", 0)) * 100.0 / NULLIF(SUM(SUM(ISNULL("Fee", 0))) OVER(), 0), 1) as pct_of_total_pipeline
               FROM "${TABLE}"
               WHERE "Company" IS NOT NULL AND "Company" != ''
               {date_filter}
@@ -3532,9 +3532,9 @@ export class QueryEngine {
       compare_opco_revenue: {
         sql: `SELECT "Company",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100) as predicted_revenue,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100) as predicted_revenue,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(@p1, ',') s WHERE "Company" LIKE '%' + LTRIM(RTRIM(s.value)) + '%')
               AND "StatusChoice" NOT IN ('Won', 'Lost')
@@ -3550,9 +3550,9 @@ export class QueryEngine {
         sql: `SELECT "Company",
               COUNT(DISTINCT "State") as unique_states,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Company" IS NOT NULL AND "Company" != ''
               AND "State" IS NOT NULL AND "State" != ''
@@ -3575,11 +3575,11 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(MAX("Client"), @p1) as "Client",
               COUNT(*) as "Project Count",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Total Fee",
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Average Fee",
-              MIN(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Min Fee",
-              MAX(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Max Fee",
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as "Avg Win Rate"
+              SUM(ISNULL("Fee", 0)) as "Total Fee",
+              AVG(ISNULL("Fee", 0)) as "Average Fee",
+              MIN(ISNULL("Fee", 0)) as "Min Fee",
+              MAX(ISNULL("Fee", 0)) as "Max Fee",
+              AVG(ISNULL("ChanceOfSuccess", 0)) as "Avg Win Rate"
               FROM "${TABLE}"
               WHERE "Client" LIKE @p1
               {additional_filters}`,
@@ -3597,7 +3597,7 @@ export class QueryEngine {
               WHERE "Client" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["client"],
         param_types: ["str"],
@@ -3611,10 +3611,10 @@ export class QueryEngine {
       get_projects_by_client_and_fee_range: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE "Client" LIKE @p1
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) >= @p2
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) <= @p3
+              AND ISNULL("Fee", 0) >= @p2
+              AND ISNULL("Fee", 0) <= @p3
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("Fee", 0) DESC`,
         params: ["client", "min_fee", "max_fee"],
         param_types: ["str", "float", "float"],
         optional_params: ["poc", "company",
@@ -3633,7 +3633,7 @@ export class QueryEngine {
               WHERE "Division" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["division"],
         param_types: ["str"],
@@ -3649,7 +3649,7 @@ export class QueryEngine {
               WHERE "Department" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["department"],
         param_types: ["str"],
@@ -3664,11 +3664,11 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(MAX("Division"), @p1) as "Division",
               COUNT(*) as "Project Count",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Total Fee",
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Average Fee",
-              MIN(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Min Fee",
-              MAX(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Max Fee",
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as "Avg Win Rate"
+              SUM(ISNULL("Fee", 0)) as "Total Fee",
+              AVG(ISNULL("Fee", 0)) as "Average Fee",
+              MIN(ISNULL("Fee", 0)) as "Min Fee",
+              MAX(ISNULL("Fee", 0)) as "Max Fee",
+              AVG(ISNULL("ChanceOfSuccess", 0)) as "Avg Win Rate"
               FROM "${TABLE}"
               WHERE "Division" LIKE @p1
               {additional_filters}`,
@@ -3685,11 +3685,11 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(MAX("Department"), @p1) as "Department",
               COUNT(*) as "Project Count",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Total Fee",
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Average Fee",
-              MIN(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Min Fee",
-              MAX(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Max Fee",
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as "Avg Win Rate"
+              SUM(ISNULL("Fee", 0)) as "Total Fee",
+              AVG(ISNULL("Fee", 0)) as "Average Fee",
+              MIN(ISNULL("Fee", 0)) as "Min Fee",
+              MAX(ISNULL("Fee", 0)) as "Max Fee",
+              AVG(ISNULL("ChanceOfSuccess", 0)) as "Avg Win Rate"
               FROM "${TABLE}"
               WHERE "Department" LIKE @p1
               {additional_filters}`,
@@ -3705,9 +3705,9 @@ export class QueryEngine {
       compare_divisions: {
         sql: `SELECT "Division",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_size,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_project_size,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Division" IS NOT NULL AND "Division" != ''
               {date_filter}
@@ -3729,9 +3729,9 @@ export class QueryEngine {
       compare_departments: {
         sql: `SELECT "Department",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_size,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_project_size,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Department" IS NOT NULL AND "Department" != ''
               {date_filter}
@@ -3753,7 +3753,7 @@ export class QueryEngine {
       get_division_breakdown: {
         sql: `SELECT "Division",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "Division" IS NOT NULL AND "Division" != ''
               {date_filter}
@@ -3773,7 +3773,7 @@ export class QueryEngine {
       get_department_breakdown: {
         sql: `SELECT "Department",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "Department" IS NOT NULL AND "Department" != ''
               {date_filter}
@@ -3793,7 +3793,7 @@ export class QueryEngine {
       get_module_breakdown: {
         sql: `SELECT "ModuleName",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "ModuleName" IS NOT NULL AND "ModuleName" != ''
               {date_filter}
@@ -3812,10 +3812,10 @@ export class QueryEngine {
 
       get_revenue_by_division: {
         sql: `SELECT "Division",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+              SUM(ISNULL("Fee", 0)) as total_revenue,
               COUNT(*) as project_count,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Division" IS NOT NULL AND "Division" != ''
               {date_filter}
@@ -3835,10 +3835,10 @@ export class QueryEngine {
 
       get_revenue_by_department: {
         sql: `SELECT "Department",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+              SUM(ISNULL("Fee", 0)) as total_revenue,
               COUNT(*) as project_count,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Department" IS NOT NULL AND "Department" != ''
               {date_filter}
@@ -3861,8 +3861,8 @@ export class QueryEngine {
         sql: `SELECT "Department",
               YEAR(TRY_CONVERT(DATE, "ClosedDate")) as year,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee
               FROM "${TABLE}"
               WHERE "Department" IS NOT NULL AND "Department" != ''
               AND "ClosedDate" IS NOT NULL AND "ClosedDate" != ''
@@ -3885,8 +3885,8 @@ export class QueryEngine {
         sql: `SELECT "Division",
               YEAR(TRY_CONVERT(DATE, "ClosedDate")) as year,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee
               FROM "${TABLE}"
               WHERE "Division" IS NOT NULL AND "Division" != ''
               AND "ClosedDate" IS NOT NULL AND "ClosedDate" != ''
@@ -3908,10 +3908,10 @@ export class QueryEngine {
       // Uses a CTE approach to avoid duplicate placeholder issues
       get_fee_extremes: {
         sql: `WITH filtered_projects AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               )
               SELECT 'HIGHEST_FEE' as fee_category, * FROM (
@@ -3933,10 +3933,10 @@ export class QueryEngine {
       // Fee percentile brackets - identify top/bottom X% of projects by fee
       get_fee_percentile: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               ranked AS (
@@ -3970,10 +3970,10 @@ export class QueryEngine {
       // Top N% fee bracket (simplified version for common queries)
       get_top_fee_bracket: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               ranked AS (
@@ -3998,10 +3998,10 @@ export class QueryEngine {
       // Bottom N% fee bracket - projects contributing least to revenue
       get_bottom_fee_bracket: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               ranked AS (
@@ -4026,10 +4026,10 @@ export class QueryEngine {
       // Compare average fee of top N vs bottom N projects
       get_top_vs_bottom_fee_comparison: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               top_projects AS (
@@ -4054,10 +4054,10 @@ export class QueryEngine {
       // Revenue concentration - what % of total revenue comes from top projects
       get_revenue_concentration: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               totals AS (
@@ -4088,10 +4088,10 @@ export class QueryEngine {
       // Median fee comparison - projects above/below median
       get_projects_vs_median: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               median_calc AS (
@@ -4123,10 +4123,10 @@ export class QueryEngine {
       // Fee distribution statistics - skewness, clustering, spread
       get_fee_distribution_stats: {
         sql: `WITH filtered_base AS (
-              SELECT CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               )
               SELECT 
@@ -4159,10 +4159,10 @@ export class QueryEngine {
       // Fee clustering - group projects by fee ranges to see distribution
       get_fee_clustering: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               fee_ranges AS (
@@ -4209,10 +4209,10 @@ export class QueryEngine {
       // Project closest to average fee
       get_project_closest_to_average: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               avg_calc AS (
@@ -4238,10 +4238,10 @@ export class QueryEngine {
       // Project in the middle (between highest and lowest)
       get_middle_fee_project: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               extremes AS (
@@ -4272,10 +4272,10 @@ export class QueryEngine {
       // Groups by RequestCategory, calculates category average, then finds outliers
       get_fee_variance_by_scope: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               AND "RequestCategory" IS NOT NULL AND "RequestCategory" != ''
               {additional_filters}
               ),
@@ -4321,10 +4321,10 @@ export class QueryEngine {
       // Uses a single CTE to apply filters once, then calculates average and classifies
       get_projects_vs_average: {
         sql: `WITH filtered_base AS (
-              SELECT *, CAST(NULLIF("Fee", '') AS NUMERIC) as numeric_fee
+              SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
               avg_stats AS (
@@ -4360,7 +4360,7 @@ export class QueryEngine {
               WHERE 1=1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -4376,8 +4376,8 @@ export class QueryEngine {
               WHERE "StatusChoice" LIKE @p1
               {win_rate_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC`,
         params: ["status"],
         param_types: ["str"],
         optional_params: ["min_win", "max_win", "poc", "client", "company",
@@ -4390,9 +4390,9 @@ export class QueryEngine {
       get_status_breakdown: {
         sql: `SELECT "StatusChoice",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "StatusChoice" IS NOT NULL AND "StatusChoice" != ''
               {date_filter}
@@ -4411,10 +4411,10 @@ export class QueryEngine {
       get_overoptimistic_losses: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE "StatusChoice" NOT LIKE 'Won'
-              AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) > 70
+              AND ISNULL("ChanceOfSuccess", 0) > 70
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC`,
         params: [],
         param_types: [],
         optional_params: ["poc", "client", "company",
@@ -4430,8 +4430,8 @@ export class QueryEngine {
               AND "ChanceOfSuccess" IS NOT NULL
               {date_filter}
               {additional_filters}
-              ORDER BY CAST("ChanceOfSuccess" AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -4457,11 +4457,11 @@ export class QueryEngine {
 
       get_projects_by_win_range: {
         sql: `SELECT * FROM "${TABLE}" 
-              WHERE CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p1
+              WHERE ISNULL("ChanceOfSuccess", 0) >= @p1
               {max_win_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC`,
         params: ["min_win"],
         param_types: ["int"],
         optional_params: ["max_win", "start_date", "end_date", "min_fee", "max_fee", "size", "status", "state_code", "company",
@@ -4474,11 +4474,11 @@ export class QueryEngine {
       get_projects_by_category_and_win_range: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE "RequestCategory" LIKE @p1
-              AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p2
+              AND ISNULL("ChanceOfSuccess", 0) >= @p2
               {max_win_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC`,
         params: ["category", "min_win"],
         param_types: ["str", "int"],
         optional_params: ["max_win", "poc", "client", "company",
@@ -4492,11 +4492,11 @@ export class QueryEngine {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE "Client" LIKE @p1
               AND "StatusChoice" LIKE @p2
-              AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p3
-              AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) <= @p4
+              AND ISNULL("ChanceOfSuccess", 0) >= @p3
+              AND ISNULL("ChanceOfSuccess", 0) <= @p4
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC`,
         params: ["client", "status", "min_win", "max_win"],
         param_types: ["str", "str", "int", "int"],
         optional_params: ["poc", "company",
@@ -4509,8 +4509,8 @@ export class QueryEngine {
       get_clients_by_highest_win_rate: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "StatusChoice" NOT IN ('Won', 'Lost')
               AND "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
@@ -4535,8 +4535,8 @@ export class QueryEngine {
               {start_date_filter}
               {end_date_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) DESC,
-                       CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("ChanceOfSuccess", 0) DESC,
+                       ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -4550,8 +4550,8 @@ export class QueryEngine {
       get_clients_by_status_count: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "StatusChoice" LIKE @p1
               AND "Client" IS NOT NULL AND "Client" != ''
@@ -4574,12 +4574,12 @@ export class QueryEngine {
 
       get_projects_by_fee_range: {
         sql: `SELECT * FROM "${TABLE}" 
-              WHERE CAST(NULLIF("Fee", '') AS NUMERIC) >= @p1
+              WHERE ISNULL("Fee", 0) >= @p1
               {max_fee_filter}
               {date_filter}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) {sort_direction}
+              ORDER BY ISNULL("Fee", 0) {sort_direction}
               {limit_clause}`,
         params: ["min_fee"],
         param_types: ["float"],
@@ -4595,7 +4595,7 @@ export class QueryEngine {
               WHERE {size_condition}
               AND "Fee" IS NOT NULL AND "Fee" != ''
               {additional_filters}
-              ORDER BY CAST("Fee" AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["size"],
         param_types: ["str"],
@@ -4609,13 +4609,13 @@ export class QueryEngine {
       get_size_distribution: {
         sql: `SELECT {size_case} as size_tier,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value
+              SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "Fee" IS NOT NULL AND "Fee" != ''
-              AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+              AND ISNULL("Fee", 0) > 0
               {additional_filters}
               GROUP BY {size_case}
-              ORDER BY MIN(CAST(NULLIF("Fee", '') AS NUMERIC))`,
+              ORDER BY MIN(ISNULL("Fee", 0))`,
         params: [],
         param_types: [],
         optional_params: ["poc", "client", "company",
@@ -4634,7 +4634,7 @@ export class QueryEngine {
               WHERE "State" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["state_code"],
         param_types: ["str"],
@@ -4650,7 +4650,7 @@ export class QueryEngine {
               WHERE "City" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["city"],
         param_types: ["str"],
@@ -4717,7 +4717,7 @@ export class QueryEngine {
       get_revenue_by_category: {
         sql: `SELECT "RequestCategory",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue
+              SUM(ISNULL("Fee", 0)) as total_revenue
               FROM "${TABLE}"
               WHERE "RequestCategory" LIKE @p1
               {status_filter}
@@ -4735,8 +4735,8 @@ export class QueryEngine {
       get_weighted_revenue_projection: {
         sql: `SELECT {group_by_column},
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100) as weighted_revenue
+              SUM(ISNULL("Fee", 0)) as total_value,
+              SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100) as weighted_revenue
               FROM "${TABLE}"
               WHERE 1=1
               {status_filter}
@@ -4756,8 +4756,8 @@ export class QueryEngine {
         sql: `SELECT 
               YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Submitted' THEN 1 END) as submitted_count
               FROM "${TABLE}"
@@ -4783,9 +4783,9 @@ export class QueryEngine {
       get_top_pocs: {
         sql: `SELECT "PointOfContact" as poc,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -4808,7 +4808,7 @@ export class QueryEngine {
               WHERE {poc_condition}
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -4834,9 +4834,9 @@ export class QueryEngine {
         sql: `SELECT 
               "PointOfContact" as poc,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -4862,7 +4862,7 @@ export class QueryEngine {
               WHERE "Title" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["keyword"],
         param_types: ["str"],
@@ -4883,7 +4883,7 @@ export class QueryEngine {
               AND MONTH(TRY_CONVERT(DATE, "ConstStartDate")) = @p2
               AND "ConstStartDate" > '2000-01-01'
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["year", "month"],
         param_types: ["int", "int"],
@@ -4899,8 +4899,8 @@ export class QueryEngine {
               YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
               MONTH(TRY_CONVERT(DATE, "ConstStartDate")) as month,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee
               FROM "${TABLE}"
               WHERE YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p1
               AND "ConstStartDate" > '2000-01-01'
@@ -4925,8 +4925,8 @@ export class QueryEngine {
                 SELECT 
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
+                  AVG(ISNULL("Fee", 0)) as avg_fee
                 FROM "${TABLE}"
                 WHERE YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (@p1, @p2)
                 AND "ConstStartDate" > '2000-01-01'
@@ -4962,9 +4962,9 @@ export class QueryEngine {
       get_revenue_by_state: {
         sql: `SELECT "State" as state,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count
               FROM "${TABLE}"
               WHERE "State" IS NOT NULL AND "State" != ''
@@ -4988,8 +4988,8 @@ export class QueryEngine {
       get_repeat_clients: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
               MIN("ConstStartDate") as first_project,
               MAX("ConstStartDate") as latest_project
               FROM "${TABLE}"
@@ -5014,11 +5014,11 @@ export class QueryEngine {
 
       get_high_risk_opportunities: {
         sql: `SELECT * FROM "${TABLE}" 
-              WHERE CAST(NULLIF("Fee", '') AS NUMERIC) > @p1
-              AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) < @p2
+              WHERE ISNULL("Fee", 0) > @p1
+              AND ISNULL("ChanceOfSuccess", 0) < @p2
               AND "StatusChoice" NOT IN ('Won', 'Lost')
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["min_fee", "max_win"],
         param_types: ["float", "int"],
@@ -5036,10 +5036,10 @@ export class QueryEngine {
       get_project_type_breakdown: {
         sql: `SELECT "ProjectType" as project_type,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100.0) as weighted_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "ProjectType" IS NOT NULL AND "ProjectType" != ''
               {additional_filters}
@@ -5058,10 +5058,10 @@ export class QueryEngine {
       get_revenue_by_project_type: {
         sql: `SELECT "ProjectType",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100.0) as weighted_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100.0) as weighted_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "ProjectType" IS NOT NULL AND "ProjectType" != ''
               {additional_filters}
@@ -5083,7 +5083,7 @@ export class QueryEngine {
                   "ProjectType" as project_type
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue
+                  SUM(ISNULL("Fee", 0)) as total_revenue
                 FROM "${TABLE}"
                 WHERE "ProjectType" IS NOT NULL AND "ProjectType" != ''
                   AND "ConstStartDate" > '2000-01-01'
@@ -5134,7 +5134,7 @@ export class QueryEngine {
               WHERE 1=1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -5178,7 +5178,7 @@ export class QueryEngine {
               WHERE "Title" LIKE @p1
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: ["keyword"],
         param_types: ["str"],
@@ -5200,9 +5200,9 @@ export class QueryEngine {
                 ELSE "State"
               END as state,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -5228,9 +5228,9 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(NULLIF(NULLIF("Region", ''), 'NULL'), 'Unknown') as region,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -5253,9 +5253,9 @@ export class QueryEngine {
         sql: `SELECT 
               COALESCE(NULLIF(NULLIF("Country", ''), 'NULL'), 'Unknown') as country,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -5277,9 +5277,9 @@ export class QueryEngine {
       get_category_breakdown: {
         sql: `SELECT "RequestCategory" as "Category",
               COUNT(*) as "Project Count",
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Total Fee",
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as "Average Fee",
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as "Avg Win Rate",
+              SUM(ISNULL("Fee", 0)) as "Total Fee",
+              AVG(ISNULL("Fee", 0)) as "Average Fee",
+              AVG(ISNULL("ChanceOfSuccess", 0)) as "Avg Win Rate",
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as "Won",
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as "Lost"
               FROM "${TABLE}"
@@ -5302,9 +5302,9 @@ export class QueryEngine {
       compare_categories: {
         sql: `SELECT "RequestCategory" as category,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -5323,9 +5323,9 @@ export class QueryEngine {
       get_top_clients: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
               MAX("ConstStartDate") as latest_project
@@ -5349,9 +5349,9 @@ export class QueryEngine {
       compare_clients: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
               MAX("ConstStartDate") as latest_project
@@ -5377,8 +5377,8 @@ export class QueryEngine {
                   WHEN @p1 = 12 THEN CAST(YEAR(TRY_CONVERT(DATE, "ConstStartDate")) AS VARCHAR)
                   ELSE CONCAT('H', CASE WHEN MONTH(TRY_CONVERT(DATE, "ConstStartDate")) <= 6 THEN '1' ELSE '2' END, ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate")))
                 END as period_label,
-                COALESCE(TRY_CAST(NULLIF("Fee", '') AS NUMERIC), 0) as fee_val,
-                COALESCE(TRY_CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC), 0) as win_val
+                COALESCE(TRY_ISNULL("Fee", 0), 0) as fee_val,
+                COALESCE(TRY_ISNULL("ChanceOfSuccess", 0), 0) as win_val
               FROM "${TABLE}"
               WHERE "Client" IS NOT NULL AND "Client" != ''
               AND "ConstStartDate" IS NOT NULL AND "ConstStartDate" != ''
@@ -5407,9 +5407,9 @@ export class QueryEngine {
       common_clients_between_companies: {
         sql: `SELECT c."Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF(c."Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF(c."Fee", '') AS NUMERIC)) as avg_project_value,
-              AVG(CAST(NULLIF(c."ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL(c."Fee", 0)) as total_value,
+              AVG(ISNULL(c."Fee", 0)) as avg_project_value,
+              AVG(ISNULL(c."ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}" c
               WHERE c."Client" IN (
                 SELECT a."Client" FROM "${TABLE}" a WHERE a."Company" LIKE '%' + @p1 + '%'
@@ -5440,7 +5440,7 @@ export class QueryEngine {
               AND (p."Company" LIKE '%' + @p1 + '%' OR p."Company" LIKE '%' + @p2 + '%')
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF(p."Fee", '') AS NUMERIC) DESC`,
+              ORDER BY ISNULL(p."Fee", 0) DESC`,
         params: ["company1", "company2"],
         param_types: ["str", "str"],
         optional_params: ["start_date", "end_date", "status"],
@@ -5455,9 +5455,9 @@ export class QueryEngine {
               DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
               CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE ((YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p1 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p2)
                  OR (YEAR(TRY_CONVERT(DATE, "ConstStartDate")) = @p3 AND DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) = @p4))
@@ -5481,8 +5481,8 @@ export class QueryEngine {
               MONTH(TRY_CONVERT(DATE, "ConstStartDate")) as month,
               FORMAT(TRY_CONVERT(DATE, "ConstStartDate"), 'MMM yyyy') as period,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_fee
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_fee
               FROM "${TABLE}"
               WHERE MONTH(TRY_CONVERT(DATE, "ConstStartDate")) = @p1
               AND YEAR(TRY_CONVERT(DATE, "ConstStartDate")) IN (SELECT value FROM STRING_SPLIT(@p2, ','))
@@ -5510,9 +5510,9 @@ export class QueryEngine {
                     WHEN @p1 = 'poc' THEN "PointOfContact"
                   END as segment,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
                 FROM "${TABLE}"
                 WHERE CASE 
                   WHEN @p1 = 'company' THEN "Company" IS NOT NULL
@@ -5551,9 +5551,9 @@ export class QueryEngine {
                 SELECT 
                   "PointOfContact" as poc,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
                   COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
                   COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
                   ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
@@ -5591,9 +5591,9 @@ export class QueryEngine {
                 SELECT 
                   "State" as state,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
                   COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count
                 FROM "${TABLE}"
                 WHERE "State" IS NOT NULL AND "State" != ''
@@ -5624,8 +5624,8 @@ export class QueryEngine {
       get_client_lifetime_value: {
         sql: `SELECT "Client",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as lifetime_value,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+              SUM(ISNULL("Fee", 0)) as lifetime_value,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
               MIN("ConstStartDate") as first_project_date,
               MAX("ConstStartDate") as latest_project_date,
               DATEDIFF(DAY, MIN(TRY_CONVERT(DATE, "ConstStartDate")), MAX(TRY_CONVERT(DATE, "ConstStartDate"))) as relationship_days,
@@ -5660,8 +5660,8 @@ export class QueryEngine {
                 SELECT 
                   "Client",
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
                 FROM "${TABLE}"
                 WHERE "Client" IS NOT NULL AND "Client" != ''
                 GROUP BY "Client"
@@ -5683,9 +5683,9 @@ export class QueryEngine {
         sql: `SELECT 
               "PointOfContact" as poc,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              ROUND((SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) / NULLIF(COUNT(*), 0)), 2) as revenue_per_project,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              ROUND((SUM(ISNULL("Fee", 0)) / NULLIF(COUNT(*), 0)), 2) as revenue_per_project,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count
               FROM "${TABLE}"
@@ -5709,7 +5709,7 @@ export class QueryEngine {
               YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
               DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
               COUNT(*) as project_count,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_predicted_win_rate,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_predicted_win_rate,
               COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) as won_count,
               COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END) as closed_count,
               ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
@@ -5730,9 +5730,9 @@ export class QueryEngine {
                 SELECT 
                   "PointOfContact" as poc,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
                 FROM "${TABLE}"
                 WHERE "PointOfContact" IS NOT NULL AND "PointOfContact" != ''
                 {additional_filters}
@@ -5777,8 +5777,8 @@ export class QueryEngine {
               "State" as state,
               "RequestCategory" as category,
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "State" IS NOT NULL AND "State" != ''
               AND "RequestCategory" IS NOT NULL AND "RequestCategory" != ''
@@ -5800,8 +5800,8 @@ export class QueryEngine {
               "RequestCategory" as category,
               "StatusChoice",
               COUNT(*) as project_count,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-              AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate,
+              SUM(ISNULL("Fee", 0)) as total_value,
+              AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate,
               ROUND(CAST(COUNT(*) AS DECIMAL(18,2)) / SUM(COUNT(*)) OVER (PARTITION BY "RequestCategory") * 100, 2) as pct_of_category
               FROM "${TABLE}"
               WHERE "RequestCategory" IS NOT NULL AND "RequestCategory" != ''
@@ -5829,8 +5829,8 @@ export class QueryEngine {
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
@@ -5874,7 +5874,7 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
                   COUNT(*) as project_count
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
@@ -5916,7 +5916,7 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   MONTH(TRY_CONVERT(DATE, "ConstStartDate")) as month,
                   FORMAT(TRY_CONVERT(DATE, "ConstStartDate"), 'MMM yyyy') as period,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
                   COUNT(*) as project_count
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
@@ -5965,8 +5965,8 @@ export class QueryEngine {
               MONTH(TRY_CONVERT(DATE, "ConstStartDate")) as month,
               DATENAME(MONTH, TRY_CONVERT(DATE, "ConstStartDate")) as month_name,
               COUNT(*) as total_projects,
-              SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
-              AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+              SUM(ISNULL("Fee", 0)) as total_revenue,
+              AVG(ISNULL("Fee", 0)) as avg_project_value,
               COUNT(DISTINCT YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as years_of_data
               FROM "${TABLE}"
               WHERE "ConstStartDate" > '2000-01-01'
@@ -5989,7 +5989,7 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
                   COUNT(*) as project_count
                 FROM "${TABLE}"
                 WHERE "RequestCategory" LIKE @p1
@@ -6030,7 +6030,7 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
                   COUNT(*) as project_count
                 FROM "${TABLE}"
                 WHERE "State" LIKE @p1
@@ -6073,7 +6073,7 @@ export class QueryEngine {
                   YEAR(TRY_CONVERT(DATE, "ConstStartDate")) as year,
                   DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")) as quarter,
                   CONCAT('Q', DATEPART(QUARTER, TRY_CONVERT(DATE, "ConstStartDate")), ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate"))) as period,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue,
+                  SUM(ISNULL("Fee", 0)) as total_revenue,
                   COUNT(*) as project_count
                 FROM "${TABLE}"
                 WHERE "Client" LIKE @p1
@@ -6188,9 +6188,9 @@ export class QueryEngine {
         sql: `WITH sized_deals AS (
                 SELECT 
                   CASE 
-                    WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 50000 THEN 'Small (<50K)'
-                    WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 200000 THEN 'Medium (50-200K)'
-                    WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 500000 THEN 'Large (200-500K)'
+                    WHEN ISNULL("Fee", 0) < 50000 THEN 'Small (<50K)'
+                    WHEN ISNULL("Fee", 0) < 200000 THEN 'Medium (50-200K)'
+                    WHEN ISNULL("Fee", 0) < 500000 THEN 'Large (200-500K)'
                     ELSE 'Mega (500K+)'
                   END as deal_size,
                   "RequestCategory" as category,
@@ -6199,10 +6199,10 @@ export class QueryEngine {
                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY DATEDIFF(DAY, TRY_CONVERT(DATE, "ConstStartDate"), CAST(GETDATE() AS DATE))) as median_cycle_days
                 FROM "${TABLE}"
                 WHERE "Fee" IS NOT NULL AND "Fee" != ''
-                AND CAST(NULLIF("Fee", '') AS NUMERIC) > 0
+                AND ISNULL("Fee", 0) > 0
                 AND "StatusChoice" IN ('Won', 'Lost')
                 {additional_filters}
-                GROUP BY CASE WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 50000 THEN 'Small (<50K)' WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 200000 THEN 'Medium (50-200K)' WHEN CAST(NULLIF("Fee", '') AS NUMERIC) < 500000 THEN 'Large (200-500K)' ELSE 'Mega (500K+)' END, "RequestCategory"
+                GROUP BY CASE WHEN ISNULL("Fee", 0) < 50000 THEN 'Small (<50K)' WHEN ISNULL("Fee", 0) < 200000 THEN 'Medium (50-200K)' WHEN ISNULL("Fee", 0) < 500000 THEN 'Large (200-500K)' ELSE 'Mega (500K+)' END, "RequestCategory"
               )
               SELECT * FROM sized_deals
               ORDER BY 
@@ -6227,11 +6227,11 @@ export class QueryEngine {
                 SELECT 
                   COUNT(*) as total_opportunities,
                   COUNT(CASE WHEN "StatusChoice" NOT IN ('Won', 'Lost') THEN 1 END) as open_opportunities,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_pipeline_value,
+                  SUM(ISNULL("Fee", 0)) as total_pipeline_value,
                   SUM(CASE WHEN "StatusChoice" NOT IN ('Won', 'Lost') 
-                      THEN CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100 
+                      THEN ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100 
                       END) as weighted_pipeline_value,
-                  AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_probability
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_probability
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
@@ -6257,19 +6257,19 @@ export class QueryEngine {
         sql: `WITH tiered_pipeline AS (
                 SELECT 
                   CASE 
-                    WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 70 THEN 'High Probability (70%+)'
-                    WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 40 THEN 'Medium Probability (40-70%)'
+                    WHEN ISNULL("ChanceOfSuccess", 0) >= 70 THEN 'High Probability (70%+)'
+                    WHEN ISNULL("ChanceOfSuccess", 0) >= 40 THEN 'Medium Probability (40-70%)'
                     ELSE 'Low Probability (<40%)'
                   END as probability_tier,
                   COUNT(*) as opportunity_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_deal_size,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC) * CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) / 100) as weighted_value
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_deal_size,
+                  SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100) as weighted_value
                 FROM "${TABLE}"
                 WHERE "StatusChoice" NOT IN ('Won', 'Lost')
                 AND "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
                 {additional_filters}
-                GROUP BY CASE WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 70 THEN 'High Probability (70%+)' WHEN CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= 40 THEN 'Medium Probability (40-70%)' ELSE 'Low Probability (<40%)' END
+                GROUP BY CASE WHEN ISNULL("ChanceOfSuccess", 0) >= 70 THEN 'High Probability (70%+)' WHEN ISNULL("ChanceOfSuccess", 0) >= 40 THEN 'Medium Probability (40-70%)' ELSE 'Low Probability (<40%)' END
               )
               SELECT * FROM tiered_pipeline
               ORDER BY 
@@ -6296,8 +6296,8 @@ export class QueryEngine {
                 SELECT 
                   "Client",
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
                   MAX("ConstStartDate") as latest_project
                 FROM "${TABLE}"
                 WHERE "Client" IS NOT NULL AND "Client" != ''
@@ -6376,7 +6376,7 @@ export class QueryEngine {
                   MAX("ConstStartDate") as last_project_date,
                   DATEDIFF(DAY, MAX(TRY_CONVERT(DATE, "ConstStartDate")), CAST(GETDATE() AS DATE)) as days_since_last_project,
                   COUNT(*) as total_projects,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as lifetime_value
+                  SUM(ISNULL("Fee", 0)) as lifetime_value
                 FROM "${TABLE}"
                 WHERE "Client" IS NOT NULL AND "Client" != ''
                 GROUP BY "Client"
@@ -6410,7 +6410,7 @@ export class QueryEngine {
                 SELECT 
                   "Client",
                   COUNT(*) as total_projects,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as lifetime_value,
+                  SUM(ISNULL("Fee", 0)) as lifetime_value,
                   MAX("ConstStartDate") as last_project,
                   DATEDIFF(DAY, MAX(TRY_CONVERT(DATE, "ConstStartDate")), CAST(GETDATE() AS DATE)) as days_inactive,
                   COUNT(CASE WHEN TRY_CONVERT(DATE, "ConstStartDate") >= DATEADD(DAY, -365, CAST(GETDATE() AS DATE)) THEN 1 END) as projects_last_year,
@@ -6462,9 +6462,9 @@ export class QueryEngine {
                   "Client",
                   STRING_AGG(CAST("RequestCategory" AS NVARCHAR(MAX)), ', ') as categories_purchased,
                   COUNT(DISTINCT "RequestCategory") as category_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
+                  SUM(ISNULL("Fee", 0)) as total_value,
                   COUNT(*) as project_count,
-                  AVG(CAST(NULLIF(REPLACE("ChanceOfSuccess", '%', ''), '') AS NUMERIC)) as avg_win_pct
+                  AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_pct
                 FROM "${TABLE}"
                 WHERE "Client" IS NOT NULL AND "Client" != ''
                 AND "RequestCategory" IS NOT NULL
@@ -6509,9 +6509,9 @@ export class QueryEngine {
                 COUNT(DISTINCT "PointOfContact") as poc_count,
                 STRING_AGG(CAST("PointOfContact" AS NVARCHAR(MAX)), ', ') WITHIN GROUP (ORDER BY "PointOfContact") as poc_list,
                 COUNT(*) as project_count,
-                SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
-                AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) as avg_win_rate
+                SUM(ISNULL("Fee", 0)) as total_value,
+                AVG(ISNULL("Fee", 0)) as avg_project_value,
+                AVG(ISNULL("ChanceOfSuccess", 0)) as avg_win_rate
               FROM "${TABLE}"
               WHERE "Client" IS NOT NULL AND "Client" != ''
               {status_filter}
@@ -6536,7 +6536,7 @@ export class QueryEngine {
                   COUNT(DISTINCT "State") as total_states,
                   COUNT(DISTINCT "RequestCategory") as total_categories,
                   COUNT(DISTINCT "Company") as total_companies,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_revenue
+                  SUM(ISNULL("Fee", 0)) as total_revenue
                 FROM "${TABLE}"
                 WHERE "ConstStartDate" > '2000-01-01'
                 {additional_filters}
@@ -6546,7 +6546,7 @@ export class QueryEngine {
                   SUM(client_value) as top_10_client_revenue
                 FROM (
                   SELECT TOP 10
-                    SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as client_value
+                    SUM(ISNULL("Fee", 0)) as client_value
                   FROM "${TABLE}"
                   WHERE "Client" IS NOT NULL
                   GROUP BY "Client"
@@ -6575,10 +6575,10 @@ export class QueryEngine {
         sql: `WITH ranked_clients AS (
                 SELECT 
                   "Client",
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as client_revenue,
+                  SUM(ISNULL("Fee", 0)) as client_revenue,
                   COUNT(*) as project_count,
-                  SUM(SUM(CAST(NULLIF("Fee", '') AS NUMERIC))) OVER () as total_revenue,
-                  ROW_NUMBER() OVER (ORDER BY SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) DESC) as revenue_rank
+                  SUM(SUM(ISNULL("Fee", 0))) OVER () as total_revenue,
+                  ROW_NUMBER() OVER (ORDER BY SUM(ISNULL("Fee", 0)) DESC) as revenue_rank
                 FROM "${TABLE}"
                 WHERE "Client" IS NOT NULL AND "Client" != ''
                 {additional_filters}
@@ -6660,8 +6660,8 @@ export class QueryEngine {
                     WHEN @p1 = 'company' THEN "Company"
                   END as segment_name,
                   COUNT(*) as project_count,
-                  SUM(CAST(NULLIF("Fee", '') AS NUMERIC)) as total_value,
-                  AVG(CAST(NULLIF("Fee", '') AS NUMERIC)) as avg_project_value,
+                  SUM(ISNULL("Fee", 0)) as total_value,
+                  AVG(ISNULL("Fee", 0)) as avg_project_value,
                   ROUND(CAST(COUNT(CASE WHEN "StatusChoice" = 'Won' THEN 1 END) AS DECIMAL(18,2)) / 
                          NULLIF(COUNT(CASE WHEN "StatusChoice" IN ('Won', 'Lost') THEN 1 END), 0) * 100, 2) as win_rate
                 FROM "${TABLE}"
@@ -6712,8 +6712,8 @@ export class QueryEngine {
               "RequestCategory" as category,
               "StatusChoice",
               "ConstStartDate",
-              CAST(NULLIF("Fee", '') AS NUMERIC) as fee,
-              CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) as win_probability,
+              ISNULL("Fee", 0) as fee,
+              ISNULL("ChanceOfSuccess", 0) as win_probability,
               DATEDIFF(DAY, TRY_CONVERT(DATE, "ConstStartDate"), CAST(GETDATE() AS DATE)) as days_in_pipeline,
               "PointOfContact" as poc
               FROM "${TABLE}"
@@ -6741,7 +6741,7 @@ export class QueryEngine {
               )
               {status_filter}
               {additional_filters}
-              ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
+              ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
         params: [],
         param_types: [],
@@ -21824,12 +21824,12 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       }
       
       if (min_fee !== undefined && min_fee !== 0 && min_fee !== null) {
-        whereClauses.push(`CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex++}`);
+        whereClauses.push(`ISNULL("Fee", 0) >= @p${paramIndex++}`);
         params.push(min_fee);
       }
       
       if (max_fee !== undefined && max_fee !== 0 && max_fee !== null) {
-        whereClauses.push(`CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex++}`);
+        whereClauses.push(`ISNULL("Fee", 0) <= @p${paramIndex++}`);
         params.push(max_fee);
       }
       
@@ -21859,7 +21859,7 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
           "ProjectType" as project_type
         FROM "${TABLE}"
         WHERE ${whereClauses.join(' AND ')}
-        ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC`;
+        ORDER BY ISNULL("Fee", 0) DESC`;
       
       console.log(`[AI Analysis] Fetching ALL matching projects (no limit)...`);
       
@@ -22947,8 +22947,8 @@ DATABASE CONTEXT (for reference):
       } else if (/largest|biggest|highest\s*fee|top/i.test(reference_pid)) {
         // Get the project with highest fee
         lookupSql = `SELECT TOP 1 * FROM "${TABLE}" 
-                     WHERE CAST(NULLIF("Fee", '') AS NUMERIC) IS NOT NULL
-                     ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC`;
+                     WHERE ISNULL("Fee", 0) IS NOT NULL
+                     ORDER BY ISNULL("Fee", 0) DESC`;
         lookupParams = [];
         console.log(`[QueryEngine] Step 1: Getting "${reference_pid}" (highest fee project)`);
       } else {
@@ -23090,12 +23090,12 @@ DATABASE CONTEXT (for reference):
 
       // Add optional filters
       if (args.min_fee !== undefined && !isNaN(Number(args.min_fee))) {
-        sql += ` AND CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex}`;
+        sql += ` AND ISNULL("Fee", 0) >= @p${paramIndex}`;
         sqlParams.push(Number(args.min_fee));
         paramIndex++;
       }
       if (args.max_fee !== undefined && !isNaN(Number(args.max_fee))) {
-        sql += ` AND CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex}`;
+        sql += ` AND ISNULL("Fee", 0) <= @p${paramIndex}`;
         sqlParams.push(Number(args.max_fee));
         paramIndex++;
       }
@@ -23110,7 +23110,7 @@ DATABASE CONTEXT (for reference):
         paramIndex++;
       }
 
-      sql += ` ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC`;
+      sql += ` ORDER BY ISNULL("Fee", 0) DESC`;
 
       console.log(`\n${'='.repeat(80)}`);
       console.log(`[QueryEngine] EXECUTED SQL QUERY (Two-step):`);
@@ -24728,13 +24728,13 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Fee range filters - check excludeParams to avoid duplicating template params
     // Use !== undefined && !== null to allow 0 values (0 is falsy but valid for "equal to 0" queries)
     if (args.min_fee !== undefined && args.min_fee !== null && !isNaN(Number(args.min_fee)) && !excludeParams.includes('min_fee')) {
-      filters.push(`CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex}`);
+      filters.push(`ISNULL("Fee", 0) >= @p${paramIndex}`);
       params.push(Number(args.min_fee));
       paramIndex++;
     }
 
     if (args.max_fee !== undefined && args.max_fee !== null && !isNaN(Number(args.max_fee)) && !excludeParams.includes('max_fee')) {
-      filters.push(`CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex}`);
+      filters.push(`ISNULL("Fee", 0) <= @p${paramIndex}`);
       params.push(Number(args.max_fee));
       paramIndex++;
     }
@@ -24742,13 +24742,13 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Win percentage filters (check for undefined/null, not falsy, to allow 0%)
     // Also check excludeParams - aggregation queries should only apply win filters in HAVING clause
     if (args.min_win !== undefined && args.min_win !== null && !isNaN(Number(args.min_win)) && !excludeParams.includes('min_win')) {
-      filters.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p${paramIndex}`);
+      filters.push(`ISNULL("ChanceOfSuccess", 0) >= @p${paramIndex}`);
       params.push(Number(args.min_win));
       paramIndex++;
     }
 
     if (args.max_win !== undefined && args.max_win !== null && !isNaN(Number(args.max_win)) && !excludeParams.includes('max_win')) {
-      filters.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) <= @p${paramIndex}`);
+      filters.push(`ISNULL("ChanceOfSuccess", 0) <= @p${paramIndex}`);
       params.push(Number(args.max_win));
       paramIndex++;
     }
@@ -24930,14 +24930,14 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       const winConditions: string[] = [];
       
       if (args.min_win !== undefined && args.min_win !== null && !isNaN(Number(args.min_win))) {
-        winConditions.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p${paramIndex}`);
+        winConditions.push(`ISNULL("ChanceOfSuccess", 0) >= @p${paramIndex}`);
         params.push(Number(args.min_win));
         paramIndex++;
         console.log(`[Win Rate Filter] min_win >= ${args.min_win}`);
       }
       
       if (args.max_win !== undefined && args.max_win !== null && !isNaN(Number(args.max_win))) {
-        winConditions.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) < @p${paramIndex}`);
+        winConditions.push(`ISNULL("ChanceOfSuccess", 0) < @p${paramIndex}`);
         params.push(Number(args.max_win));
         paramIndex++;
         console.log(`[Win Rate Filter] max_win < ${args.max_win}`);
@@ -25022,14 +25022,14 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       
       // Filter by minimum average win rate
       if (args.min_win !== undefined && args.min_win !== null) {
-        havingConditions.push(`AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) >= @p${paramIndex}`);
+        havingConditions.push(`AVG(ISNULL("ChanceOfSuccess", 0)) >= @p${paramIndex}`);
         params.push(Number(args.min_win));
         paramIndex++;
       }
       
       // Filter by maximum average win rate
       if (args.max_win !== undefined && args.max_win !== null) {
-        havingConditions.push(`AVG(CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC)) <= @p${paramIndex}`);
+        havingConditions.push(`AVG(ISNULL("ChanceOfSuccess", 0)) <= @p${paramIndex}`);
         params.push(Number(args.max_win));
         paramIndex++;
       }
@@ -25064,7 +25064,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
         if (result.includes("total_value") || result.includes("project_count")) {
           result = result.replace("{order_by_clause}", "ORDER BY total_value DESC");
         } else {
-          result = result.replace("{order_by_clause}", "ORDER BY CAST(NULLIF(\"Fee\", '') AS NUMERIC) DESC");
+          result = result.replace("{order_by_clause}", "ORDER BY ISNULL(\"Fee\", 0) DESC");
         }
       }
     }
@@ -25675,26 +25675,26 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       }
 
       if (args.min_fee && !isNaN(Number(args.min_fee))) {
-        filters.push(`CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex}`);
+        filters.push(`ISNULL("Fee", 0) >= @p${paramIndex}`);
         params.push(Number(args.min_fee));
         paramIndex++;
       }
 
       if (args.max_fee && !isNaN(Number(args.max_fee))) {
-        filters.push(`CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex}`);
+        filters.push(`ISNULL("Fee", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_fee));
         paramIndex++;
       }
 
       // Win percentage filters - use !== undefined/null to allow 0% values
       if (args.min_win !== undefined && args.min_win !== null && !isNaN(Number(args.min_win))) {
-        filters.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) >= @p${paramIndex}`);
+        filters.push(`ISNULL("ChanceOfSuccess", 0) >= @p${paramIndex}`);
         params.push(Number(args.min_win));
         paramIndex++;
       }
 
       if (args.max_win !== undefined && args.max_win !== null && !isNaN(Number(args.max_win))) {
-        filters.push(`CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) <= @p${paramIndex}`);
+        filters.push(`ISNULL("ChanceOfSuccess", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_win));
         paramIndex++;
       }
@@ -25827,7 +25827,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Handle {max_fee_filter} FIRST (before additional_filters)
     if (result.includes("{max_fee_filter}")) {
       if (args.max_fee && !isNaN(Number(args.max_fee))) {
-        result = result.replace("{max_fee_filter}", `AND CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex}`);
+        result = result.replace("{max_fee_filter}", `AND ISNULL("Fee", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_fee));
         paramIndex++;
       } else {
@@ -25839,7 +25839,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // CRITICAL: Use !== undefined instead of && to handle max_win=0 correctly
     if (result.includes("{max_win_filter}")) {
       if (args.max_win !== undefined && !isNaN(Number(args.max_win))) {
-        result = result.replace("{max_win_filter}", `AND CAST(NULLIF("ChanceOfSuccess", '') AS NUMERIC) <= @p${paramIndex}`);
+        result = result.replace("{max_win_filter}", `AND ISNULL("ChanceOfSuccess", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_win));
         paramIndex++;
       } else {
@@ -25850,7 +25850,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Handle {min_win_clause} - for templates that need win% filtering in WHERE clause
     if (result.includes("{min_win_clause}")) {
       if (args.min_win !== undefined && !isNaN(Number(args.min_win))) {
-        result = result.replace("{min_win_clause}", `AND CAST(NULLIF(REPLACE("ChanceOfSuccess", '%', ''), '') AS NUMERIC) >= @p${paramIndex}`);
+        result = result.replace("{min_win_clause}", `AND ISNULL("ChanceOfSuccess", 0) >= @p${paramIndex}`);
         params.push(Number(args.min_win));
         paramIndex++;
       } else {
@@ -25861,7 +25861,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Handle {max_win_clause} - for templates that need win% filtering in WHERE clause
     if (result.includes("{max_win_clause}")) {
       if (args.max_win !== undefined && !isNaN(Number(args.max_win))) {
-        result = result.replace("{max_win_clause}", `AND CAST(NULLIF(REPLACE("ChanceOfSuccess", '%', ''), '') AS NUMERIC) <= @p${paramIndex}`);
+        result = result.replace("{max_win_clause}", `AND ISNULL("ChanceOfSuccess", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_win));
         paramIndex++;
       } else {
@@ -25888,7 +25888,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Handle {min_fee_clause} - for templates that need fee filtering in WHERE clause
     if (result.includes("{min_fee_clause}")) {
       if (args.min_fee && !isNaN(Number(args.min_fee))) {
-        result = result.replace("{min_fee_clause}", `AND CAST(NULLIF("Fee", '') AS NUMERIC) >= @p${paramIndex}`);
+        result = result.replace("{min_fee_clause}", `AND ISNULL("Fee", 0) >= @p${paramIndex}`);
         params.push(Number(args.min_fee));
         paramIndex++;
         console.log(`[buildSql] 💰 Min fee clause: ${args.min_fee}`);
@@ -25900,7 +25900,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     // Handle {max_fee_clause} - for templates that need fee filtering in WHERE clause
     if (result.includes("{max_fee_clause}")) {
       if (args.max_fee && !isNaN(Number(args.max_fee))) {
-        result = result.replace("{max_fee_clause}", `AND CAST(NULLIF("Fee", '') AS NUMERIC) <= @p${paramIndex}`);
+        result = result.replace("{max_fee_clause}", `AND ISNULL("Fee", 0) <= @p${paramIndex}`);
         params.push(Number(args.max_fee));
         paramIndex++;
         console.log(`[buildSql] 💰 Max fee clause: ${args.max_fee}`);
