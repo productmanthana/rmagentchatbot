@@ -16387,6 +16387,40 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         delete classification.arguments.analysis_question; // Remove AI analysis question since we're using direct query
       }
 
+      // Step 1.7d-3: CONFLICT/COOP/LINKED PROJECTS EXTRACTION GUARD
+      // If user mentions conflict/coop/linked projects in their question but LLM didn't extract the parameter, set it
+      {
+        const qLow = userQuestion.toLowerCase();
+        if (classification.arguments.conflict === undefined) {
+          if (/\b(?:conflict(?:s|ed)?|conflict\s+(?:flag|exposure|of\s+interest|check))\s*(?:greater\s+than|>|above)\s*0\b/i.test(userQuestion) ||
+              /\bwith\s+(?:a\s+)?conflict\b/i.test(userQuestion) ||
+              /\bhas\s+conflict\b/i.test(userQuestion) ||
+              /\bflagged\s+(?:as\s+)?conflict\b/i.test(userQuestion) ||
+              /\bconflict\s+flag\s+(?:greater|>|above|more)\b/i.test(userQuestion)) {
+            classification.arguments.conflict = 1;
+            console.log(`[QueryEngine] 🚩 CONFLICT EXTRACT: Detected conflict > 0 from question text`);
+          } else if (/\bno\s+conflict\b/i.test(userQuestion) || /\bconflict[\s-]*free\b/i.test(userQuestion) ||
+                     /\bwithout\s+conflict\b/i.test(userQuestion)) {
+            classification.arguments.conflict = 0;
+            console.log(`[QueryEngine] 🚩 CONFLICT EXTRACT: Detected no conflict (=0) from question text`);
+          }
+        }
+        if (classification.arguments.coop === undefined) {
+          if (/\b(?:co[\s-]*op(?:erative)?|coop)\s*(?:flag|project|greater|>)\b/i.test(userQuestion) ||
+              /\bwith\s+(?:a\s+)?(?:co[\s-]*op|coop)\b/i.test(userQuestion) ||
+              /\bcooperative\s+(?:projects?|opportunities?)\b/i.test(userQuestion)) {
+            classification.arguments.coop = 1;
+            console.log(`[QueryEngine] 🚩 COOP EXTRACT: Detected coop > 0 from question text`);
+          }
+        }
+        if (classification.arguments.linked_projects === undefined) {
+          if (/\blinked\s+project/i.test(userQuestion) && /\b(?:greater|>|above|more\s+than|has|with)\b/i.test(userQuestion)) {
+            classification.arguments.linked_projects = 1;
+            console.log(`[QueryEngine] 🚩 LINKED PROJECTS EXTRACT: Detected linked_projects > 0 from question text`);
+          }
+        }
+      }
+
       // CATEGORY "ALL" / INVALID REROUTE GUARD:
       // When LLM picks a category-specific function but category is "All", missing,
       // or a nonsensical value (year number, ordinal word, generic term), reroute to general revenue function
@@ -21860,6 +21894,37 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         params.push(actualEndDate);
       }
       
+      // Add Conflict/COOP/Linked Projects filtering
+      if (args.conflict !== undefined && args.conflict !== null && !isNaN(Number(args.conflict))) {
+        const conflictVal = Number(args.conflict);
+        if (conflictVal === 0) {
+          whereClauses.push(`ISNULL("Conflict", 0) = 0`);
+        } else {
+          whereClauses.push(`ISNULL("Conflict", 0) > 0`);
+        }
+        console.log(`[AI Analysis] Conflict filter: ${conflictVal === 0 ? '= 0 (no conflict)' : '> 0 (has conflict)'}`);
+      }
+      
+      if (args.coop !== undefined && args.coop !== null && !isNaN(Number(args.coop))) {
+        const coopVal = Number(args.coop);
+        if (coopVal === 0) {
+          whereClauses.push(`ISNULL("COOP", 0) = 0`);
+        } else {
+          whereClauses.push(`ISNULL("COOP", 0) > 0`);
+        }
+        console.log(`[AI Analysis] COOP filter: ${coopVal === 0 ? '= 0 (not cooperative)' : '> 0 (cooperative)'}`);
+      }
+      
+      if (args.linked_projects !== undefined && args.linked_projects !== null && !isNaN(Number(args.linked_projects))) {
+        const lpVal = Number(args.linked_projects);
+        if (lpVal === 0) {
+          whereClauses.push(`ISNULL("Linked Projects", 0) = 0`);
+        } else {
+          whereClauses.push(`ISNULL("Linked Projects", 0) > 0`);
+        }
+        console.log(`[AI Analysis] Linked Projects filter: ${lpVal === 0 ? '= 0 (no links)' : '> 0 (has links)'}`);
+      }
+
       // Build SQL query - NO LIMIT, analyze ALL matching projects
       const sql = `
         SELECT 
@@ -21872,7 +21937,10 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
           "ConstStartDate" as start_date,
           "RequestCategory" as category,
           "State" as region,
-          "ProjectType" as project_type
+          "ProjectType" as project_type,
+          ISNULL("Conflict", 0) as conflict,
+          ISNULL("COOP", 0) as coop,
+          ISNULL("Linked Projects", 0) as linked_projects
         FROM "${TABLE}"
         WHERE ${whereClauses.join(' AND ')}
         ORDER BY ISNULL("Fee", 0) DESC`;
@@ -22168,7 +22236,10 @@ ABSOLUTE PROHIBITIONS:
         winRate: parseFloat(p.win_rate) || 0,
         status: p.status,
         category: p.category,
-        tags: p.tags || ''
+        tags: p.tags || '',
+        conflict: parseInt(p.conflict) || 0,
+        coop: parseInt(p.coop) || 0,
+        linked_projects: parseInt(p.linked_projects) || 0
       }));
       
       const filterSummary = [
@@ -22176,7 +22247,10 @@ ABSOLUTE PROHIBITIONS:
         categories && categories.length > 0 ? `Categories: ${categories.join(', ')}` : null,
         tags && tags.length > 0 ? `Tags: ${tags.join(', ')}` : null,
         min_fee ? `Min Fee: $${(min_fee / 1000000).toFixed(1)}M` : null,
-        max_fee ? `Max Fee: $${(max_fee / 1000000).toFixed(1)}M` : null
+        max_fee ? `Max Fee: $${(max_fee / 1000000).toFixed(1)}M` : null,
+        args.conflict !== undefined ? `Conflict: ${Number(args.conflict) > 0 ? '> 0 (flagged)' : '= 0 (none)'}` : null,
+        args.coop !== undefined ? `COOP: ${Number(args.coop) > 0 ? '> 0 (cooperative)' : '= 0 (none)'}` : null,
+        args.linked_projects !== undefined ? `Linked Projects: ${Number(args.linked_projects) > 0 ? '> 0 (has links)' : '= 0 (none)'}` : null
       ].filter(Boolean).join(', ');
       
       const userPrompt = `Question: "${analysis_question}"
@@ -22188,6 +22262,7 @@ DATASET OVERVIEW (EXACT NUMBERS FROM DATABASE):
 - Fee Range: $${(aggregates.minFee / 1000000).toFixed(1)}M - $${(aggregates.maxFee / 1000000).toFixed(1)}M
 - Overall Average Win Rate: ${aggregates.avgWinRate.toFixed(1)}%
 ${filterSummary ? `- Applied Filters: ${filterSummary}` : ''}
+- Available Flag Columns: Conflict (integer), COOP (integer), Linked Projects (integer) — these values ARE present in each project record and sample data below
 
 BREAKDOWN BY STATUS (EXACT CALCULATED AVERAGES):
 ${statusBreakdown}
@@ -22212,7 +22287,14 @@ ${yearlyCategoryBreakdown}
 ${crossTabulation}
 
 SAMPLE PROJECTS (balanced across statuses):
-${topProjects.map((p, i) => `${i + 1}. ${p.name} - ${p.client} - $${(p.fee / 1000000).toFixed(1)}M (${p.winRate}% win rate, ${p.status}, ${p.category})${p.tags ? ` [Tags: ${p.tags}]` : ''}`).join('\n')}
+${topProjects.map((p, i) => {
+          const flags = [
+            p.conflict > 0 ? `Conflict: ${p.conflict}` : null,
+            p.coop > 0 ? `COOP: ${p.coop}` : null,
+            p.linked_projects > 0 ? `Linked: ${p.linked_projects}` : null
+          ].filter(Boolean).join(', ');
+          return `${i + 1}. ${p.name} - ${p.client} - $${(p.fee / 1000000).toFixed(1)}M (${p.winRate}% win rate, ${p.status}, ${p.category})${p.tags ? ` [Tags: ${p.tags}]` : ''}${flags ? ` [${flags}]` : ''}`;
+        }).join('\n')}
 
 INSTRUCTIONS:
 - Use the EXACT statistics provided above - these are calculated from the complete database
