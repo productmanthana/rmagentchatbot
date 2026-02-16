@@ -32,6 +32,9 @@ Column Name → Synonyms (user may say any of these)
 - "InterestedUserNames" → interested users, watchers
 - "IsUpdated" → is updated, updated flag (values: '0' or '1')
 - "InternalId" → internal ID
+- "COOP" → co-op, cooperative, co-operative, coop flag (numeric: 0 or 1+)
+- "Conflict" → conflict, conflict flag, conflict of interest (numeric: 0 or 1+)
+- "Linked Projects" → linked projects, linked, related projects, associated projects (numeric: count of linked projects)
 
 CRITICAL COLUMN RULES:
 - "ChanceOfSuccess" is the ONLY win rate column. NEVER use "WinPercentage" - it does NOT exist.
@@ -51,4 +54,5 @@ export const VALID_COLUMN_NAMES = new Set([
   'Country', 'ProposalDate', 'ContractDate', 'ClosedDate', 'ProjectDuration',
   'Currency', 'TenantName', 'Closed', 'Deleted', 'InterestedUserNames',
   'IsStrategicProject', 'Description', 'InternalId', 'IsUpdated',
+  'COOP', 'Conflict', 'Linked Projects',
 ]);
