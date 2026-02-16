@@ -814,7 +814,7 @@ export class ProjectSizeCalculator {
           SELECT ISNULL("Fee", 0) as numeric_fee
           FROM "${tableName}"
           WHERE "Fee" IS NOT NULL 
-          AND "Fee" != ''
+          
           AND ISNULL("Fee", 0) > 10000
         ) fee_data
       `;

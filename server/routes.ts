@@ -1522,7 +1522,7 @@ Please provide a helpful analysis for the follow-up question.`,
             COALESCE(SUM(CAST(NULLIF(d."Fee", '') AS NUMERIC)), 0) as total_value
           FROM "POR" d
           CROSS JOIN Percentiles p
-          WHERE d."Fee" IS NOT NULL AND d."Fee" != ''
+          WHERE d."Fee" IS NOT NULL 
           GROUP BY CASE 
               WHEN CAST(NULLIF(d."Fee", '') AS NUMERIC) < p.p20 THEN 'Micro'
               WHEN CAST(NULLIF(d."Fee", '') AS NUMERIC) >= p.p20 AND CAST(NULLIF(d."Fee", '') AS NUMERIC) < p.p40 THEN 'Small'
@@ -1593,7 +1593,7 @@ Please provide a helpful analysis for the follow-up question.`,
             "StatusChoice" as "Status",
             "RequestCategory" as category
           FROM "POR"
-          WHERE "Fee" IS NOT NULL AND "Fee" != ''
+          WHERE "Fee" IS NOT NULL 
           ORDER BY CAST(NULLIF("Fee", '') AS NUMERIC) DESC
           OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY
         `),
@@ -1781,7 +1781,7 @@ Please provide a helpful analysis for the follow-up question.`,
       const sql = `
         SELECT TOP 5 "Title", "Fee", "Region"
         FROM "POR"
-        WHERE "Fee" IS NOT NULL AND "Fee" != ''
+        WHERE "Fee" IS NOT NULL 
           AND ${whereClause}
         ORDER BY CAST("Fee" AS NUMERIC) DESC
       `;

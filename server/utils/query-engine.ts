@@ -3290,7 +3290,7 @@ export class QueryEngine {
 
       get_largest_projects: {
         sql: `SELECT * FROM "${TABLE}" 
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               {date_filter}
               {status_filter}
               {additional_filters}
@@ -3307,7 +3307,7 @@ export class QueryEngine {
 
       get_smallest_projects: {
         sql: `SELECT * FROM "${TABLE}" 
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {date_filter}
               {status_filter}
@@ -3326,7 +3326,7 @@ export class QueryEngine {
       get_largest_in_region: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE {state_filter}
-              AND "Fee" IS NOT NULL AND "Fee" != ''
+              AND "Fee" IS NOT NULL 
               {status_filter}
               {additional_filters}
               ORDER BY ISNULL("Fee", 0) DESC
@@ -3343,7 +3343,7 @@ export class QueryEngine {
       get_largest_by_category: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE {category_or_type_condition}
-              AND "Fee" IS NOT NULL AND "Fee" != ''
+              AND "Fee" IS NOT NULL 
               {status_filter}
               {additional_filters}
               ORDER BY ISNULL("Fee", 0) DESC
@@ -3910,7 +3910,7 @@ export class QueryEngine {
         sql: `WITH filtered_projects AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               )
@@ -3935,7 +3935,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -3972,7 +3972,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4000,7 +4000,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4028,7 +4028,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4056,7 +4056,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4090,7 +4090,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4125,7 +4125,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               )
@@ -4161,7 +4161,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4211,7 +4211,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4240,7 +4240,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4274,7 +4274,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               AND "RequestCategory" IS NOT NULL AND "RequestCategory" != ''
               {additional_filters}
@@ -4323,7 +4323,7 @@ export class QueryEngine {
         sql: `WITH filtered_base AS (
               SELECT *, ISNULL("Fee", 0) as numeric_fee
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               ),
@@ -4513,7 +4513,7 @@ export class QueryEngine {
               SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
               WHERE "StatusChoice" NOT IN ('Won', 'Lost')
-              AND "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
+              AND "ChanceOfSuccess" IS NOT NULL 
               AND "Client" IS NOT NULL AND "Client" != ''
               {additional_filters}
               GROUP BY "Client"
@@ -4531,7 +4531,7 @@ export class QueryEngine {
 
       get_top_projects_by_win_rate: {
         sql: `SELECT * FROM "${TABLE}"
-              WHERE "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
+              WHERE "ChanceOfSuccess" IS NOT NULL 
               {start_date_filter}
               {end_date_filter}
               {additional_filters}
@@ -4593,7 +4593,7 @@ export class QueryEngine {
       get_projects_by_size: {
         sql: `SELECT * FROM "${TABLE}" 
               WHERE {size_condition}
-              AND "Fee" IS NOT NULL AND "Fee" != ''
+              AND "Fee" IS NOT NULL 
               {additional_filters}
               ORDER BY ISNULL("Fee", 0) DESC
               {limit_clause}`,
@@ -4611,7 +4611,7 @@ export class QueryEngine {
               COUNT(*) as project_count,
               SUM(ISNULL("Fee", 0)) as total_value
               FROM "${TABLE}"
-              WHERE "Fee" IS NOT NULL AND "Fee" != ''
+              WHERE "Fee" IS NOT NULL 
               AND ISNULL("Fee", 0) > 0
               {additional_filters}
               GROUP BY {size_case}
@@ -6198,7 +6198,7 @@ export class QueryEngine {
                   AVG(DATEDIFF(DAY, TRY_CONVERT(DATE, "ConstStartDate"), CAST(GETDATE() AS DATE))) as avg_cycle_days,
                   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY DATEDIFF(DAY, TRY_CONVERT(DATE, "ConstStartDate"), CAST(GETDATE() AS DATE))) as median_cycle_days
                 FROM "${TABLE}"
-                WHERE "Fee" IS NOT NULL AND "Fee" != ''
+                WHERE "Fee" IS NOT NULL 
                 AND ISNULL("Fee", 0) > 0
                 AND "StatusChoice" IN ('Won', 'Lost')
                 {additional_filters}
@@ -6267,7 +6267,7 @@ export class QueryEngine {
                   SUM(ISNULL("Fee", 0) * ISNULL("ChanceOfSuccess", 0) / 100) as weighted_value
                 FROM "${TABLE}"
                 WHERE "StatusChoice" NOT IN ('Won', 'Lost')
-                AND "ChanceOfSuccess" IS NOT NULL AND "ChanceOfSuccess" != ''
+                AND "ChanceOfSuccess" IS NOT NULL 
                 {additional_filters}
                 GROUP BY CASE WHEN ISNULL("ChanceOfSuccess", 0) >= 70 THEN 'High Probability (70%+)' WHEN ISNULL("ChanceOfSuccess", 0) >= 40 THEN 'Medium Probability (40-70%)' ELSE 'Low Probability (<40%)' END
               )
