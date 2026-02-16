@@ -16354,12 +16354,14 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       }
 
       // Step 1.7d-2: REVENUE + QUARTER ROUTING GUARD
-      // If user asks for revenue/fee with quarter and AI misclassified to ai_fallback, route to get_revenue_by_month
-      const isRevenueQuery = /\b(revenue|fee|total\s+fee|total\s+revenue)\b/i.test(userQuestion);
+      // If user asks for revenue/fee with quarter and AI misclassified, route to get_revenue_by_month
+      const isRevenueQuery = /\b(revenue|revenues|fee|fees|total\s+fee|total\s+revenue|potential\s+revenue|potential\s+fees|potential\s+fee)\b/i.test(userQuestion);
       const hasQuarter = classification.arguments.quarter !== undefined;
       
-      if (isRevenueQuery && hasQuarter && classification.function_name === 'ai_fallback') {
-        console.log(`[QueryEngine] 📊 REVENUE+QUARTER GUARD: Rerouting ai_fallback → get_revenue_by_month`);
+      if (isRevenueQuery && hasQuarter && 
+          (classification.function_name === 'ai_fallback' || classification.function_name === 'ai_data_analysis' || 
+           classification.function_name === 'get_revenue_trend_by_category' || classification.function_name === 'get_quarterly_trends')) {
+        console.log(`[QueryEngine] 📊 REVENUE+QUARTER GUARD: Rerouting ${classification.function_name} → get_revenue_by_month`);
         classification.function_name = 'get_revenue_by_month';
         
         // Also extract year from the question if not already set
@@ -16368,6 +16370,9 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           if (yearMatch) {
             classification.arguments.year = parseInt(yearMatch[1], 10);
             console.log(`[QueryEngine] 📊 REVENUE+QUARTER GUARD: Extracted year=${classification.arguments.year}`);
+          } else if (/\b(last|previous|prior)\s+year\b/i.test(userQuestion)) {
+            classification.arguments.year = new Date().getFullYear() - 1;
+            console.log(`[QueryEngine] 📊 REVENUE+QUARTER GUARD: "last year" → year=${classification.arguments.year}`);
           } else {
             // Default to current year if no year specified
             classification.arguments.year = new Date().getFullYear();
@@ -16379,6 +16384,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         delete classification.arguments.start_date;
         delete classification.arguments.end_date;
         delete classification.arguments.project_type; // Remove misextracted project_type
+        delete classification.arguments.analysis_question; // Remove AI analysis question since we're using direct query
       }
 
       // CATEGORY "ALL" / INVALID REROUTE GUARD:
