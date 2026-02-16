@@ -4128,34 +4128,6 @@ export default function ChatPage() {
                       <div className="flex justify-end">
                         <div className="bg-[#3B82F6] rounded-2xl px-5 py-3 max-w-2xl shadow-sm group relative">
                           <div className="flex items-center gap-2 mb-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const questionText = message.response?.question || message.originalQuestion || message.content;
-                                if (navigator.clipboard && window.isSecureContext) {
-                                  navigator.clipboard.writeText(questionText);
-                                } else {
-                                  const ta = document.createElement('textarea');
-                                  ta.value = questionText;
-                                  ta.style.position = 'fixed';
-                                  ta.style.left = '-9999px';
-                                  document.body.appendChild(ta);
-                                  ta.focus();
-                                  ta.select();
-                                  document.execCommand('copy');
-                                  document.body.removeChild(ta);
-                                }
-                                toast({
-                                  title: "Copied!",
-                                  description: "Question copied to clipboard",
-                                });
-                              }}
-                              className="p-0.5 rounded hover:bg-white/20 transition-colors"
-                              title="Copy question"
-                              data-testid={`button-copy-question-${message.id}`}
-                            >
-                              <Copy className="h-4 w-4 text-white/80" />
-                            </button>
                             <span className="text-xs text-white/80 font-medium">Your Query</span>
                             {(message.aiAnalysisMessages?.filter(m => m.type === "user").length ?? 0) > 0 && (
                               <span className="text-xs text-white/70 ml-auto">
