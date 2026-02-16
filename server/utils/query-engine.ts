@@ -19486,8 +19486,56 @@ Response (JSON only):`;
                 };
               }
             }
-            // If no matches found in any column, continue to show no-results
+            // If no matches found in any column, try PARTIAL WORD MATCHING
             console.log(`[QueryEngine] ⚠️ COLUMN FALLBACK: No matches found in any column for "${entityValue}"`);
+            
+            // SMART PARTIAL MATCH: Break organization name into words and try matching parts
+            if (entityValue && entityValue.split(/\s+/).length >= 3 && externalDbQuery) {
+              const stopWords = new Set(['and', 'of', 'the', 'for', 'in', 'a', 'an', 'is', 'to', 'or', 'at', 'by', 'on', 'with', 'from']);
+              const meaningfulWords = entityValue.split(/\s+/).filter((w: string) => !stopWords.has(w.toLowerCase()) && w.length > 2);
+              
+              if (meaningfulWords.length >= 2) {
+                console.log(`[QueryEngine] 🔍 PARTIAL MATCH: Trying individual words: ${meaningfulWords.join(', ')}`);
+                
+                // externalDbQuery uses @p1, @p2 style params with an array
+                // Each word needs 4 params (Client, City, ProjectType, RequestCategory)
+                const partialParamsArr: string[] = [];
+                const likeConditions = meaningfulWords.map((word: string, i: number) => {
+                  const base = i * 4;
+                  partialParamsArr.push(`%${word}%`, `%${word}%`, `%${word}%`, `%${word}%`);
+                  return `("Client" LIKE @p${base + 1} OR "City" LIKE @p${base + 2} OR "ProjectType" LIKE @p${base + 3} OR "RequestCategory" LIKE @p${base + 4})`;
+                }).join(' AND ');
+                
+                const TABLE = process.env.CLIENT_TABLE_NAME || 'vw_ChatBotData';
+                const partialSql = `SELECT * FROM "${TABLE}" WHERE ${likeConditions} ORDER BY ISNULL("Fee", 0) DESC`;
+                
+                try {
+                  console.log(`[QueryEngine] 🔍 PARTIAL MATCH SQL: ${partialSql}`);
+                  console.log(`[QueryEngine] 🔍 PARTIAL MATCH PARAMS: ${JSON.stringify(partialParamsArr)}`);
+                  const partialResult = await externalDbQuery(partialSql, partialParamsArr);
+                  
+                  if (partialResult && partialResult.length > 0) {
+                    console.log(`[QueryEngine] ✅ PARTIAL MATCH: Found ${partialResult.length} results using word-based search`);
+                    return {
+                      success: true,
+                      question: userQuestion,
+                      function_name: functionName,
+                      arguments: args,
+                      data: partialResult,
+                      row_count: partialResult.length,
+                      summary: {},
+                      chart_config: null,
+                      message: `Found ${partialResult.length} results`,
+                      sql_query: partialSql,
+                    };
+                  } else {
+                    console.log(`[QueryEngine] ⚠️ PARTIAL MATCH: No results even with word-based search`);
+                  }
+                } catch (partialErr) {
+                  console.log(`[QueryEngine] ⚠️ PARTIAL MATCH ERROR: ${partialErr}`);
+                }
+              }
+            }
           }
           
           console.log(`[QueryEngine] ✅ EARLY ENTITY CHECK: poc=${args.poc}, returning clean no-results`);
