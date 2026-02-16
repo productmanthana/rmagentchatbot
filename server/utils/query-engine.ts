@@ -5381,8 +5381,8 @@ export class QueryEngine {
                   WHEN @p1 = 12 THEN CAST(YEAR(TRY_CONVERT(DATE, "ConstStartDate")) AS VARCHAR)
                   ELSE CONCAT('H', CASE WHEN MONTH(TRY_CONVERT(DATE, "ConstStartDate")) <= 6 THEN '1' ELSE '2' END, ' ', YEAR(TRY_CONVERT(DATE, "ConstStartDate")))
                 END as period_label,
-                COALESCE(TRY_ISNULL("Fee", 0), 0) as fee_val,
-                COALESCE(TRY_ISNULL("ChanceOfSuccess", 0), 0) as win_val
+                ISNULL("Fee", 0) as fee_val,
+                ISNULL("ChanceOfSuccess", 0) as win_val
               FROM "${TABLE}"
               WHERE "Client" IS NOT NULL AND "Client" != ''
               AND "ConstStartDate" IS NOT NULL AND "ConstStartDate" != ''
