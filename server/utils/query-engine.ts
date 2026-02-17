@@ -19293,27 +19293,6 @@ Response (JSON only):`;
       if (!results.success) {
         console.error(`[QUERY LOG] EXECUTION FAILED: fn="${functionName}", error="${results.error}", question="${userQuestion}"`);
       }
-      if (!results.success && functionName === 'ai_data_analysis') {
-        console.error(`[QUERY LOG] ai_data_analysis FAILED - returning error directly (no fallback): error="${results.error}"`);
-        const aiErrorMsg = results.error || 'AI analysis encountered an issue. Please try again.';
-        return {
-          success: true,
-          question: userQuestion,
-          function_name: 'ai_data_analysis',
-          arguments: args,
-          data: [{
-            type: 'ai_analysis',
-            narrative: `## Analysis Error\n\n${aiErrorMsg}\n\n*Please try rephrasing your question or try again in a moment.*`,
-            aggregates: { count: 0, totalFee: 0, avgFee: 0 },
-            samples: [],
-            question: userQuestion,
-            is_empty_result: true,
-          }],
-          row_count: 0,
-          summary: {},
-          chart_config: null,
-        };
-      }
       if (!results.success) {
         // Convert technical errors to user-friendly messages
         const errorMessage = results.error || "Query execution failed";
@@ -22716,36 +22695,19 @@ Based on ${aggregates.count} projects:
   private async callGPT5ForAnalysis(systemPrompt: string, userPrompt: string): Promise<string> {
     console.log(`[AI Analysis] Prompt length: ${(systemPrompt + userPrompt).length} chars`);
     
-    // Try GPT-5.1 first, fall back to gpt-4o if it times out or fails
-    let analysis: string;
-    try {
-      const startTime = Date.now();
-      analysis = await this.openaiClient.chat(
-        [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        { 
-          model: "gpt-5.1",
-          max_completion_tokens: 3000
-        }
-      );
-      console.log(`[AI Analysis] GPT-5.1 responded in ${Date.now() - startTime}ms, length: ${analysis?.length} chars`);
-    } catch (primaryError: any) {
-      console.warn(`[AI Analysis] GPT-5.1 failed (${primaryError?.message}), retrying with gpt-4o...`);
-      const startTime = Date.now();
-      analysis = await this.openaiClient.chat(
-        [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        { 
-          model: "gpt-4o",
-          max_completion_tokens: 3000
-        }
-      );
-      console.log(`[AI Analysis] gpt-4o fallback responded in ${Date.now() - startTime}ms, length: ${analysis?.length} chars`);
-    }
+    // Use GPT-5.2 for analytical insights (better reasoning than gpt-4o)
+    const analysis = await this.openaiClient.chat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      { 
+        model: "gpt-5.1", // Best available model for analysis
+        max_completion_tokens: 3000
+      }
+    );
+    
+    console.log(`[AI Analysis] Response length: ${analysis.length} chars`);
     
     if (!analysis || analysis.trim().length === 0) {
       throw new Error(`AI analysis returned empty response`);
