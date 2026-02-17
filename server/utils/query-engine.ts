@@ -19117,6 +19117,7 @@ Response (JSON only):`;
             // Fall through to executeQuery - do NOT return fallback
           } else {
             const queryRefNumber = `Q${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+            console.error(`[QUERY LOG] CRITICAL FALLBACK: fn="${functionName}", keyword="${args.keyword}", unrecognizedTerm="${unrecognizedFilterCheck?.term}", question="${userQuestion}", queryRef="${queryRefNumber}"`);
             const fallbackMessage = `Great question! I need to talk to my creators to ensure that I have the right answer for you. Query # ${queryRefNumber}`;
           
             return {
@@ -19288,8 +19289,9 @@ Response (JSON only):`;
       const cleanedArgsForExecute = stripHallucinatedGeography(args, userQuestion);
       console.log(`[CATEGORY_TRACE] PRE-EXECUTE: args.category="${args.category}", cleanedArgs.category="${cleanedArgsForExecute.category}", fn="${functionName}"`);
       const results = await this.executeQuery(functionName, cleanedArgsForExecute, externalDbQuery, userQuestion);
-      console.log(`[DEBUG] results.success=${results.success}, error=${results.error}`);
+      console.log(`[DEBUG] results.success=${results.success}, error=${results.error}, fn=${functionName}`);
       if (!results.success) {
+        console.error(`[QUERY LOG] EXECUTION FAILED: fn="${functionName}", error="${results.error}", question="${userQuestion}"`);
       }
       if (!results.success) {
         // Convert technical errors to user-friendly messages
@@ -19456,6 +19458,7 @@ Response (JSON only):`;
           };
         }
         console.log(`[QueryEngine] 🔄 Execution error - triggering AI fallback`);
+        console.error(`[QUERY LOG] FALLBACK TRIGGERED: fn="${functionName}", reason="execution_error", errorMessage="${errorMessage}", question="${userQuestion}"`);
         const fallbackResult = await this.handleAIFallback(
           userQuestion,
           'execution_error',
@@ -22615,6 +22618,8 @@ Answer the question using the exact data provided. Format your response professi
         aiAnalysis = await this.callGPT5ForAnalysis(systemPrompt, userPrompt);
       } catch (error: any) {
         console.error(`[AI Analysis] GPT-5 call failed:`, error);
+        console.error(`[AI Analysis] GPT-5 FAILURE DETAIL: message="${error?.message}", code="${error?.code}", status="${error?.status}", type="${error?.type}"`);
+        console.error(`[AI Analysis] GPT-5 FAILURE CONTEXT: question="${analysis_question}", dataRows=${data?.length}, promptChars=${(systemPrompt + userPrompt).length}`);
         
         // Fall back to deterministic aggregate summary
         const fallbackSummary = `## Data Summary
@@ -22673,6 +22678,8 @@ Based on ${aggregates.count} projects:
       
     } catch (error: any) {
       console.error(`[AI Analysis] Error:`, error);
+      console.error(`[AI Analysis] OUTER ERROR DETAIL: message="${error?.message}", stack="${error?.stack?.substring(0, 500)}"`);
+      console.error(`[AI Analysis] OUTER ERROR CONTEXT: question="${args?.analysis_question}", fn="ai_data_analysis"`);
       return {
         success: false,
         data: [],
@@ -23266,6 +23273,7 @@ DATABASE CONTEXT (for reference):
       // Build the friendly "needs review" message - no GPT call needed
       const fallbackResponse = `Great question! I need to talk to my creators to ensure that I have the right answer for you. Query # ${queryRefNumber}`;
       
+      console.error(`[QUERY LOG] AI FALLBACK RESPONSE: queryRef="${queryRefNumber}", fn="${context.attemptedFunction}", reason="${failureReason}", error="${context.errorMessage}", question="${userQuestion}"`);
       console.log(`[AI Fallback] Generated fallback with query reference: ${queryRefNumber}`);
 
       // Return as AI analysis format so it displays nicely
@@ -23288,6 +23296,7 @@ DATABASE CONTEXT (for reference):
 
     } catch (fallbackError: any) {
       console.error(`[AI Fallback] Error generating fallback:`, fallbackError);
+      console.error(`[QUERY LOG] ULTIMATE FALLBACK: fallbackError="${fallbackError?.message}", question="${userQuestion}"`);
       
       // Ultimate fallback - return a friendly "needs review" message with query reference
       const queryRefNumber = `Q${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
