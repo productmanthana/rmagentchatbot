@@ -10871,7 +10871,7 @@ Return ONLY valid JSON, no explanation.`;
         if (mappedColumn) {
           console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: "${columnTerm}" → column="${mappedColumn}", filter context="${filterContext}"`);
           
-          const contextColumns = ['Title', 'Client', 'Fee'];
+          const contextColumns = ['Title', 'Client', 'RequestCategory', 'Fee'];
           const allColumns = [mappedColumn, ...contextColumns.filter(c => c !== mappedColumn)];
           const columnArgs: Record<string, any> = { columns: allColumns.join(', ') };
           
