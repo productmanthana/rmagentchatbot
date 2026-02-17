@@ -448,7 +448,7 @@ function normalizeClassificationArguments(args: Record<string, any>, originalQue
   // CRITICAL: Convert "open", "closed", "won", "lost", "pending" etc. to correct status arrays BEFORE any other processing
   // These are execution-based synonyms verified against actual database values
   const OPEN_STATUS_VALUES = ["Proposal Development", "Qualified Lead", "Submitted", "Won", "Lead", "In Progress", "Hold"];
-  const CLOSED_STATUS_VALUES = ["Lost", "No Go", "Cancelled"];
+  const CLOSED_STATUS_VALUES = ["Won", "Lost", "No Go", "Cancelled"];
   const WON_STATUS_VALUES = ["Won", "Awarded", "Accepted"];
   const LOST_STATUS_VALUES = ["Lost", "Declined", "Rejected", "No Go"];
   const PENDING_STATUS_VALUES = ["Pending", "In Review", "Under Consideration", "Submitted"];
