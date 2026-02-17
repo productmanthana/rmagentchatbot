@@ -17369,6 +17369,12 @@ Response (JSON only):`;
                   console.log(`[QueryEngine] ⚠️ LLM VALIDATION: Ignoring date correction "${key}=${value}" - handled by date normalization`);
                   continue;
                 }
+                // CRITICAL: Never allow LLM to null-out existing filters
+                // This prevents GPT from removing valid filters like min_fee
+                if (value === null || value === undefined) {
+                  console.log(`[QueryEngine] ⚠️ LLM VALIDATION: Ignoring null correction for "${key}" - cannot remove existing filter`);
+                  continue;
+                }
                 if (classification.arguments[key] !== undefined) {
                   validCorrections[key] = value;
                 } else {
