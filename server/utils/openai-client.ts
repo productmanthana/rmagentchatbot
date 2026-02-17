@@ -406,6 +406,14 @@ Return ONLY valid JSON with "function_name" and "arguments" fields.`;
         lastError = error;
         const { isBackup } = this.getActiveClient();
 
+        // Check for auth errors (401) - try backup key immediately
+        if (error.status === 401 && !triedBackup && this.backupClient) {
+          triedBackup = true;
+          this.usingBackup = true;
+          console.log(`[OpenAI] Primary API key auth failed (401), switching to backup API key...`);
+          continue;
+        }
+
         // Check for rate limit errors - try backup first, then exponential backoff
         if (error.status === 429) {
           const retryAfter = error.headers?.['retry-after'] 
@@ -538,6 +546,14 @@ Return ONLY valid JSON with "function_name" and "arguments" fields.`;
         lastError = error;
         const { isBackup } = this.getActiveClient();
         
+        // Check for auth errors (401) - try backup key immediately
+        if (error.status === 401 && !triedBackup && this.backupClient) {
+          triedBackup = true;
+          this.usingBackup = true;
+          console.log(`[OpenAI Chat] Primary API key auth failed (401), switching to backup API key...`);
+          continue;
+        }
+
         // Check for rate limit errors - try backup first, then exponential backoff
         if (error.status === 429) {
           const retryAfter = error.headers?.['retry-after'] 

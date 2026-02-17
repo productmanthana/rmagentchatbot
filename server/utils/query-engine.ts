@@ -15308,12 +15308,52 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           };
         }
         
-        return {
-          success: false,
-          error: "cannot_classify",
-          message: "I couldn't understand that question. Could you try rephrasing it? For example, try asking about projects by date, status, category, client, or company.",
-          data: [],
-        };
+        // REGEX FALLBACK: Handle Conflict/COOP/Linked Projects queries even when LLM fails
+        {
+          const qLow = userQuestion.toLowerCase();
+          const hasConflict = /\bconflict\b/i.test(userQuestion);
+          const hasCoop = /\b(?:co[\s-]*op|coop)\b/i.test(userQuestion);
+          const hasLinked = /\blinked\s+project/i.test(userQuestion);
+          const hasByClient = /\bby\s+client\b/i.test(userQuestion);
+          const hasGreaterThan0 = /\b(?:greater\s+than|>|above)\s*0\b/i.test(userQuestion);
+          const hasTotalFee = /\b(?:total|sum)\s+(?:fee|revenue)\b/i.test(userQuestion);
+          const hasFeeExposure = /\bfee\s+exposure\b/i.test(userQuestion);
+          const hasListAll = /\b(?:list|show|get|find|identify)\s+(?:all|every)\b/i.test(userQuestion);
+          
+          if ((hasConflict || hasCoop || hasLinked) && (hasByClient || hasTotalFee || hasFeeExposure)) {
+            console.log(`[QueryEngine] 🚩 REGEX FALLBACK: Conflict/COOP aggregation by client detected, routing to get_top_clients`);
+            const fallbackArgs: any = {};
+            if (hasConflict && hasGreaterThan0) fallbackArgs.conflict = 1;
+            else if (hasConflict) fallbackArgs.conflict = 1;
+            if (hasCoop && hasGreaterThan0) fallbackArgs.coop = 1;
+            if (hasLinked && hasGreaterThan0) fallbackArgs.linked_projects = 1;
+            
+            classification = {
+              function_name: 'get_top_clients',
+              arguments: fallbackArgs,
+            };
+          } else if ((hasConflict || hasCoop || hasLinked) && (hasListAll || hasGreaterThan0)) {
+            console.log(`[QueryEngine] 🚩 REGEX FALLBACK: Conflict/COOP list query detected, routing to get_projects_by_combined_filters`);
+            const fallbackArgs: any = {};
+            if (hasConflict) fallbackArgs.conflict = hasGreaterThan0 ? 1 : 1;
+            if (hasCoop) fallbackArgs.coop = 1;
+            if (hasLinked) fallbackArgs.linked_projects = 1;
+            
+            classification = {
+              function_name: 'get_projects_by_combined_filters',
+              arguments: fallbackArgs,
+            };
+          }
+        }
+        
+        if (classification.function_name === 'none') {
+          return {
+            success: false,
+            error: "cannot_classify",
+            message: "I couldn't understand that question. Could you try rephrasing it? For example, try asking about projects by date, status, category, client, or company.",
+            data: [],
+          };
+        }
       }
 
       // Step 1.4: Deterministic category vs tags routing
