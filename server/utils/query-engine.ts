@@ -10836,6 +10836,102 @@ Return ONLY valid JSON, no explanation.`;
       }
       
       // ═══════════════════════════════════════════════════════════════
+      // SHOW CONTACTS / SHOW [COLUMN] FOR [FILTER] ROUTING
+      // Intercept "show contacts for X projects" → select_specific_columns
+      // This ensures the query returns Point of Contact column instead of SELECT *
+      // ═══════════════════════════════════════════════════════════════
+      const showColumnForPattern = /\b(?:show|display|list|get|provide|give)\s+(?:me\s+)?(?:the\s+)?(?:all\s+)?(contacts?|pocs?|point\s+of\s+contacts?|clients?|companies?|fees?|status(?:es)?|categor(?:y|ies)|tags?|divisions?|departments?|titles?|project\s+names?|regions?|states?|types?|project\s+types?|descriptions?)\s+(?:for|of|in|from|on)\s+(.+)/i;
+      const showColumnMatch = userQuestion.match(showColumnForPattern);
+      if (showColumnMatch) {
+        const columnTerm = showColumnMatch[1].toLowerCase().trim();
+        const filterContext = showColumnMatch[2].trim();
+        
+        const columnTermMap: Record<string, string> = {
+          'contact': 'PointOfContact', 'contacts': 'PointOfContact',
+          'poc': 'PointOfContact', 'pocs': 'PointOfContact',
+          'point of contact': 'PointOfContact', 'point of contacts': 'PointOfContact',
+          'client': 'Client', 'clients': 'Client',
+          'company': 'Company', 'companies': 'Company',
+          'fee': 'Fee', 'fees': 'Fee',
+          'status': 'StatusChoice', 'statuses': 'StatusChoice',
+          'category': 'RequestCategory', 'categories': 'RequestCategory',
+          'tag': 'Tags', 'tags': 'Tags',
+          'division': 'Division', 'divisions': 'Division',
+          'department': 'Department', 'departments': 'Department',
+          'title': 'Title', 'titles': 'Title',
+          'project name': 'Title', 'project names': 'Title',
+          'region': 'Region', 'regions': 'Region',
+          'state': 'State', 'states': 'State',
+          'type': 'ProjectType', 'types': 'ProjectType',
+          'project type': 'ProjectType', 'project types': 'ProjectType',
+          'description': 'Description', 'descriptions': 'Description',
+        };
+        
+        const mappedColumn = columnTermMap[columnTerm];
+        if (mappedColumn) {
+          console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: "${columnTerm}" → column="${mappedColumn}", filter context="${filterContext}"`);
+          
+          const contextColumns = ['Title', 'Client', 'Fee'];
+          const allColumns = [mappedColumn, ...contextColumns.filter(c => c !== mappedColumn)];
+          const columnArgs: Record<string, any> = { columns: allColumns.join(', ') };
+          
+          const disambigCategoryMatch = filterContext.match(/\[filter\s+by\s+Category:\s*"([^"]+)"\]/i);
+          const disambigProjectTypeMatch = filterContext.match(/\[filter\s+by\s+Project\s+Type:\s*"([^"]+)"\]/i);
+          const disambigStatusMatch = filterContext.match(/\[filter\s+by\s+Status:\s*"([^"]+)"\]/i);
+          const disambigCompanyMatch = filterContext.match(/\[filter\s+by\s+Company:\s*"([^"]+)"\]/i);
+          const disambigClientMatch = filterContext.match(/\[filter\s+by\s+Client:\s*"([^"]+)"\]/i);
+          
+          if (disambigCategoryMatch) {
+            columnArgs.category = disambigCategoryMatch[1].trim();
+            columnArgs._category_already_applied = true;
+            console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Disambiguation category="${columnArgs.category}"`);
+          } else if (disambigProjectTypeMatch) {
+            columnArgs.project_type = disambigProjectTypeMatch[1].trim();
+            console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Disambiguation project_type="${columnArgs.project_type}"`);
+          } else if (disambigStatusMatch) {
+            columnArgs.status = disambigStatusMatch[1].trim();
+          } else if (disambigCompanyMatch) {
+            columnArgs.company = disambigCompanyMatch[1].trim();
+          } else if (disambigClientMatch) {
+            columnArgs.client = disambigClientMatch[1].trim();
+          } else {
+            const categoryMatch = filterContext.match(/(?:(\w[\w\s]*?)\s+projects?|category[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
+            if (categoryMatch) {
+              columnArgs.category = (categoryMatch[1] || categoryMatch[2]).trim();
+              columnArgs._category_already_applied = true;
+              console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Extracted category="${columnArgs.category}"`);
+            }
+            
+            const statusMatch = filterContext.match(/\b(won|lost|submitted|qualified|proposal\s+development|closed|active|open)\b/i);
+            if (statusMatch && !categoryMatch) {
+              columnArgs.status = statusMatch[1].trim();
+            }
+            
+            const companyMatch = filterContext.match(/(?:company[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
+            if (companyMatch) columnArgs.company = companyMatch[1].trim();
+            
+            const clientMatch = filterContext.match(/(?:client[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
+            if (clientMatch) columnArgs.client = clientMatch[1].trim();
+          }
+          
+          const columnResult = await this.executeQuery('select_specific_columns', columnArgs, externalDbQuery, userQuestion);
+          if (columnResult.data && columnResult.data.length > 0) {
+            const chartConfig = this.generateChartConfig(columnResult.data, 'select_specific_columns');
+            return {
+              success: true,
+              data: columnResult.data,
+              row_count: columnResult.data.length,
+              question: userQuestion,
+              function_name: 'select_specific_columns',
+              ...chartConfig,
+              sql_query: columnResult.sql_query,
+              sql_params: columnResult.sql_params,
+            };
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════
       // EARLY SPECIFIC PROJECT NAME DETECTION
       // Detect "provide/show/list projects [LONG SPECIFIC NAME]" or "list [LONG NAME]" and ask user
       // Skip if query already contains disambiguation selection [filter by ...]
