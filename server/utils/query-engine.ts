@@ -10088,7 +10088,8 @@ Return ONLY valid JSON, no explanation.`;
     // 2. FEE/BUDGET EXTRACTION
     // ═══════════════════════════════════════════════════════════════
     
-    // SKIP fee extraction if question mentions win rate - prevents "win rate above 50" confusion
+    // Fee extraction: When win rate context is present, only extract fees that have
+    // explicit currency indicators (million/m/b/$) to avoid "win rate above 50" confusion
     const hasWinRateContext = /\b(?:win\s*%|win\s+rate|win\s+percentage|success\s+rate|probability)\b/i.test(questionLower);
     
     const feePatterns = [
@@ -10096,28 +10097,34 @@ Return ONLY valid JSON, no explanation.`;
       /(?:budget|fee|cost|revenue|value|price)\s*(?:above|over|greater\s+th[ae]n|more\s+th[ae]n|>=?|exceeding|at\s+least)\s*\$?([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?/i,
       // "above $50M budget" - REQUIRES $ sign AND optional keyword at END
       /(?:above|over|greater\s+th[ae]n|more\s+th[ae]n|>=?)\s*\$([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?\s*(?:budget|fee|cost|revenue|value)?/i,
-      // "above 100 million" - requires million/m/b/billion suffix (explicit currency scale)
-      /(?:above|over|greater\s+th[ae]n|more\s+th[ae]n|>=?)\s*([\d,]+(?:\.\d+)?)\s*(million|m|billion|b)\s*(?:budget|fee|cost|revenue|value)?/i,
+      // "over 50million projects" or "above 100 million" - requires million/m/b/billion suffix
+      /(?:above|over|greater\s+th[ae]n|more\s+th[ae]n|>=?)\s*([\d,]+(?:\.\d+)?)\s*(million|m|billion|b)\s*(?:budget|fee|cost|revenue|value|projects?|deals?|opportunities?)?/i,
       // "projects with budget above $50M"
       /(?:with|having)\s+(?:budget|fee|cost|revenue|value)\s+(?:above|over|greater\s+th[ae]n|more\s+th[ae]n)\s*\$?([\d,]+(?:\.\d+)?)\s*(million|m|k|thousand|b|billion)?/i,
+      // "50million projects" or "50m projects" (number immediately followed by million/m)
+      /\b([\d,]+(?:\.\d+)?)\s*(million|m|billion|b)\s+(?:projects?|deals?|opportunities?|dollar)/i,
     ];
     
-    if (!hasWinRateContext) {
-      for (const pattern of feePatterns) {
-        const match = userQuestion.match(pattern);
-        if (match) {
-          let value = parseFloat(match[1].replace(/,/g, ''));
-          const suffix = (match[2] || '').toLowerCase();
-          if (suffix === 'billion' || suffix === 'b') value *= 1000000000;
-          else if (suffix === 'million' || suffix === 'm') value *= 1000000;
-          else if (suffix === 'thousand' || suffix === 'k') value *= 1000;
-          // Only multiply by 1M if there's an explicit suffix OR explicit $ sign
-          else if (value < 1000 && userQuestion.includes('$')) value *= 1000000;
-          
-          extractedContext.min_fee = value;
-          console.log(`[ExtractContext] 💰 Detected min_fee: $${value.toLocaleString()}`);
-          break;
+    for (const pattern of feePatterns) {
+      const match = userQuestion.match(pattern);
+      if (match) {
+        let value = parseFloat(match[1].replace(/,/g, ''));
+        const suffix = (match[2] || '').toLowerCase();
+        const hasCurrencyIndicator = suffix === 'billion' || suffix === 'b' || suffix === 'million' || suffix === 'm' || suffix === 'thousand' || suffix === 'k' || userQuestion.includes('$');
+        
+        if (hasWinRateContext && !hasCurrencyIndicator) {
+          console.log(`[ExtractContext] ⚠️ Skipping ambiguous fee "${match[0]}" - win rate context present without currency indicator`);
+          continue;
         }
+        
+        if (suffix === 'billion' || suffix === 'b') value *= 1000000000;
+        else if (suffix === 'million' || suffix === 'm') value *= 1000000;
+        else if (suffix === 'thousand' || suffix === 'k') value *= 1000;
+        else if (value < 1000 && userQuestion.includes('$')) value *= 1000000;
+        
+        extractedContext.min_fee = value;
+        console.log(`[ExtractContext] 💰 Detected min_fee: $${value.toLocaleString()}`);
+        break;
       }
     }
     
@@ -10137,26 +10144,27 @@ Return ONLY valid JSON, no explanation.`;
       /(?:below|under|less\s+th[ae]n|<=?)\s*([\d,]+(?:\.\d+)?)\s*(million|m|billion|b)\s*(?:budget|fee|cost|revenue|value)?/i,
     ];
     
-    // Use the same hasWinRateContext check from above for max_fee
-    if (!hasWinRateContext) {
-      for (const pattern of maxFeePatterns) {
-        const match = userQuestion.match(pattern);
-        if (match) {
-          let value = parseFloat(match[1].replace(/,/g, ''));
-          const suffix = (match[2] || '').toLowerCase();
-          if (suffix === 'billion' || suffix === 'b') value *= 1000000000;
-          else if (suffix === 'million' || suffix === 'm') value *= 1000000;
-          else if (suffix === 'thousand' || suffix === 'k') value *= 1000;
-          // Only multiply by 1M if there's an explicit suffix OR explicit $ sign
-          else if (value < 1000 && userQuestion.includes('$')) value *= 1000000;
-          
-          extractedContext.max_fee = value;
-          console.log(`[ExtractContext] 💰 Detected max_fee: $${value.toLocaleString()}`);
-          break;
+    for (const pattern of maxFeePatterns) {
+      const match = userQuestion.match(pattern);
+      if (match) {
+        let value = parseFloat(match[1].replace(/,/g, ''));
+        const suffix = (match[2] || '').toLowerCase();
+        const hasCurrencyIndicator = suffix === 'billion' || suffix === 'b' || suffix === 'million' || suffix === 'm' || suffix === 'thousand' || suffix === 'k' || userQuestion.includes('$');
+        
+        if (hasWinRateContext && !hasCurrencyIndicator) {
+          console.log(`[ExtractContext] ⚠️ Skipping ambiguous max_fee "${match[0]}" - win rate context present without currency indicator`);
+          continue;
         }
+        
+        if (suffix === 'billion' || suffix === 'b') value *= 1000000000;
+        else if (suffix === 'million' || suffix === 'm') value *= 1000000;
+        else if (suffix === 'thousand' || suffix === 'k') value *= 1000;
+        else if (value < 1000 && userQuestion.includes('$')) value *= 1000000;
+        
+        extractedContext.max_fee = value;
+        console.log(`[ExtractContext] 💰 Detected max_fee: $${value.toLocaleString()}`);
+        break;
       }
-    } else {
-      console.log(`[ExtractContext] ⚠️ Skipping fee extraction - question mentions win rate`);
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -16531,6 +16539,19 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         }
       }
 
+      // STATUS_AND_WIN_RATE → COMBINED_FILTERS REROUTE GUARD:
+      // When LLM picks get_projects_by_status_and_win_rate but user didn't mention any specific
+      // status (Won, Lost, Lead, etc.), reroute to get_projects_by_combined_filters which doesn't require status
+      if (classification.function_name === 'get_projects_by_status_and_win_rate') {
+        const qLow = userQuestion.toLowerCase();
+        const hasExplicitStatus = /\b(won|lost|lead|submitted|in\s+progress|proposal\s+development|qualified\s+lead|hold|no[- ]?go|cancelled|canceled|closed|open|active|awarded)\b/i.test(qLow);
+        if (!hasExplicitStatus) {
+          console.log(`[QueryEngine] STATUS_WIN_RATE GUARD: No explicit status in question, rerouting to get_projects_by_combined_filters`);
+          classification.function_name = 'get_projects_by_combined_filters';
+          delete classification.arguments.status;
+        }
+      }
+
       // CATEGORY "ALL" / INVALID REROUTE GUARD:
       // When LLM picks a category-specific function but category is "All", missing,
       // or a nonsensical value (year number, ordinal word, generic term), reroute to general revenue function
@@ -21143,7 +21164,7 @@ Response (JSON only):`;
     const OPEN_SYNONYMS = '(open|active|ongoing|in\\s*progress|current|live|running|pursuing|pending|in\\s*pipeline|in\\s*the\\s*works|underway|working|operating|available|in\\s*play|not\\s*closed|still\\s*open|still\\s*active)';
     
     // CLOSED synonyms: closed, inactive, done, finished, completed, ended, terminated, cancelled, lost, dead, stopped, concluded, over, past, historical, archived, killed
-    const CLOSED_SYNONYMS = '(closed?|inactive|done|finished|completed|ended|terminated|cancel+ed|lost|dead|stopped|concluded|over|past|historical|archived|killed|defunct|wrapped\\s*up|shut\\s*down|not\\s*active|no\\s*longer\\s*active)';
+    const CLOSED_SYNONYMS = '(closed?|inactive|done|finished|completed|ended|terminated|cancel+ed|lost|dead|stopped|concluded|past|historical|archived|killed|defunct|wrapped\\s*up|shut\\s*down|not\\s*active|no\\s*longer\\s*active)';
     
     // Pattern 1: [status] [noun] - e.g., "open projects", "active deals", "closed opportunities"
     const pattern1Open = new RegExp(`\\b${OPEN_SYNONYMS}\\s+(?:\\w+\\s+)*?(projects?|deals?|opportunities?|items?|work|pipeline)\\b`, 'i');
