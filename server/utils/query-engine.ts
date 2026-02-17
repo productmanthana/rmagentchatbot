@@ -19293,6 +19293,27 @@ Response (JSON only):`;
       if (!results.success) {
         console.error(`[QUERY LOG] EXECUTION FAILED: fn="${functionName}", error="${results.error}", question="${userQuestion}"`);
       }
+      if (!results.success && functionName === 'ai_data_analysis') {
+        console.error(`[QUERY LOG] ai_data_analysis FAILED - returning error directly (no fallback): error="${results.error}"`);
+        const aiErrorMsg = results.error || 'AI analysis encountered an issue. Please try again.';
+        return {
+          success: true,
+          question: userQuestion,
+          function_name: 'ai_data_analysis',
+          arguments: args,
+          data: [{
+            type: 'ai_analysis',
+            narrative: `## Analysis Error\n\n${aiErrorMsg}\n\n*Please try rephrasing your question or try again in a moment.*`,
+            aggregates: { count: 0, totalFee: 0, avgFee: 0 },
+            samples: [],
+            question: userQuestion,
+            is_empty_result: true,
+          }],
+          row_count: 0,
+          summary: {},
+          chart_config: null,
+        };
+      }
       if (!results.success) {
         // Convert technical errors to user-friendly messages
         const errorMessage = results.error || "Query execution failed";
