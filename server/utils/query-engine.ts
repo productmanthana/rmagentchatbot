@@ -10840,7 +10840,7 @@ Return ONLY valid JSON, no explanation.`;
       // Intercept "show contacts for X projects" → select_specific_columns
       // This ensures the query returns Point of Contact column instead of SELECT *
       // ═══════════════════════════════════════════════════════════════
-      const showColumnForPattern = /\b(?:show|display|list|get|provide|give)\s+(?:me\s+)?(?:the\s+)?(?:all\s+)?(contacts?|pocs?|point\s+of\s+contacts?|clients?|companies?|fees?|status(?:es)?|categor(?:y|ies)|tags?|divisions?|departments?|titles?|project\s+names?|regions?|states?|types?|project\s+types?|descriptions?)\s+(?:for|of|in|from|on)\s+(.+)/i;
+      const showColumnForPattern = /\b(?:show|display|list|get|provide|give)\s+(?:me\s+)?(?:the\s+)?(?:all\s+)?(contacts?|pocs?|point\s+of\s+contacts?|clients?|companies?|fees?|status(?:es)?|categor(?:y|ies)|tags?|divisions?|departments?|titles?|project\s+names?|regions?|states?|types?|project\s+types?|descriptions?)\s+(?:details?\s+)?(?:for|of|in|from|on)\s+(.+)/i;
       const showColumnMatch = userQuestion.match(showColumnForPattern);
       if (showColumnMatch) {
         const columnTerm = showColumnMatch[1].toLowerCase().trim();
@@ -10895,23 +10895,36 @@ Return ONLY valid JSON, no explanation.`;
           } else if (disambigClientMatch) {
             columnArgs.client = disambigClientMatch[1].trim();
           } else {
-            const categoryMatch = filterContext.match(/(?:(\w[\w\s]*?)\s+projects?|category[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
-            if (categoryMatch) {
-              columnArgs.category = (categoryMatch[1] || categoryMatch[2]).trim();
+            const categoryMatch = filterContext.match(/(\w[\w\s]*?)\s+projects?\b/i);
+            const explicitCategoryMatch = filterContext.match(/category[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$)/i);
+            if (explicitCategoryMatch) {
+              columnArgs.category = explicitCategoryMatch[1].trim();
+              columnArgs._category_already_applied = true;
+              console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Extracted explicit category="${columnArgs.category}"`);
+            } else if (categoryMatch) {
+              columnArgs.category = categoryMatch[1].trim();
               columnArgs._category_already_applied = true;
               console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Extracted category="${columnArgs.category}"`);
             }
             
             const statusMatch = filterContext.match(/\b(won|lost|submitted|qualified|proposal\s+development|closed|active|open)\b/i);
-            if (statusMatch && !categoryMatch) {
+            if (statusMatch && !categoryMatch && !explicitCategoryMatch) {
               columnArgs.status = statusMatch[1].trim();
             }
             
             const companyMatch = filterContext.match(/(?:company[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
             if (companyMatch) columnArgs.company = companyMatch[1].trim();
             
-            const clientMatch = filterContext.match(/(?:client[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
-            if (clientMatch) columnArgs.client = clientMatch[1].trim();
+            const explicitClientMatch = filterContext.match(/(?:client[:\s]+["']?(\w[\w\s]*?)["']?(?:\s|$))/i);
+            if (explicitClientMatch) {
+              columnArgs.client = explicitClientMatch[1].trim();
+            } else if (!categoryMatch && !explicitCategoryMatch && !statusMatch && !companyMatch) {
+              const entityName = filterContext.replace(/\b(projects?|under|with|from|all|the)\b/gi, '').trim();
+              if (entityName.length >= 3) {
+                columnArgs.client = entityName;
+                console.log(`[QueryEngine] 📋 SHOW COLUMN INTERCEPT: Entity as client="${entityName}"`);
+              }
+            }
           }
           
           const columnResult = await this.executeQuery('select_specific_columns', columnArgs, externalDbQuery, userQuestion);
