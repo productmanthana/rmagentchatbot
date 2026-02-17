@@ -22716,19 +22716,36 @@ Based on ${aggregates.count} projects:
   private async callGPT5ForAnalysis(systemPrompt: string, userPrompt: string): Promise<string> {
     console.log(`[AI Analysis] Prompt length: ${(systemPrompt + userPrompt).length} chars`);
     
-    // Use GPT-5.2 for analytical insights (better reasoning than gpt-4o)
-    const analysis = await this.openaiClient.chat(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      { 
-        model: "gpt-5.1", // Best available model for analysis
-        max_completion_tokens: 3000
-      }
-    );
-    
-    console.log(`[AI Analysis] Response length: ${analysis.length} chars`);
+    // Try GPT-5.1 first, fall back to gpt-4o if it times out or fails
+    let analysis: string;
+    try {
+      const startTime = Date.now();
+      analysis = await this.openaiClient.chat(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        { 
+          model: "gpt-5.1",
+          max_completion_tokens: 3000
+        }
+      );
+      console.log(`[AI Analysis] GPT-5.1 responded in ${Date.now() - startTime}ms, length: ${analysis?.length} chars`);
+    } catch (primaryError: any) {
+      console.warn(`[AI Analysis] GPT-5.1 failed (${primaryError?.message}), retrying with gpt-4o...`);
+      const startTime = Date.now();
+      analysis = await this.openaiClient.chat(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        { 
+          model: "gpt-4o",
+          max_completion_tokens: 3000
+        }
+      );
+      console.log(`[AI Analysis] gpt-4o fallback responded in ${Date.now() - startTime}ms, length: ${analysis?.length} chars`);
+    }
     
     if (!analysis || analysis.trim().length === 0) {
       throw new Error(`AI analysis returned empty response`);
