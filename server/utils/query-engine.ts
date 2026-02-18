@@ -22788,22 +22788,60 @@ Based on ${aggregates.count} projects:
       
       console.log(`[AI Analysis] ✓ Analysis complete`);
       
+      const sortedQuarters = Object.entries(quarterGroups)
+        .sort((a, b) => a[0].localeCompare(b[0]));
+      const breakdownRows = sortedQuarters.map(([q, g]) => ({
+        Quarter: q,
+        Projects: g.count,
+        'Total Fee': g.totalFee,
+        'Avg Fee': g.avgFee,
+        'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
+      }));
+
+      let analysisChartConfig = null;
+      if (sortedQuarters.length > 0) {
+        analysisChartConfig = {
+          type: 'bar' as const,
+          title: `Quarterly Breakdown${args.company ? ` - ${args.company}` : ''}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`,
+          labels: sortedQuarters.map(([q]) => q),
+          datasets: [
+            {
+              label: 'Total Fee ($M)',
+              data: sortedQuarters.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
+            },
+            {
+              label: 'Avg Win Rate (%)',
+              data: sortedQuarters.map(([, g]) => parseFloat(g.avgWinRate.toFixed(1)))
+            }
+          ],
+          tooltipFormat: 'number' as const,
+          showLegend: true,
+          legendPosition: 'top' as const
+        };
+      }
+
       // Return AI analysis with metadata (include function_name & arguments for follow-up questions)
       return {
         success: true,
         question: analysis_question,
         function_name: 'ai_data_analysis',
-        arguments: args, // Enable follow-up question context preservation
+        arguments: args,
         data: [{
           type: 'ai_analysis',
           narrative: aiAnalysis,
           aggregates,
           samples: data.slice(0, 10),
-          question: analysis_question
+          question: analysis_question,
+          breakdown_data: breakdownRows
         }],
-        row_count: aggregates.count, // Number of projects analyzed, not data array length
-        summary: aggregates,
-        chart_config: null,
+        row_count: aggregates.count,
+        summary: {
+          total_records: aggregates.count,
+          total_value: aggregates.totalFee,
+          avg_fee: aggregates.avgFee,
+          avg_win_rate: aggregates.avgWinRate
+        },
+        chart_config: analysisChartConfig,
         message: `Analyzed ${aggregates.count} projects`,
         sql_query: sql,
         sql_params: params

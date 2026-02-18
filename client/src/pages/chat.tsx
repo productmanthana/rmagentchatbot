@@ -4430,12 +4430,31 @@ export default function ChatPage() {
                                       </div>
                                     ) : message.response.data?.[0]?.type === 'ai_analysis' ? (
                                       <>
-                                        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-6">
-                                          <div className="flex items-center justify-between mb-4">
-                                            <h3 className="font-semibold text-[#111827] flex items-center gap-2">
-                                              <Brain className="h-5 w-5 text-[#8BC34A]" />
-                                              AI Analysis
-                                            </h3>
+                                        <Tabs
+                                          value={activeTabPerMessage[message.id] || "data"}
+                                          className="w-full"
+                                          onValueChange={(value) => {
+                                            setActiveTabPerMessage(prev => ({
+                                              ...prev,
+                                              [message.id]: value
+                                            }));
+                                          }}
+                                        >
+                                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                                            <TabsList className="bg-[#F3F4F6] border border-[#E5E7EB] text-[#374151]">
+                                              <TabsTrigger value="data" className="!text-[#374151] data-[state=active]:!bg-white data-[state=active]:!text-[#111827]" data-testid="tab-ai-response">
+                                                Response
+                                              </TabsTrigger>
+                                              <TabsTrigger value="chart" className="!text-[#374151] data-[state=active]:!bg-white data-[state=active]:!text-[#111827]" data-testid="tab-ai-chart">
+                                                Chart
+                                              </TabsTrigger>
+                                              {canViewLogsTab && (
+                                                <TabsTrigger value="logs" className="!text-[#374151] data-[state=active]:!bg-white data-[state=active]:!text-[#111827]" data-testid="tab-ai-logs">
+                                                  <FileText className="h-4 w-4 mr-1" />
+                                                  Logs
+                                                </TabsTrigger>
+                                              )}
+                                            </TabsList>
                                             <div className="flex items-center gap-2">
                                               <Button
                                                 size="sm"
@@ -4492,10 +4511,67 @@ export default function ChatPage() {
                                               </Button>
                                             </div>
                                           </div>
-                                          <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
-                                            <MarkdownRenderer content={message.response.data[0].narrative} />
-                                          </div>
-                                        </div>
+
+                                          <TabsContent value="data" className="space-y-4 mt-4">
+                                            <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-6">
+                                              <div className="flex items-center gap-2 mb-4">
+                                                <Brain className="h-5 w-5 text-[#8BC34A]" />
+                                                <h3 className="font-semibold text-[#111827]">AI Analysis</h3>
+                                              </div>
+                                              <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
+                                                <MarkdownRenderer content={message.response.data[0].narrative} />
+                                              </div>
+                                            </div>
+                                            {message.response.data[0].breakdown_data && message.response.data[0].breakdown_data.length > 0 && (
+                                              <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
+                                                <div className="flex items-center justify-between mb-4">
+                                                  <div className="flex items-center gap-2">
+                                                    <h3 className="font-semibold text-[#111827]">Data Table</h3>
+                                                  </div>
+                                                </div>
+                                                <TableWithExternalScrollbar
+                                                  data={message.response.data[0].breakdown_data}
+                                                  messageId={`ai-breakdown-${message.id}`}
+                                                  height="300px"
+                                                  enableColumnSelection={false}
+                                                  selectedColumns={new Set()}
+                                                  onColumnSelectionChange={() => {}}
+                                                />
+                                              </div>
+                                            )}
+                                          </TabsContent>
+
+                                          <TabsContent value="chart" className="space-y-4 mt-4">
+                                            {message.response.chart_config ? (
+                                              <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
+                                                <ChartComparison config={message.response.chart_config} />
+                                              </div>
+                                            ) : (
+                                              <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-6 text-center text-[#6B7280]">
+                                                No chart available for this analysis
+                                              </div>
+                                            )}
+                                          </TabsContent>
+
+                                          {canViewLogsTab && (
+                                            <TabsContent value="logs" className="space-y-4 mt-4">
+                                              <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-6 space-y-4">
+                                                <div>
+                                                  <p className="text-xs text-[#6B7280] mb-1 font-mono">SQL QUERY:</p>
+                                                  <pre className="text-xs text-[#8BC34A] font-mono bg-white p-3 rounded border overflow-x-auto whitespace-pre-wrap">{message.response.sql_query || "N/A"}</pre>
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs text-[#6B7280] mb-1 font-mono">PARAMETERS:</p>
+                                                  <pre className="text-xs text-[#EA580C] font-mono bg-white p-3 rounded border overflow-x-auto whitespace-pre-wrap">{JSON.stringify(message.response.sql_params || [], null, 2)}</pre>
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs text-[#6B7280] mb-1 font-mono">FUNCTION:</p>
+                                                  <pre className="text-xs text-[#3B82F6] font-mono bg-white p-3 rounded border overflow-x-auto">{message.response.function_name || "N/A"}</pre>
+                                                </div>
+                                              </div>
+                                            </TabsContent>
+                                          )}
+                                        </Tabs>
 
                                         {/* Follow-up Questions Section - Temporarily hidden */}
                                         {!HIDE_FOLLOWUP && !(message.response.data?.[0]?.is_fallback) && 
