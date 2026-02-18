@@ -22712,6 +22712,44 @@ ABSOLUTE PROHIBITIONS:
         args.linked_projects !== undefined ? `Linked Projects: ${Number(args.linked_projects) > 0 ? '> 0 (has links)' : '= 0 (none)'}` : null
       ].filter(Boolean).join(', ');
       
+      let perCompanyBreakdown = '';
+      if (args.companies && Array.isArray(args.companies) && args.companies.length > 1) {
+        const compSections = args.companies.map((comp: string) => {
+          const compData = data.filter((p: any) => p.company && p.company.toLowerCase().includes(comp.toLowerCase()));
+          const compQuarters: Record<string, { count: number; totalFee: number; avgWinRate: number }> = {};
+          compData.forEach((p: any) => {
+            const dateStr = p.start_date;
+            if (dateStr) {
+              const d = new Date(dateStr);
+              if (!isNaN(d.getTime())) {
+                const year = d.getFullYear();
+                const quarter = Math.ceil((d.getMonth() + 1) / 3);
+                const key = `Q${quarter} ${year}`;
+                if (!compQuarters[key]) compQuarters[key] = { count: 0, totalFee: 0, avgWinRate: 0 };
+                compQuarters[key].count++;
+                compQuarters[key].totalFee += parseFloat(p.fee) || 0;
+              }
+            }
+          });
+          Object.keys(compQuarters).forEach(q => {
+            const g = compQuarters[q];
+            const qWinRates = compData.filter((p: any) => {
+              const d = new Date(p.start_date);
+              if (isNaN(d.getTime())) return false;
+              return `Q${Math.ceil((d.getMonth() + 1) / 3)} ${d.getFullYear()}` === q;
+            }).map((p: any) => parseFloat(p.win_rate) || 0);
+            g.avgWinRate = qWinRates.length > 0 ? qWinRates.reduce((a: number, b: number) => a + b, 0) / qWinRates.length : 0;
+          });
+          const compTotal = compData.reduce((sum: number, p: any) => sum + (parseFloat(p.fee) || 0), 0);
+          const compAvgWin = compData.length > 0 ? compData.reduce((sum: number, p: any) => sum + (parseFloat(p.win_rate) || 0), 0) / compData.length : 0;
+          const sortedQ = Object.entries(compQuarters).sort((a, b) => a[0].localeCompare(b[0]));
+          const bestQ = sortedQ.length > 0 ? sortedQ.reduce((best, curr) => curr[1].totalFee > best[1].totalFee ? curr : best) : null;
+          const lines = sortedQ.map(([q, g]) => `    - ${q}: ${g.count} projects, Total Fee: $${(g.totalFee / 1000000).toFixed(2)}M, Avg Win Rate: ${g.avgWinRate.toFixed(1)}%`).join('\n');
+          return `  ${comp.toUpperCase()} (${compData.length} projects, Total: $${(compTotal / 1000000).toFixed(1)}M, Avg Win Rate: ${compAvgWin.toFixed(1)}%):\n${lines}\n    → Best Quarter: ${bestQ ? `${bestQ[0]} ($${(bestQ[1].totalFee / 1000000).toFixed(2)}M)` : 'N/A'}`;
+        });
+        perCompanyBreakdown = `\nPER-COMPANY QUARTERLY BREAKDOWN (compare each company individually):\n${compSections.join('\n\n')}`;
+      }
+
       const userPrompt = `Question: "${analysis_question}"
 
 DATASET OVERVIEW (EXACT NUMBERS FROM DATABASE):
@@ -22731,6 +22769,7 @@ ${categoryBreakdown}
 
 BREAKDOWN BY QUARTER (based on project start dates):
 ${quarterBreakdown || '  No quarterly data available'}
+${perCompanyBreakdown}
 
 BREAKDOWN BY PROJECT TYPE (ProjectType column, TOP 15 BY TOTAL FEE):
 ${projectTypeBreakdown}
@@ -22765,6 +22804,7 @@ INSTRUCTIONS:
 - When comparing categories, use the pre-calculated averages from "BREAKDOWN BY CATEGORY"
 - When comparing project types (e.g., Hospitals, Higher Education, K-12), use "BREAKDOWN BY PROJECT TYPE"
 - When comparing quarters or identifying best/worst quarters, use "BREAKDOWN BY QUARTER"
+- When comparing multiple companies, use "PER-COMPANY QUARTERLY BREAKDOWN" to compare each company's performance individually — DO NOT say the data is combined or cannot be separated
 - When identifying top clients by fee, share of total, or % of pipeline, use "BREAKDOWN BY CLIENT" — each client's exact share % is pre-calculated
 - When analyzing which sectors/categories a specific client is concentrated in, use "CLIENT × CATEGORY DETAIL"
 - IMPORTANT: Category and Project Type are DIFFERENT columns. Match the user's terms to the correct breakdown
@@ -22830,7 +22870,78 @@ Based on ${aggregates.count} projects:
       const companySuffix = args.companies?.length ? ` - ${args.companies.join(' vs ')}` : (args.company ? ` - ${args.company}` : '');
       const filterSuffix = `${companySuffix}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`;
 
-      if (isQuarterQuery) {
+      const isMultiCompany = args.companies && Array.isArray(args.companies) && args.companies.length > 1;
+
+      if (isQuarterQuery && isMultiCompany) {
+        const allQuarterKeys = new Set<string>();
+        const perCompanyQuarters: Record<string, Record<string, { count: number; totalFee: number; avgFee: number; avgWinRate: number }>> = {};
+
+        args.companies.forEach((comp: string) => {
+          const compData = data.filter((p: any) => p.company && p.company.toLowerCase().includes(comp.toLowerCase()));
+          const compQuarters: Record<string, { count: number; totalFee: number; avgFee: number; avgWinRate: number }> = {};
+          compData.forEach((p: any) => {
+            const dateStr = p.start_date;
+            if (dateStr) {
+              const d = new Date(dateStr);
+              if (!isNaN(d.getTime())) {
+                const year = d.getFullYear();
+                const quarter = Math.ceil((d.getMonth() + 1) / 3);
+                const key = `Q${quarter} ${year}`;
+                allQuarterKeys.add(key);
+                if (!compQuarters[key]) compQuarters[key] = { count: 0, totalFee: 0, avgFee: 0, avgWinRate: 0 };
+                compQuarters[key].count++;
+                compQuarters[key].totalFee += parseFloat(p.fee) || 0;
+              }
+            }
+          });
+          Object.keys(compQuarters).forEach(q => {
+            const g = compQuarters[q];
+            g.avgFee = g.count > 0 ? g.totalFee / g.count : 0;
+            const qWinRates = compData.filter((p: any) => {
+              const d = new Date(p.start_date);
+              if (isNaN(d.getTime())) return false;
+              return `Q${Math.ceil((d.getMonth() + 1) / 3)} ${d.getFullYear()}` === q;
+            }).map((p: any) => parseFloat(p.win_rate) || 0);
+            g.avgWinRate = qWinRates.length > 0 ? qWinRates.reduce((a: number, b: number) => a + b, 0) / qWinRates.length : 0;
+          });
+          perCompanyQuarters[comp] = compQuarters;
+        });
+
+        const sortedQuarterKeys = [...allQuarterKeys].sort((a, b) => {
+          const [qa, ya] = [a.substring(0, 2), a.substring(3)];
+          const [qb, yb] = [b.substring(0, 2), b.substring(3)];
+          return ya !== yb ? ya.localeCompare(yb) : qa.localeCompare(qb);
+        });
+
+        breakdownRows = sortedQuarterKeys.map(q => {
+          const row: any = { Quarter: q };
+          args.companies.forEach((comp: string) => {
+            const g = perCompanyQuarters[comp]?.[q];
+            row[`${comp} Projects`] = g?.count || 0;
+            row[`${comp} Total Fee`] = g?.totalFee || 0;
+            row[`${comp} Avg Win Rate`] = g ? parseFloat(g.avgWinRate.toFixed(1)) : 0;
+          });
+          return row;
+        });
+
+        if (sortedQuarterKeys.length > 0) {
+          analysisChartConfig = {
+            type: 'bar' as const,
+            title: `Quarterly Comparison${filterSuffix}`,
+            labels: sortedQuarterKeys,
+            datasets: args.companies.map((comp: string, idx: number) => ({
+              label: `${comp} Total Fee ($M)`,
+              data: sortedQuarterKeys.map(q => {
+                const g = perCompanyQuarters[comp]?.[q];
+                return g ? parseFloat((g.totalFee / 1000000).toFixed(2)) : 0;
+              })
+            })),
+            tooltipFormat: 'currency' as const,
+            showLegend: true,
+            legendPosition: 'top' as const
+          };
+        }
+      } else if (isQuarterQuery) {
         const sortedQuarters = Object.entries(quarterGroups)
           .sort((a, b) => {
             const [qa, ya] = [a[0].substring(0, 2), a[0].substring(3)];
