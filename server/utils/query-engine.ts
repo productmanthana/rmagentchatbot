@@ -14446,12 +14446,32 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         // ═══════════════════════════════════════════════════════════════
         const bqYearMatch = userQuestion.match(/\b(20\d{2})\b/);
         const bqYear = bqYearMatch ? parseInt(bqYearMatch[1], 10) : new Date().getFullYear();
-        const bqCompanyMatch = userQuestion.match(/\b(?:for|of)\s+(?:the\s+)?(.+?)(?:\s+in\s+\d{4})/i);
+        const bqAllYears = [...userQuestion.matchAll(/\b(20\d{2})\b/g)].map(m => parseInt(m[1], 10));
+        const bqStartYear = bqAllYears.length > 0 ? Math.min(...bqAllYears) : bqYear;
+        const bqEndYear = bqAllYears.length > 0 ? Math.max(...bqAllYears) : bqYear;
+        const bqCompanyMatch = userQuestion.match(/\b(?:for|of)\s+(?:the\s+)?(.+?)(?:\s+(?:in|from)\s+\d{4})/i);
+        const bqBetweenMatch = userQuestion.match(/\b(?:between|comparing|compare)\s+(.+?)\s+(?:and|vs\.?|versus)\s+(.+?)(?:\s+(?:in|from|for)\s+|\s*$)/i);
+        const bqAndMatch = userQuestion.match(/\b(?:for|of)\s+(.+?)\s+(?:and|&)\s+(.+?)(?:\s+(?:in|from|for)\s+\d{4})/i);
         const bqRegionMatch = userQuestion.match(/\b(?:for|of|in)\s+(?:the\s+)?(.+?)\s+region\b/i);
-        const bqEntityName = bqRegionMatch ? bqRegionMatch[1] + ' region' : (bqCompanyMatch ? bqCompanyMatch[1].replace(/\b(us|our|the|company|firm)\b/gi, '').trim() : '');
-        console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Detected best/worst quarter query → forcing ai_data_analysis (entity="${bqEntityName}", year=${bqYear})`);
+        let bqEntityName = '';
+        let bqCompanies: string[] = [];
+        if (bqBetweenMatch) {
+          bqCompanies = [bqBetweenMatch[1].trim(), bqBetweenMatch[2].trim()].filter(c => c.length > 0 && !/^(us|our|we|the|my)$/i.test(c));
+          bqEntityName = bqCompanies.join(' and ');
+        } else if (bqAndMatch) {
+          bqCompanies = [bqAndMatch[1].trim(), bqAndMatch[2].trim()].filter(c => c.length > 0 && !/^(us|our|we|the|my)$/i.test(c));
+          bqEntityName = bqCompanies.join(' and ');
+        } else if (bqRegionMatch) {
+          bqEntityName = bqRegionMatch[1] + ' region';
+        } else if (bqCompanyMatch) {
+          bqEntityName = bqCompanyMatch[1].replace(/\b(us|our|the|company|firm)\b/gi, '').trim();
+        }
+        console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Detected best/worst quarter query → forcing ai_data_analysis (entity="${bqEntityName}", year=${bqStartYear}-${bqEndYear}, companies=${JSON.stringify(bqCompanies)})`);
         const bestQArgs: Record<string, any> = { analysis_question: userQuestion };
-        if (bqEntityName && !/^(us|our|we|the|my)$/i.test(bqEntityName) && bqEntityName.length > 0) {
+        if (bqCompanies.length > 1) {
+          bestQArgs.companies = bqCompanies;
+          console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Multi-company comparison: ${bqCompanies.join(', ')}`);
+        } else if (bqEntityName && !/^(us|our|we|the|my)$/i.test(bqEntityName) && bqEntityName.length > 0) {
           if (bqRegionMatch) {
             const regionVal = bqRegionMatch[1].trim();
             bestQArgs.region = regionVal;
@@ -14461,8 +14481,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             bestQArgs.company = bqEntityName;
           }
         }
-        bestQArgs.start_date = `${bqYear}-01-01`;
-        bestQArgs.end_date = `${bqYear}-12-31`;
+        bestQArgs.start_date = `${bqStartYear}-01-01`;
+        bestQArgs.end_date = `${bqEndYear}-12-31`;
         classification = {
           function_name: 'ai_data_analysis',
           arguments: bestQArgs
@@ -22227,7 +22247,15 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         params.push(actualEndDate);
       }
       
-      if (args.company) {
+      if (args.companies && Array.isArray(args.companies) && args.companies.length > 0) {
+        const companyConditions = args.companies.map((c: string) => {
+          const pIdx = paramIndex++;
+          params.push(`%${c}%`);
+          return `"Company" LIKE @p${pIdx}`;
+        });
+        whereClauses.push(`(${companyConditions.join(' OR ')})`);
+        console.log(`[AI Analysis] Multi-company filter applied: ${args.companies.join(', ')}`);
+      } else if (args.company) {
         whereClauses.push(`"Company" LIKE @p${paramIndex++}`);
         params.push(`%${args.company}%`);
         console.log(`[AI Analysis] Company filter applied: ${args.company}`);
@@ -22662,7 +22690,7 @@ ABSOLUTE PROHIBITIONS:
       }));
       
       const filterSummary = [
-        args.company ? `Company: ${args.company}` : null,
+        args.companies && Array.isArray(args.companies) && args.companies.length > 0 ? `Companies: ${args.companies.join(', ')}` : (args.company ? `Company: ${args.company}` : null),
         args.client ? `Client: ${args.client}` : null,
         args.regions && Array.isArray(args.regions) && args.regions.length > 0 ? `Region: ${args.regions.join(', ')}` : (args.region ? `Region: ${args.region}` : null),
         args.states && Array.isArray(args.states) && args.states.length > 0 ? `States: ${args.states.join(', ')}` : null,
@@ -22794,7 +22822,8 @@ Based on ${aggregates.count} projects:
 
       let breakdownRows: any[] = [];
       let analysisChartConfig: any = null;
-      const filterSuffix = `${args.company ? ` - ${args.company}` : ''}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`;
+      const companySuffix = args.companies?.length ? ` - ${args.companies.join(' vs ')}` : (args.company ? ` - ${args.company}` : '');
+      const filterSuffix = `${companySuffix}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`;
 
       if (isQuarterQuery) {
         const sortedQuarters = Object.entries(quarterGroups)
