@@ -14433,6 +14433,35 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           function_name: 'get_clients_by_time_period',
           arguments: timePeriodArgs
         };
+      } else if (
+        /\b(?:best|worst|strongest|weakest|top|peak|highest|lowest|busiest)\s+quarter\b/i.test(userQuestion) &&
+        /\b(20\d{2})\b/.test(userQuestion)
+      ) {
+        // ═══════════════════════════════════════════════════════════════
+        // BEST/WORST QUARTER OVERRIDE: Route to ai_data_analysis
+        // Detects: "which was the best quarter for [entity] in [year]"
+        // Needs all quarterly data to compare and determine the best/worst
+        // ═══════════════════════════════════════════════════════════════
+        const bqYearMatch = userQuestion.match(/\b(20\d{2})\b/);
+        const bqYear = bqYearMatch ? parseInt(bqYearMatch[1], 10) : new Date().getFullYear();
+        const bqCompanyMatch = userQuestion.match(/\b(?:for|of)\s+(?:the\s+)?(.+?)(?:\s+in\s+\d{4})/i);
+        const bqRegionMatch = userQuestion.match(/\b(?:for|of|in)\s+(?:the\s+)?(.+?)\s+region\b/i);
+        const bqEntityName = bqRegionMatch ? bqRegionMatch[1] + ' region' : (bqCompanyMatch ? bqCompanyMatch[1].replace(/\b(us|our|the|company|firm)\b/gi, '').trim() : '');
+        console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Detected best/worst quarter query → forcing ai_data_analysis (entity="${bqEntityName}", year=${bqYear})`);
+        const bestQArgs: Record<string, any> = { analysis_question: userQuestion };
+        if (bqEntityName && !/^(us|our|we|the|my)$/i.test(bqEntityName) && bqEntityName.length > 0) {
+          if (bqRegionMatch) {
+            bestQArgs.region = bqRegionMatch[1].trim();
+          } else {
+            bestQArgs.company = bqEntityName;
+          }
+        }
+        bestQArgs.start_date = `${bqYear}-01-01`;
+        bestQArgs.end_date = `${bqYear}-12-31`;
+        classification = {
+          function_name: 'ai_data_analysis',
+          arguments: bestQArgs
+        };
       } else {
         // Use request queue to limit concurrent OpenAI requests
         // This prevents rate limiting when many users query simultaneously
@@ -17703,6 +17732,9 @@ Response (JSON only):`;
             functionName = 'common_clients_between_companies';
           } else if (args._common_projects_query && classification.function_name === 'common_projects_between_companies') {
             functionName = 'common_projects_between_companies';
+          } else if (classification.function_name === 'ai_data_analysis') {
+            functionName = 'ai_data_analysis';
+            console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Preserving ai_data_analysis classification (entity resolved as ${headChefResult.entity.column})`);
           } else {
             functionName = headChefResult.functionName;
           }
@@ -22137,8 +22169,7 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       const params: any[] = [];
       let paramIndex = 1;
       
-      if (status) {
-        // Handle both single status and array of statuses
+      if (status && (!Array.isArray(status) || status.length > 0)) {
         if (Array.isArray(status)) {
           const statusConditions = status.map((s: string) => {
             const condition = `"StatusChoice" LIKE @p${paramIndex}`;
@@ -22189,6 +22220,52 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       if (actualEndDate) {
         whereClauses.push(`TRY_CONVERT(DATE, "ConstStartDate") <= @p${paramIndex++}`);
         params.push(actualEndDate);
+      }
+      
+      if (args.company) {
+        whereClauses.push(`"Company" LIKE @p${paramIndex++}`);
+        params.push(`%${args.company}%`);
+        console.log(`[AI Analysis] Company filter applied: ${args.company}`);
+      }
+      
+      if (args.client) {
+        whereClauses.push(`"Client" LIKE @p${paramIndex++}`);
+        params.push(`%${args.client}%`);
+        console.log(`[AI Analysis] Client filter applied: ${args.client}`);
+      }
+      
+      if (args.poc) {
+        whereClauses.push(`"PointOfContact" LIKE @p${paramIndex++}`);
+        params.push(`%${args.poc}%`);
+        console.log(`[AI Analysis] POC filter applied: ${args.poc}`);
+      }
+      
+      if (args.states && Array.isArray(args.states) && args.states.length > 0) {
+        const stateConditions = args.states.map((s: string) => {
+          const condition = `"State" LIKE @p${paramIndex}`;
+          params.push(`%${s}%`);
+          paramIndex++;
+          return condition;
+        });
+        whereClauses.push(`(${stateConditions.join(' OR ')})`);
+        console.log(`[AI Analysis] State filter applied: ${args.states.join(', ')}`);
+      }
+      
+      if (args.regions && Array.isArray(args.regions) && args.regions.length > 0) {
+        const regionConditions = args.regions.map((r: string) => {
+          const condition = `"Region" LIKE @p${paramIndex}`;
+          params.push(`%${r}%`);
+          paramIndex++;
+          return condition;
+        });
+        whereClauses.push(`(${regionConditions.join(' OR ')})`);
+        console.log(`[AI Analysis] Region filter applied: ${args.regions.join(', ')}`);
+      }
+      
+      if (args.division) {
+        whereClauses.push(`"Division" LIKE @p${paramIndex++}`);
+        params.push(`%${args.division}%`);
+        console.log(`[AI Analysis] Division filter applied: ${args.division}`);
       }
       
       // Add Conflict/COOP/Linked Projects filtering
@@ -22320,6 +22397,42 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         const catWinRates = data.filter(p => p.category === cat).map(p => parseFloat(p.win_rate) || 0);
         group.avgWinRate = catWinRates.length > 0 ? catWinRates.reduce((a, b) => a + b, 0) / catWinRates.length : 0;
       });
+      
+      // Compute per-quarter aggregates for quarterly comparison queries
+      const quarterGroups: Record<string, { count: number; totalFee: number; avgFee: number; avgWinRate: number }> = {};
+      data.forEach(p => {
+        const dateStr = p.start_date;
+        if (dateStr) {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            const year = d.getFullYear();
+            const quarter = Math.ceil((d.getMonth() + 1) / 3);
+            const key = `Q${quarter} ${year}`;
+            if (!quarterGroups[key]) {
+              quarterGroups[key] = { count: 0, totalFee: 0, avgFee: 0, avgWinRate: 0 };
+            }
+            quarterGroups[key].count++;
+            quarterGroups[key].totalFee += parseFloat(p.fee) || 0;
+          }
+        }
+      });
+      Object.keys(quarterGroups).forEach(q => {
+        const group = quarterGroups[q];
+        group.avgFee = group.count > 0 ? group.totalFee / group.count : 0;
+        const qWinRates = data.filter(p => {
+          const d = new Date(p.start_date);
+          if (isNaN(d.getTime())) return false;
+          const year = d.getFullYear();
+          const quarter = Math.ceil((d.getMonth() + 1) / 3);
+          return `Q${quarter} ${year}` === q;
+        }).map(p => parseFloat(p.win_rate) || 0);
+        group.avgWinRate = qWinRates.length > 0 ? qWinRates.reduce((a: number, b: number) => a + b, 0) / qWinRates.length : 0;
+      });
+      
+      const quarterBreakdown = Object.entries(quarterGroups)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([q, g]) => `  - ${q}: ${g.count} projects, Total Fee: $${(g.totalFee / 1000000).toFixed(2)}M, Avg Fee: $${(g.avgFee / 1000000).toFixed(2)}M, Avg Win Rate: ${g.avgWinRate.toFixed(1)}%`)
+        .join('\n');
       
       // Build per-status breakdown string
       const statusBreakdown = Object.entries(statusGroups)
@@ -22567,6 +22680,9 @@ ${statusBreakdown}
 BREAKDOWN BY CATEGORY (RequestCategory column, TOP 10 BY AVG FEE):
 ${categoryBreakdown}
 
+BREAKDOWN BY QUARTER (based on project start dates):
+${quarterBreakdown || '  No quarterly data available'}
+
 BREAKDOWN BY PROJECT TYPE (ProjectType column, TOP 15 BY TOTAL FEE):
 ${projectTypeBreakdown}
 NOTE: "Category" (RequestCategory) and "Project Type" (ProjectType) are DIFFERENT columns.
@@ -22599,6 +22715,7 @@ INSTRUCTIONS:
 - When comparing statuses, use the pre-calculated averages from "BREAKDOWN BY STATUS"
 - When comparing categories, use the pre-calculated averages from "BREAKDOWN BY CATEGORY"
 - When comparing project types (e.g., Hospitals, Higher Education, K-12), use "BREAKDOWN BY PROJECT TYPE"
+- When comparing quarters or identifying best/worst quarters, use "BREAKDOWN BY QUARTER"
 - When identifying top clients by fee, share of total, or % of pipeline, use "BREAKDOWN BY CLIENT" — each client's exact share % is pre-calculated
 - When analyzing which sectors/categories a specific client is concentrated in, use "CLIENT × CATEGORY DETAIL"
 - IMPORTANT: Category and Project Type are DIFFERENT columns. Match the user's terms to the correct breakdown
