@@ -238,8 +238,10 @@ function stripHallucinatedGeography(args: Record<string, any>, originalQuestion:
   ];
   
   // Region keywords
-  const REGIONS = ['west', 'east', 'north', 'south', 'midwest', 'northeast', 'southeast', 
-                   'southwest', 'northwest', 'pacific', 'mountain', 'central', 'gulf', 
+  const REGIONS = ['west', 'western', 'east', 'eastern', 'north', 'northern', 'south', 'southern',
+                   'midwest', 'midwestern', 'northeast', 'northeastern', 'southeast', 'southeastern', 
+                   'southwest', 'southwestern', 'northwest', 'northwestern',
+                   'pacific', 'mountain', 'central', 'gulf', 
                    'atlantic', 'mena', 'uae', 'middle east',
                    // International regions
                    'europe', 'asia', 'africa', 'oceania', 'canada', 'latin america',
@@ -14451,7 +14453,10 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         const bestQArgs: Record<string, any> = { analysis_question: userQuestion };
         if (bqEntityName && !/^(us|our|we|the|my)$/i.test(bqEntityName) && bqEntityName.length > 0) {
           if (bqRegionMatch) {
-            bestQArgs.region = bqRegionMatch[1].trim();
+            const regionVal = bqRegionMatch[1].trim();
+            bestQArgs.region = regionVal;
+            bestQArgs.regions = [regionVal];
+            console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Region filter set: region="${regionVal}", regions=["${regionVal}"]`);
           } else {
             bestQArgs.company = bqEntityName;
           }
@@ -22260,6 +22265,10 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
         });
         whereClauses.push(`(${regionConditions.join(' OR ')})`);
         console.log(`[AI Analysis] Region filter applied: ${args.regions.join(', ')}`);
+      } else if (args.region && typeof args.region === 'string') {
+        whereClauses.push(`"Region" LIKE @p${paramIndex++}`);
+        params.push(`%${args.region}%`);
+        console.log(`[AI Analysis] Region filter applied (singular): ${args.region}`);
       }
       
       if (args.division) {
@@ -22653,6 +22662,13 @@ ABSOLUTE PROHIBITIONS:
       }));
       
       const filterSummary = [
+        args.company ? `Company: ${args.company}` : null,
+        args.client ? `Client: ${args.client}` : null,
+        args.regions && Array.isArray(args.regions) && args.regions.length > 0 ? `Region: ${args.regions.join(', ')}` : (args.region ? `Region: ${args.region}` : null),
+        args.states && Array.isArray(args.states) && args.states.length > 0 ? `States: ${args.states.join(', ')}` : null,
+        args.poc ? `Point of Contact: ${args.poc}` : null,
+        args.division ? `Division: ${args.division}` : null,
+        args.start_date ? `Date: ${args.start_date} to ${args.end_date || 'present'}` : null,
         status ? `Status: ${Array.isArray(status) ? status.join(', ') : status}` : null,
         categories && categories.length > 0 ? `Categories: ${categories.join(', ')}` : null,
         tags && tags.length > 0 ? `Tags: ${tags.join(', ')}` : null,
