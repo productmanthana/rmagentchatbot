@@ -109,7 +109,7 @@ const COLUMN_SYNONYMS: Record<string, string[]> = {
   "LP": ["lp", "limited partner", "limited partnership"],
   "Conflict": ["conflict", "conflicts", "conflict of interest", "conflict flag", "conflict check", "conflict exposure", "conflict status", "conflicted", "has conflict"],
   "COOP": ["coop", "co-op", "co op", "cooperative", "cooperation", "coop flag", "coop status", "cooperative flag", "co-operative", "joint venture", "co-operative project"],
-  // NOTE: "Linked Projects" column does not exist in the database view - removed to prevent SQL errors
+  "Linked Projects": ["linked projects", "linked", "related projects", "associated projects", "linked project count", "connections", "project links", "cross-referenced", "related", "linked count"],
   
   // Group Criteria
   "GroupCriteria": ["group criteria", "criteria", "grouping criteria"],
@@ -5331,6 +5331,7 @@ export class QueryEngine {
               COUNT(CASE WHEN "StatusChoice" = 'Lost' THEN 1 END) as lost_count,
               SUM(ISNULL("Conflict", 0)) as conflict_count,
               SUM(ISNULL("COOP", 0)) as coop_count,
+              SUM(ISNULL("Linked Projects", 0)) as linked_projects_count,
               MAX("ConstStartDate") as latest_project
               FROM "${TABLE}"
               WHERE "Client" IS NOT NULL AND "Client" != ''
@@ -19292,26 +19293,6 @@ Response (JSON only):`;
       if (!results.success) {
         console.error(`[QUERY LOG] EXECUTION FAILED: fn="${functionName}", error="${results.error}", question="${userQuestion}"`);
       }
-      if (!results.success && functionName === 'ai_data_analysis') {
-        console.log(`[QueryEngine] AI Analysis returned error - providing graceful response instead of fallback`);
-        const aiErrorMsg = results.error || 'AI analysis could not be completed at this time.';
-        return {
-          success: true,
-          question: userQuestion,
-          function_name: 'ai_data_analysis',
-          arguments: args,
-          data: [{
-            type: 'ai_analysis',
-            narrative: `## Analysis Temporarily Unavailable\n\nI was unable to complete the analysis for your question: "${userQuestion}"\n\n**Reason**: ${aiErrorMsg}\n\nPlease try again in a moment, or rephrase your question for a more specific query.`,
-            aggregates: { count: 0, totalFee: 0, avgFee: 0 },
-            samples: [],
-            question: userQuestion,
-          }],
-          row_count: 1,
-          summary: {},
-          chart_config: null,
-        };
-      }
       if (!results.success) {
         // Convert technical errors to user-friendly messages
         const errorMessage = results.error || "Query execution failed";
@@ -22242,26 +22223,6 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
       }
 
       // Build SQL query - NO LIMIT, analyze ALL matching projects
-      // Use dynamic column detection to handle missing optional columns (Conflict, COOP, Linked Projects)
-      // These columns may not exist in all database views
-      let optionalColsSql = '0 as conflict, 0 as coop, 0 as linked_projects';
-      try {
-        const colInfoResult = await externalDbQuery(
-          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @p1 AND COLUMN_NAME IN ('Conflict', 'COOP', 'Linked Projects')`,
-          [TABLE]
-        );
-        const existingCols = new Set(colInfoResult.map((r: any) => r.COLUMN_NAME));
-        const colParts = [
-          existingCols.has('Conflict') ? `ISNULL("Conflict", 0) as conflict` : `0 as conflict`,
-          existingCols.has('COOP') ? `ISNULL("COOP", 0) as coop` : `0 as coop`,
-          existingCols.has('Linked Projects') ? `ISNULL("Linked Projects", 0) as linked_projects` : `0 as linked_projects`
-        ];
-        optionalColsSql = colParts.join(', ');
-        console.log(`[AI Analysis] Optional columns detected: ${Array.from(existingCols).join(', ') || 'none'}`);
-      } catch(e) {
-        console.log(`[AI Analysis] Column detection failed, using defaults (0) for optional columns`);
-      }
-      
       const sql = `
         SELECT 
           "Title" as project_name,
@@ -22274,7 +22235,9 @@ Alternatively, specify a project directly: "Show similar projects to PID 820"`);
           "RequestCategory" as category,
           "State" as region,
           "ProjectType" as project_type,
-          ${optionalColsSql}
+          ISNULL("Conflict", 0) as conflict,
+          ISNULL("COOP", 0) as coop,
+          ISNULL("Linked Projects", 0) as linked_projects
         FROM "${TABLE}"
         WHERE ${whereClauses.join(' AND ')}
         ORDER BY ISNULL("Fee", 0) DESC`;

@@ -50,13 +50,13 @@ export class OpenAIClient {
   constructor(apiKey: string, model: string = 'gpt-5.1') {
     // Always use direct OpenAI API with user's API key
     console.log(`[OpenAI] Using direct OpenAI API with model: ${model}`);
-    this.client = new OpenAI({ apiKey, timeout: 120000 });
+    this.client = new OpenAI({ apiKey });
     this.model = model;
     
     // Check for backup API key (from different organization for rate limit resilience)
     const backupKey = process.env.OPENAI_API_KEY_BACKUP;
     if (backupKey && backupKey !== apiKey) {
-      this.backupClient = new OpenAI({ apiKey: backupKey, timeout: 120000 });
+      this.backupClient = new OpenAI({ apiKey: backupKey });
       console.log('[OpenAI] ✓ Backup API key configured for failover');
     }
   }
