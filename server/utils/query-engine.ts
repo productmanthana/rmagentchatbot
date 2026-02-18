@@ -22788,36 +22788,124 @@ Based on ${aggregates.count} projects:
       
       console.log(`[AI Analysis] ✓ Analysis complete`);
       
-      const sortedQuarters = Object.entries(quarterGroups)
-        .sort((a, b) => a[0].localeCompare(b[0]));
-      const breakdownRows = sortedQuarters.map(([q, g]) => ({
-        Quarter: q,
-        Projects: g.count,
-        'Total Fee': g.totalFee,
-        'Avg Fee': g.avgFee,
-        'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
-      }));
+      const isQuarterQuery = /\b(?:best|worst|strongest|weakest|top|peak|highest|lowest|busiest|quarter|quarterly)\b/i.test(analysis_question);
+      const isCategoryQuery = /\b(?:categor|aviation|hospital|education|transportation|water|wastewater|energy|municipal|federal|industrial)\b/i.test(analysis_question);
+      const isStatusQuery = /\b(?:status|pipeline|won|lost|dead|active|pending|awarded|submitted)\b/i.test(analysis_question);
 
-      let analysisChartConfig = null;
-      if (sortedQuarters.length > 0) {
-        analysisChartConfig = {
-          type: 'bar' as const,
-          title: `Quarterly Breakdown${args.company ? ` - ${args.company}` : ''}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`,
-          labels: sortedQuarters.map(([q]) => q),
-          datasets: [
-            {
-              label: 'Total Fee ($M)',
-              data: sortedQuarters.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
-            },
-            {
-              label: 'Avg Win Rate (%)',
-              data: sortedQuarters.map(([, g]) => parseFloat(g.avgWinRate.toFixed(1)))
-            }
-          ],
-          tooltipFormat: 'number' as const,
-          showLegend: true,
-          legendPosition: 'top' as const
-        };
+      let breakdownRows: any[] = [];
+      let analysisChartConfig: any = null;
+      const filterSuffix = `${args.company ? ` - ${args.company}` : ''}${args.regions?.length ? ` - ${args.regions.join(', ')}` : ''}`;
+
+      if (isQuarterQuery) {
+        const sortedQuarters = Object.entries(quarterGroups)
+          .sort((a, b) => {
+            const [qa, ya] = [a[0].substring(0, 2), a[0].substring(3)];
+            const [qb, yb] = [b[0].substring(0, 2), b[0].substring(3)];
+            return ya !== yb ? ya.localeCompare(yb) : qa.localeCompare(qb);
+          });
+        breakdownRows = sortedQuarters.map(([q, g]) => ({
+          Quarter: q,
+          Projects: g.count,
+          'Total Fee': g.totalFee,
+          'Avg Fee': g.avgFee,
+          'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
+        }));
+        if (sortedQuarters.length > 0) {
+          analysisChartConfig = {
+            type: 'bar' as const,
+            title: `Quarterly Breakdown${filterSuffix}`,
+            labels: sortedQuarters.map(([q]) => q),
+            datasets: [
+              {
+                label: 'Total Fee ($M)',
+                data: sortedQuarters.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
+              }
+            ],
+            tooltipFormat: 'currency' as const,
+            showLegend: true,
+            legendPosition: 'top' as const
+          };
+        }
+      } else if (isCategoryQuery) {
+        const sortedCategories = Object.entries(categoryGroups)
+          .sort((a, b) => b[1].totalFee - a[1].totalFee)
+          .slice(0, 15);
+        breakdownRows = sortedCategories.map(([cat, g]) => ({
+          Category: cat,
+          Projects: g.count,
+          'Total Fee': g.totalFee,
+          'Avg Fee': g.avgFee,
+          'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
+        }));
+        if (sortedCategories.length > 0) {
+          analysisChartConfig = {
+            type: 'bar' as const,
+            title: `Category Breakdown${filterSuffix}`,
+            labels: sortedCategories.map(([cat]) => cat),
+            datasets: [
+              {
+                label: 'Total Fee ($M)',
+                data: sortedCategories.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
+              }
+            ],
+            tooltipFormat: 'currency' as const,
+            showLegend: true,
+            legendPosition: 'top' as const
+          };
+        }
+      } else if (isStatusQuery) {
+        const sortedStatuses = Object.entries(statusGroups)
+          .sort((a, b) => b[1].totalFee - a[1].totalFee);
+        breakdownRows = sortedStatuses.map(([st, g]) => ({
+          Status: st,
+          Projects: g.count,
+          'Total Fee': g.totalFee,
+          'Avg Fee': g.avgFee,
+          'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
+        }));
+        if (sortedStatuses.length > 0) {
+          analysisChartConfig = {
+            type: 'bar' as const,
+            title: `Status Breakdown${filterSuffix}`,
+            labels: sortedStatuses.map(([st]) => st),
+            datasets: [
+              {
+                label: 'Total Fee ($M)',
+                data: sortedStatuses.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
+              }
+            ],
+            tooltipFormat: 'currency' as const,
+            showLegend: true,
+            legendPosition: 'top' as const
+          };
+        }
+      } else {
+        const sortedCategories = Object.entries(categoryGroups)
+          .sort((a, b) => b[1].totalFee - a[1].totalFee)
+          .slice(0, 10);
+        if (sortedCategories.length > 0) {
+          breakdownRows = sortedCategories.map(([cat, g]) => ({
+            Category: cat,
+            Projects: g.count,
+            'Total Fee': g.totalFee,
+            'Avg Fee': g.avgFee,
+            'Avg Win Rate': parseFloat(g.avgWinRate.toFixed(1))
+          }));
+          analysisChartConfig = {
+            type: 'bar' as const,
+            title: `Top Categories by Fee${filterSuffix}`,
+            labels: sortedCategories.map(([cat]) => cat),
+            datasets: [
+              {
+                label: 'Total Fee ($M)',
+                data: sortedCategories.map(([, g]) => parseFloat((g.totalFee / 1000000).toFixed(2)))
+              }
+            ],
+            tooltipFormat: 'currency' as const,
+            showLegend: true,
+            legendPosition: 'top' as const
+          };
+        }
       }
 
       // Return AI analysis with metadata (include function_name & arguments for follow-up questions)
