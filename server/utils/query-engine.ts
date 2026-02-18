@@ -14450,7 +14450,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         const bqStartYear = bqAllYears.length > 0 ? Math.min(...bqAllYears) : bqYear;
         const bqEndYear = bqAllYears.length > 0 ? Math.max(...bqAllYears) : bqYear;
         const bqCompanyMatch = userQuestion.match(/\b(?:for|of)\s+(?:the\s+)?(.+?)(?:\s+(?:in|from)\s+\d{4})/i);
-        const bqBetweenMatch = userQuestion.match(/\b(?:between|comparing|compare)\s+(.+?)\s+(?:and|vs\.?|versus)\s+(.+?)(?:\s+(?:in|from|for)\s+|\s*$)/i);
+        const bqBetweenMatch = userQuestion.match(/\b(?:in\s+)?(?:between|betweeb|betwee[a-z]|comparing|compare)\s+(.+?)\s+(?:and|vs\.?|versus)\s+(.+?)(?:\s+(?:in|from|for)\s+|\s*$)/i);
         const bqAndMatch = userQuestion.match(/\b(?:for|of)\s+(.+?)\s+(?:and|&)\s+(.+?)(?:\s+(?:in|from|for)\s+\d{4})/i);
         const bqRegionMatch = userQuestion.match(/\b(?:for|of|in)\s+(?:the\s+)?(.+?)\s+region\b/i);
         let bqEntityName = '';
