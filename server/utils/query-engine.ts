@@ -260,7 +260,12 @@ function stripHallucinatedGeography(args: Record<string, any>, originalQuestion:
     // Match standalone uppercase code: word boundary, code, then end/space/comma/punctuation
     // Avoid matching "Co." in company names by requiring it's not preceded by "&" or followed by "."
     const regex = new RegExp('(?<!&\\s?)\\b' + code + '(?!\\.)\\b');
-    return regex.test(originalQuestion);
+    if (!regex.test(originalQuestion)) return false;
+    // GUARD: Skip if state code is inside parentheses (likely part of entity/client name)
+    // e.g., "The Connell Company (Berkeley Heights, NJ)" - NJ is part of the client name
+    const insideParensRegex = new RegExp('\\([^)]*\\b' + code + '\\b[^)]*\\)');
+    if (insideParensRegex.test(originalQuestion)) return false;
+    return true;
   });
   
   const mentionsRegion = REGIONS.some(region => {
@@ -9963,10 +9968,34 @@ Return ONLY valid JSON, no explanation.`;
         });
       }
       
+      // GUARD: Remove LLM-extracted states that are actually part of entity names in parentheses
+      // e.g., "The Connell Company (Berkeley Heights, NJ)" → LLM might extract "New Jersey" but it's part of the client name
+      if (cleaned.states && Array.isArray(cleaned.states) && cleaned.states.length > 0) {
+        const parenStateMatch = (originalQuestion || userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
+        if (parenStateMatch) {
+          const parenStateCode = parenStateMatch[1];
+          const parenStateName = stateAbbreviations[parenStateCode];
+          if (parenStateName) {
+            const beforeLen = cleaned.states.length;
+            cleaned.states = cleaned.states.filter((s: string) => s !== parenStateName && s.toUpperCase() !== parenStateCode);
+            if (cleaned.states.length < beforeLen) {
+              console.log(`[LLM-Extract] ⚠️ Removed state "${parenStateName}" - extracted from parenthesized entity name, not a state filter`);
+            }
+            if (cleaned.states.length === 0) delete cleaned.states;
+          }
+        }
+      }
+      
       // Also normalize state_code if it was extracted
       if (cleaned.state_code && typeof cleaned.state_code === 'string') {
-        const upper = cleaned.state_code.toUpperCase();
-        if (stateAbbreviations[upper]) {
+        // GUARD: Skip if state_code matches abbreviation inside parentheses in entity name
+        const parenCodeMatch = (originalQuestion || userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
+        if (parenCodeMatch && cleaned.state_code.toUpperCase() === parenCodeMatch[1]) {
+          console.log(`[LLM-Extract] ⚠️ Removing state_code "${cleaned.state_code}" - matches state abbreviation inside parenthesized entity name`);
+          delete cleaned.state_code;
+        }
+        const upper = (cleaned.state_code || '').toUpperCase();
+        if (cleaned.state_code && stateAbbreviations[upper]) {
           // Convert state_code to states array
           if (!cleaned.states) {
             cleaned.states = [stateAbbreviations[upper]];
@@ -20836,6 +20865,14 @@ Response (JSON only):`;
       for (const stateName of multiWordStates) {
         const regex = new RegExp(`\\b${stateName}\\b`, 'i');
         if (regex.test(questionLower)) {
+          // GUARD: Skip if state name appears inside parentheses (part of entity/client name)
+          // e.g., "The Connell Company (Berkeley Heights, NJ)" → "new jersey" from NJ expansion
+          const insideParens = new RegExp(`\\([^)]*\\b${stateName}\\b[^)]*\\)`, 'i');
+          const stateAbbrevInParens = /\([^)]*,\s*[A-Z]{2}\s*\)/.test(originalQuestion || questionLower);
+          if (insideParens.test(questionLower) || stateAbbrevInParens) {
+            console.log(`[StateExtract] ⚠️ SKIPPING "${stateName}" - appears inside parentheses (likely part of entity name)`);
+            continue;
+          }
           args.state_code = US_STATES[stateName];
           console.log(`[StateExtract] 🎯 Detected US state: "${stateName}" → ${args.state_code}`);
           break;
@@ -20871,6 +20908,14 @@ Response (JSON only):`;
                 console.log(`[StateExtract] ⚠️ SKIPPING "${key}" - appears to be part of division name, not a state filter`);
                 continue;
               }
+            }
+            
+            // GUARD: Skip if state code/name appears inside parentheses (part of entity/client name)
+            // e.g., "The Connell Company (Berkeley Heights, NJ)" → NJ is part of client name, not a state filter
+            const insideParensCheck = new RegExp(`\\([^)]*\\b${key}\\b[^)]*\\)`, 'i');
+            if (insideParensCheck.test(originalQuestion || userQuestion)) {
+              console.log(`[StateExtract] ⚠️ SKIPPING "${key}" - appears inside parentheses (likely part of entity name)`);
+              continue;
             }
             
             args.state_code = value;
