@@ -9971,7 +9971,7 @@ Return ONLY valid JSON, no explanation.`;
       // GUARD: Remove LLM-extracted states that are actually part of entity names in parentheses
       // e.g., "The Connell Company (Berkeley Heights, NJ)" → LLM might extract "New Jersey" but it's part of the client name
       if (cleaned.states && Array.isArray(cleaned.states) && cleaned.states.length > 0) {
-        const parenStateMatch = (originalQuestion || userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
+        const parenStateMatch = (userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
         if (parenStateMatch) {
           const parenStateCode = parenStateMatch[1];
           const parenStateName = stateAbbreviations[parenStateCode];
@@ -9989,7 +9989,7 @@ Return ONLY valid JSON, no explanation.`;
       // Also normalize state_code if it was extracted
       if (cleaned.state_code && typeof cleaned.state_code === 'string') {
         // GUARD: Skip if state_code matches abbreviation inside parentheses in entity name
-        const parenCodeMatch = (originalQuestion || userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
+        const parenCodeMatch = (userQuestion || '').match(/\([^)]*,\s*([A-Z]{2})\s*\)/);
         if (parenCodeMatch && cleaned.state_code.toUpperCase() === parenCodeMatch[1]) {
           console.log(`[LLM-Extract] ⚠️ Removing state_code "${cleaned.state_code}" - matches state abbreviation inside parenthesized entity name`);
           delete cleaned.state_code;
@@ -20868,7 +20868,7 @@ Response (JSON only):`;
           // GUARD: Skip if state name appears inside parentheses (part of entity/client name)
           // e.g., "The Connell Company (Berkeley Heights, NJ)" → "new jersey" from NJ expansion
           const insideParens = new RegExp(`\\([^)]*\\b${stateName}\\b[^)]*\\)`, 'i');
-          const stateAbbrevInParens = /\([^)]*,\s*[A-Z]{2}\s*\)/.test(originalQuestion || questionLower);
+          const stateAbbrevInParens = /\([^)]*,\s*[A-Z]{2}\s*\)/.test(userQuestion);
           if (insideParens.test(questionLower) || stateAbbrevInParens) {
             console.log(`[StateExtract] ⚠️ SKIPPING "${stateName}" - appears inside parentheses (likely part of entity name)`);
             continue;
@@ -20913,7 +20913,7 @@ Response (JSON only):`;
             // GUARD: Skip if state code/name appears inside parentheses (part of entity/client name)
             // e.g., "The Connell Company (Berkeley Heights, NJ)" → NJ is part of client name, not a state filter
             const insideParensCheck = new RegExp(`\\([^)]*\\b${key}\\b[^)]*\\)`, 'i');
-            if (insideParensCheck.test(originalQuestion || userQuestion)) {
+            if (insideParensCheck.test(userQuestion)) {
               console.log(`[StateExtract] ⚠️ SKIPPING "${key}" - appears inside parentheses (likely part of entity name)`);
               continue;
             }
