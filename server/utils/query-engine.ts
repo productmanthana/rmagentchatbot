@@ -14644,7 +14644,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       // HYBRID APPROACH: Merge pre-extracted hints with LLM classification
       // extractedHints takes priority for reliable pattern-matched values
       // ═══════════════════════════════════════════════════════════════
-      const hintsToMerge = ['project_type', 'category', 'min_fee', 'max_fee', 'status', 'poc', 'states', 'state_code', 'company', 'limit', 'min_win', 'max_win', 'start_date', 'end_date', 'division', 'department', 'regions'];
+      const hintsToMerge = ['project_type', 'category', 'min_fee', 'max_fee', 'status', 'poc', 'states', 'state_code', 'company', 'client', 'keyword', 'limit', 'min_win', 'max_win', 'start_date', 'end_date', 'division', 'department', 'regions'];
       let mergedAnyHints = false;
       
       for (const key of hintsToMerge) {
@@ -18117,6 +18117,41 @@ Response (JSON only):`;
           console.log(`[QueryEngine] ⚠ GENERALIZED GUARD: Entity "${activeEntity.value}" is a column keyword (cleaned: "${cleaned}"), skipping disambiguation`);
           delete args[activeEntity.paramName];
           activeEntity = null;
+        }
+      }
+      
+      // EXPLICIT COLUMN KEYWORD BYPASS: If user's question explicitly mentions a column keyword
+      // near the entity value (e.g., "Google client", "client Google"), bypass disambiguation
+      if (activeEntity) {
+        const qLower = userQuestion.toLowerCase();
+        const valLower = activeEntity.value.toLowerCase();
+        const valEscaped = valLower;
+        const explicitColumnMap: Record<string, { column: string; functionName: string; paramName: string; flag: string }> = {
+          'client': { column: 'Client', functionName: 'get_projects_by_client', paramName: 'client', flag: '_client_already_applied' },
+          'company': { column: 'Company', functionName: 'get_projects_by_combined_filters', paramName: 'company', flag: '_company_already_applied' },
+          'division': { column: 'Division', functionName: 'get_projects_by_division', paramName: 'division', flag: '_division_already_applied' },
+          'department': { column: 'Department', functionName: 'get_projects_by_department', paramName: 'department', flag: '_department_already_applied' },
+        };
+        
+        for (const [keyword, mapping] of Object.entries(explicitColumnMap)) {
+          const patterns = [
+            new RegExp('\\b' + valEscaped + '\\s+' + keyword + '\\b', 'i'),
+            new RegExp('\\b' + keyword + '\\s+' + valEscaped + '\\b', 'i'),
+            new RegExp('\\b' + keyword + ':\\s*' + valEscaped + '\\b', 'i'),
+            new RegExp('\\bwith\\s+' + valEscaped + '\\s+as\\s+' + keyword + '\\b', 'i'),
+            new RegExp('\\b' + keyword + '\\s+(is|=|being|named|called)\\s+' + valEscaped + '\\b', 'i'),
+          ];
+          
+          if (patterns.some(p => p.test(qLower))) {
+            console.log(`[QueryEngine] 🎯 EXPLICIT COLUMN BYPASS: User said "${keyword}" near "${activeEntity.value}" - routing directly to ${mapping.column} column`);
+            delete args[activeEntity.paramName];
+            args[mapping.paramName] = activeEntity.value;
+            (args as any)[mapping.flag] = true;
+            args._smart_detection_done = true;
+            functionName = mapping.functionName;
+            activeEntity = null;
+            break;
+          }
         }
       }
       
