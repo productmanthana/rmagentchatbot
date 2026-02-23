@@ -17763,8 +17763,21 @@ Response (JSON only):`;
           } else if (args._common_projects_query && classification.function_name === 'common_projects_between_companies') {
             functionName = 'common_projects_between_companies';
           } else if (classification.function_name === 'ai_data_analysis') {
-            functionName = 'ai_data_analysis';
-            console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Preserving ai_data_analysis classification (entity resolved as ${headChefResult.entity.column})`);
+            // When Head Chef resolves entity to a specific column, use that column's function
+            // instead of ai_data_analysis which won't generate SQL for entity-specific queries
+            if (headChefResult.entity.paramName === 'client') {
+              functionName = 'get_projects_by_client';
+              console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Upgraded ai_data_analysis → get_projects_by_client (entity resolved as ${headChefResult.entity.column})`);
+            } else if (headChefResult.entity.paramName === 'company') {
+              functionName = 'get_projects_by_combined_filters';
+              console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Upgraded ai_data_analysis → get_projects_by_combined_filters (entity resolved as ${headChefResult.entity.column})`);
+            } else if (headChefResult.entity.paramName === 'poc') {
+              functionName = 'get_projects_by_poc';
+              console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Upgraded ai_data_analysis → get_projects_by_poc (entity resolved as ${headChefResult.entity.column})`);
+            } else {
+              functionName = headChefResult.functionName;
+              console.log(`[QueryEngine] 🧑‍🍳 HEAD CHEF: Upgraded ai_data_analysis → ${functionName} (entity resolved as ${headChefResult.entity.column})`);
+            }
           } else {
             functionName = headChefResult.functionName;
           }
@@ -18125,7 +18138,7 @@ Response (JSON only):`;
       if (activeEntity) {
         const qLower = userQuestion.toLowerCase();
         const valLower = activeEntity.value.toLowerCase();
-        const valEscaped = valLower;
+        const valEscaped = valLower.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const explicitColumnMap: Record<string, { column: string; functionName: string; paramName: string; flag: string }> = {
           'client': { column: 'Client', functionName: 'get_projects_by_client', paramName: 'client', flag: '_client_already_applied' },
           'company': { column: 'Company', functionName: 'get_projects_by_combined_filters', paramName: 'company', flag: '_company_already_applied' },
