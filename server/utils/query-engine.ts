@@ -24841,7 +24841,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           } else {
             filtered.sort((a: any, b: any) => (b.total_revenue || 0) - (a.total_revenue || 0));
           }
-          const isSingular = /\b(?:best|worst|top|bottom|highest|lowest|peak|weakest)\s+(?:performing\s+)?quarter\b/i.test(userQuestion);
+          const isSingular = /\b(?:best|worst|top|bottom|highest|lowest|peak|weakest)\s+(?:performing\s+)?quarter\b/i.test(userQuestion) || /\bquarter\s+(?:that\s+(?:was|is)\s+)?(?:the\s+)?(?:best|worst|top|bottom|highest|lowest|peak|weakest)\b/i.test(userQuestion) || (/\bquarter\b/i.test(userQuestion) && /\b(?:best|worst)\b/i.test(userQuestion) && !/\b(?:quarters|top\s+\d|bottom\s+\d)\b/i.test(userQuestion));
           if (isSingular && filtered.length > 1) {
             results = [filtered[0]];
             console.log(`[QueryEngine] 📊 QUARTER FILTER: Singular "${targetType}" requested → returning top 1 of ${filtered.length}`);
