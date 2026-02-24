@@ -14715,8 +14715,28 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_best_worst_quarters (quarterly ranking)`);
         classification.function_name = 'get_best_worst_quarters';
         delete classification.arguments.analysis_question;
+        if (/\b(?:worst|bottom|lowest|weakest|poorest)\b/i.test(qLowerSuperlative)) {
+          classification.arguments.sort_direction = 'ASC';
+        } else if (/\b(?:best|top|highest|peak|strongest)\b/i.test(qLowerSuperlative)) {
+          classification.arguments.sort_direction = 'DESC';
+        }
       }
       
+      // Set sort_direction for get_best_worst_quarters based on user intent
+      if (classification.function_name === 'get_best_worst_quarters' && !classification.arguments.sort_direction) {
+        const hasWorstIntent = /\b(?:worst|bottom|lowest|weakest|poorest)\b/i.test(userQuestion);
+        const hasBestIntent = /\b(?:best|top|highest|peak|strongest)\b/i.test(userQuestion);
+        if (hasWorstIntent && hasBestIntent) {
+          console.log('[QueryEngine] 📊 QUARTER DIRECTION: Both best+worst detected - showing all');
+        } else if (hasWorstIntent) {
+          classification.arguments.sort_direction = 'ASC';
+          console.log('[QueryEngine] 📊 QUARTER DIRECTION: Detected "worst" intent - setting sort_direction=ASC');
+        } else if (hasBestIntent) {
+          classification.arguments.sort_direction = 'DESC';
+          console.log('[QueryEngine] 📊 QUARTER DIRECTION: Detected "best" intent - setting sort_direction=DESC');
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════════
       // HYBRID APPROACH: Merge pre-extracted hints with LLM classification
       // extractedHints takes priority for reliable pattern-matched values
@@ -24696,6 +24716,9 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       // IMPORTANT: Also exclude plural forms (category→categories, tag→tags) since normalizeFilterArgs
       // converts singular to plural before buildSql is called
       const excludeParams = [...template.params, ...(template.excludeParams || [])];
+      if (!template.sql.includes('{sort_direction}')) {
+        excludeParams.push('sort_direction');
+      }
       if (template.params.includes('category')) {
         excludeParams.push('categories'); // Exclude both singular and plural
       }
@@ -24773,6 +24796,28 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
       try { fs.appendFileSync('/tmp/exec_debug.log', 'RESULT_COUNT:' + results.length + '\n'); } catch(e) {}
       console.log(`[QueryEngine] Results count: ${results.length}`);
+
+      // POST-FILTER: For get_best_worst_quarters, filter to only best or worst based on sort_direction
+      if (functionName === 'get_best_worst_quarters' && args.sort_direction && results.length > 0) {
+        const wantWorst = args.sort_direction === 'ASC';
+        const targetType = wantWorst ? 'Trough Quarter' : 'Peak Quarter';
+        const filtered = results.filter((r: any) => r.quarter_type === targetType);
+        if (filtered.length > 0) {
+          if (wantWorst) {
+            filtered.sort((a: any, b: any) => (a.total_revenue || 0) - (b.total_revenue || 0));
+          } else {
+            filtered.sort((a: any, b: any) => (b.total_revenue || 0) - (a.total_revenue || 0));
+          }
+          const isSingular = /\b(?:best|worst|top|bottom|highest|lowest|peak|weakest)\s+(?:performing\s+)?quarter\b/i.test(userQuestion);
+          if (isSingular && filtered.length > 1) {
+            results = [filtered[0]];
+            console.log(`[QueryEngine] 📊 QUARTER FILTER: Singular "${targetType}" requested → returning top 1 of ${filtered.length}`);
+          } else {
+            results = filtered;
+          }
+          console.log(`[QueryEngine] 📊 QUARTER FILTER: Filtered to ${targetType} only → ${results.length} results`);
+        }
+      }
 
       // For get_top_tags, extract tag values so follow-up questions can reference them
       let extracted_args: Record<string, any> | undefined;
