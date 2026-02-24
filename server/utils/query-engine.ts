@@ -14702,12 +14702,17 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         classification.function_name = 'get_state_performance_ranking';
         delete classification.arguments.analysis_question;
       }
-      // "best/worst/top/bottom month" → get_seasonal_patterns
+      // "best/worst/top/bottom month" → get_monthly_momentum (groups by year+month for specific period ranking)
       else if (/\b(?:best|worst|top|bottom|highest|lowest|peak|weakest|strongest)\s+(?:performing\s+)?(?:month|months)\b/i.test(qLowerSuperlative) &&
-          classification.function_name !== 'get_seasonal_patterns') {
-        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_seasonal_patterns (monthly ranking)`);
-        classification.function_name = 'get_seasonal_patterns';
+          classification.function_name !== 'get_monthly_momentum') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_monthly_momentum (monthly ranking by year+month)`);
+        classification.function_name = 'get_monthly_momentum';
         delete classification.arguments.analysis_question;
+        if (/\b(?:worst|bottom|lowest|weakest|poorest)\b/i.test(qLowerSuperlative)) {
+          classification.arguments.sort_direction = 'ASC';
+        } else if (/\b(?:best|top|highest|peak|strongest)\b/i.test(qLowerSuperlative)) {
+          classification.arguments.sort_direction = 'DESC';
+        }
       }
       // "best/worst/top/bottom/peak quarter" → get_best_worst_quarters
       else if (/\b(?:best|worst|top|bottom|highest|lowest|peak|weakest|strongest)\s+(?:performing\s+)?(?:quarter|quarters|q[1-4])\b/i.test(qLowerSuperlative) &&
@@ -14734,6 +14739,19 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         } else if (hasBestIntent) {
           classification.arguments.sort_direction = 'DESC';
           console.log('[QueryEngine] 📊 QUARTER DIRECTION: Detected "best" intent - setting sort_direction=DESC');
+        }
+      }
+
+      // Set sort_direction for get_monthly_momentum based on user intent (best/worst month)
+      if (classification.function_name === 'get_monthly_momentum' && !classification.arguments.sort_direction) {
+        const hasWorstIntent = /\b(?:worst|bottom|lowest|weakest|poorest)\b/i.test(userQuestion);
+        const hasBestIntent = /\b(?:best|top|highest|peak|strongest)\b/i.test(userQuestion);
+        if (hasWorstIntent) {
+          classification.arguments.sort_direction = 'ASC';
+          console.log('[QueryEngine] 📊 MONTH DIRECTION: Detected "worst" intent - setting sort_direction=ASC');
+        } else if (hasBestIntent) {
+          classification.arguments.sort_direction = 'DESC';
+          console.log('[QueryEngine] 📊 MONTH DIRECTION: Detected "best" intent - setting sort_direction=DESC');
         }
       }
 
@@ -14898,7 +14916,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           const listingPatterns = ['get_largest_projects', 'get_projects_by_combined_filters', 'get_projects_by_year', 'get_projects_by_state', 'get_projects_by_project_type', 'compare_states'];
           
           const isSuperlativeQuery = /\b(?:highest|largest|biggest|smallest|lowest|top|bottom|best|worst|most|least|peak|weakest)\b/i.test(userQuestion);
-          const aiChoseRankingFn = ['get_largest_projects', 'get_smallest_projects', 'get_best_worst_quarters', 'get_seasonal_patterns', 'get_revenue_by_state'].includes(aiFn);
+          const aiChoseRankingFn = ['get_largest_projects', 'get_smallest_projects', 'get_best_worst_quarters', 'get_seasonal_patterns', 'get_monthly_momentum', 'get_revenue_by_state'].includes(aiFn);
           
           if (isSuperlativeQuery && aiChoseRankingFn) {
             console.log(`[QueryEngine] 🤖 AI-FIRST SUPERLATIVE SKIP: Superlative query detected - keeping AI's "${aiFn}" over regex "${regexFn}"`);
@@ -24774,6 +24792,9 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
               /\bAND\s+"Fee"\s*[<>=]/i.test(review.sql) ||
               /\bEXPRESSION\b/i.test(review.sql) ||
               /\bPLACEHOLDER\b/i.test(review.sql) ||
+              /\bYEAR_EQUALS\b/i.test(review.sql) ||
+              /\bMONTH_EQUALS\b/i.test(review.sql) ||
+              /\bBETWEEN\s+@p\d+\s*(?:GROUP|ORDER|HAVING|\)|$)/i.test(review.sql) ||
               /\b@p\d+\s*$/.test(review.sql.trim());
             if (hasSyntaxCorruption) {
               console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: Detected syntax corruption in corrected SQL. Keeping original.`);
@@ -24817,6 +24838,25 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
           }
           console.log(`[QueryEngine] 📊 QUARTER FILTER: Filtered to ${targetType} only → ${results.length} results`);
         }
+      }
+
+      // POST-FILTER: For get_monthly_momentum with sort_direction, sort by revenue and limit for "best/worst month" queries
+      if (functionName === 'get_monthly_momentum' && args.sort_direction && results.length > 0) {
+        const wantWorst = args.sort_direction === 'ASC';
+        if (wantWorst) {
+          results.sort((a: any, b: any) => (a.total_revenue || 0) - (b.total_revenue || 0));
+        } else {
+          results.sort((a: any, b: any) => (b.total_revenue || 0) - (a.total_revenue || 0));
+        }
+        const isSingular = /\b(?:best|worst|top|bottom|highest|lowest|peak|weakest)\s+(?:performing\s+)?month\b/i.test(userQuestion);
+        if (isSingular && results.length > 1) {
+          results = [results[0]];
+          console.log(`[QueryEngine] 📊 MONTH FILTER: Singular "${wantWorst ? 'worst' : 'best'} month" → returning top 1 of ${results.length + 1}`);
+        } else {
+          const topN = Math.min(results.length, 5);
+          results = results.slice(0, topN);
+        }
+        console.log(`[QueryEngine] 📊 MONTH FILTER: Sorted by revenue ${wantWorst ? 'ASC' : 'DESC'} → ${results.length} results`);
       }
 
       // For get_top_tags, extract tag values so follow-up questions can reference them
