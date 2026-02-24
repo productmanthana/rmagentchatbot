@@ -24692,7 +24692,10 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
               /\bFROM\s+\w+\s+AND\b/i.test(review.sql) ||
               /\bSELECT\s+AND\b/i.test(review.sql) ||
               /\bAND\s+"ChanceOfSuccess"\s*[<>=]/i.test(review.sql) ||
-              /\bAND\s+"Fee"\s*[<>=]/i.test(review.sql);
+              /\bAND\s+"Fee"\s*[<>=]/i.test(review.sql) ||
+              /\bEXPRESSION\b/i.test(review.sql) ||
+              /\bPLACEHOLDER\b/i.test(review.sql) ||
+              /\b@p\d+\s*$/.test(review.sql.trim());
             if (hasSyntaxCorruption) {
               console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: Detected syntax corruption in corrected SQL. Keeping original.`);
               try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: false, rejected: 'syntax_corruption' }) + '\n'); } catch(e) {}
