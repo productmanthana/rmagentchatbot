@@ -12769,7 +12769,10 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             
             console.log(`[QueryEngine] 📊 EXPLICIT COLUMN: User specified "${termWordsLower[keywordIndex]}" → using ${explicitColumn.column} column for "${smartSearchTerm}"`);
             
-            if (smartSearchTerm.length >= 2) {
+            const superlativeBypass = /\b(?:highest|largest|biggest|smallest|lowest|top|bottom|best|worst|most|least|peak|weakest|strongest|poorest)\b/i.test(smartSearchTerm) || /\b(?:highest|largest|biggest|smallest|lowest|top|bottom|best|worst|most|least|peak|weakest|strongest|poorest)\b/i.test(userQuestion);
+            if (superlativeBypass) {
+              console.log(`[QueryEngine] 📊 EXPLICIT COLUMN SUPERLATIVE BYPASS: "${smartSearchTerm}" is a superlative/ranking phrase - skipping column filter, falling through to LLM`);
+            } else if (smartSearchTerm.length >= 2) {
               // Execute directly on the specified column - bypass AI classification
               console.log(`[QueryEngine] 📊 EXPLICIT COLUMN: Executing ${explicitColumn.functionName} with ${explicitColumn.paramName}="${smartSearchTerm}"`);
               
@@ -14670,6 +14673,51 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       console.log(`[QueryEngine] AI extracted params:`, JSON.stringify(classification.arguments, null, 2));
       
       // ═══════════════════════════════════════════════════════════════
+      // SUPERLATIVE ROUTING GUARDS: Fix misclassified "best/worst/top/bottom/highest/lowest" queries
+      // These deterministic checks override LLM misclassification for superlative patterns
+      // ═══════════════════════════════════════════════════════════════
+      const qLowerSuperlative = effectiveQuestion.toLowerCase();
+      
+      // "highest/largest/biggest revenue/fee project" → get_largest_projects
+      if (/\b(?:highest|largest|biggest|top|best|most expensive)\s+(?:revenue|fee|value|dollar|\$)?\s*(?:project|deal|opportunity)/i.test(qLowerSuperlative) &&
+          classification.function_name !== 'get_largest_projects') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_largest_projects (highest/largest project)`);
+        classification.function_name = 'get_largest_projects';
+        if (!classification.arguments.limit) classification.arguments.limit = 1;
+        delete classification.arguments.analysis_question;
+      }
+      // "lowest/smallest/cheapest revenue/fee project" → get_largest_projects (with ASC sort)
+      else if (/\b(?:lowest|smallest|cheapest|least expensive|worst)\s+(?:revenue|fee|value|dollar|\$)?\s*(?:project|deal|opportunity)/i.test(qLowerSuperlative) &&
+          classification.function_name !== 'get_largest_projects') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_largest_projects (lowest/smallest project)`);
+        classification.function_name = 'get_largest_projects';
+        if (!classification.arguments.limit) classification.arguments.limit = 1;
+        classification.arguments.sort_direction = 'ASC';
+        delete classification.arguments.analysis_question;
+      }
+      // "best/worst/top/bottom performing state" → get_state_performance_ranking
+      else if (/\b(?:best|worst|top|bottom|highest|lowest)\s+(?:performing\s+)?(?:state|states)\b/i.test(qLowerSuperlative) &&
+          classification.function_name !== 'get_state_performance_ranking') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_state_performance_ranking (state ranking)`);
+        classification.function_name = 'get_state_performance_ranking';
+        delete classification.arguments.analysis_question;
+      }
+      // "best/worst/top/bottom month" → get_seasonal_patterns
+      else if (/\b(?:best|worst|top|bottom|highest|lowest|peak|weakest|strongest)\s+(?:performing\s+)?(?:month|months)\b/i.test(qLowerSuperlative) &&
+          classification.function_name !== 'get_seasonal_patterns') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_seasonal_patterns (monthly ranking)`);
+        classification.function_name = 'get_seasonal_patterns';
+        delete classification.arguments.analysis_question;
+      }
+      // "best/worst/top/bottom/peak quarter" → get_best_worst_quarters
+      else if (/\b(?:best|worst|top|bottom|highest|lowest|peak|weakest|strongest)\s+(?:performing\s+)?(?:quarter|quarters|q[1-4])\b/i.test(qLowerSuperlative) &&
+          classification.function_name !== 'get_best_worst_quarters') {
+        console.log(`[QueryEngine] 🏆 SUPERLATIVE GUARD: Rerouting ${classification.function_name} → get_best_worst_quarters (quarterly ranking)`);
+        classification.function_name = 'get_best_worst_quarters';
+        delete classification.arguments.analysis_question;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
       // HYBRID APPROACH: Merge pre-extracted hints with LLM classification
       // extractedHints takes priority for reliable pattern-matched values
       // ═══════════════════════════════════════════════════════════════
@@ -14828,7 +14876,13 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           // Override AI's choice (common misclassification case)
           // Note: compare_states is included so compare_regions can override when user asks for "regions" not "states"
           const listingPatterns = ['get_largest_projects', 'get_projects_by_combined_filters', 'get_projects_by_year', 'get_projects_by_state', 'get_projects_by_project_type', 'compare_states'];
-          if (highConfidenceRegexPatterns.includes(regexFn) && listingPatterns.includes(aiFn)) {
+          
+          const isSuperlativeQuery = /\b(?:highest|largest|biggest|smallest|lowest|top|bottom|best|worst|most|least|peak|weakest)\b/i.test(userQuestion);
+          const aiChoseRankingFn = ['get_largest_projects', 'get_smallest_projects', 'get_best_worst_quarters', 'get_seasonal_patterns', 'get_revenue_by_state'].includes(aiFn);
+          
+          if (isSuperlativeQuery && aiChoseRankingFn) {
+            console.log(`[QueryEngine] 🤖 AI-FIRST SUPERLATIVE SKIP: Superlative query detected - keeping AI's "${aiFn}" over regex "${regexFn}"`);
+          } else if (highConfidenceRegexPatterns.includes(regexFn) && listingPatterns.includes(aiFn)) {
             console.log(`[QueryEngine] 🤖 AI-FIRST OVERRIDE: Regex pattern "${regexFn}" takes precedence over AI's "${aiFn}"`);
             classification.function_name = regexFn;
           }
