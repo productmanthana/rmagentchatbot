@@ -20469,9 +20469,10 @@ Response (JSON only):`;
         const hasExplicitNumericLimit = /\b(top|first|last|bottom|only|just|smallest|largest|biggest|lowest|highest|cheapest)\s+(\d+|active|open|won|closed|submitted|lead|qualified)\s*(\d+)?\b/i.test(userQuestion);
         const hasOrdinalRequest = /\b(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(st|nd|rd|th))\s+(largest|biggest|smallest|best|worst|highest|lowest)/i.test(userQuestion);
         const hasSingleRequest = /\b(single|one\s+project|1\s+project|the\s+largest|the\s+biggest|the\s+smallest|the\s+highest|the\s+lowest|the\s+best|the\s+worst)\b/i.test(userQuestion);
+      const hasSuperlativeImpliedLimit = /\b(?:our|my|the|your)\s+(?:best|worst|highest|lowest|largest|biggest|smallest|top|peak|weakest)\s+(?:customer|client|project|state|quarter|month|division|department|region|performer)\b/i.test(userQuestion);
         const hasNumberBeforeSize = /\b(\d+)\s+(smallest|largest|biggest|lowest|highest|cheapest|top|bottom)\b/i.test(userQuestion);
         const hasNumberBeforeCategory = /\b(\d+)\s+(small|medium|large|tiny|huge|mega|micro)\s+(project|projects)\b/i.test(userQuestion);
-        const hasExplicitLimit = hasExplicitNumericLimit || hasOrdinalRequest || hasSingleRequest || hasNumberBeforeSize || hasNumberBeforeCategory;
+        const hasExplicitLimit = hasExplicitNumericLimit || hasOrdinalRequest || hasSingleRequest || hasNumberBeforeSize || hasNumberBeforeCategory || hasSuperlativeImpliedLimit;
         
         if (!hasExplicitLimit) {
           console.log(`[Limit Guard - Disambiguation] Removing limit=${args.limit} - no explicit limit in: "${userQuestion}"`);
@@ -21296,7 +21297,8 @@ Response (JSON only):`;
       const hasNumberBeforeSize = /\b(\d+)\s+(smallest|largest|biggest|lowest|highest|cheapest|top|bottom)\b/i.test(userQuestion);
       // Also match "5 small projects", "10 large projects" (fee category with limit)
       const hasNumberBeforeCategory = /\b(\d+)\s+(small|medium|large|tiny|huge|mega|micro)\s+(project|projects)\b/i.test(userQuestion);
-      const hasExplicitLimit = hasExplicitNumericLimit || hasOrdinalRequest || hasSingleRequest || hasNumberBeforeSize || hasNumberBeforeCategory;
+      const hasSuperlativeImpliedLimit = /\b(?:our|my|the|your)\s+(?:best|worst|highest|lowest|largest|biggest|smallest|top|peak|weakest)\s+(?:customer|client|project|state|quarter|month|division|department|region|performer)\b/i.test(userQuestion);
+      const hasExplicitLimit = hasExplicitNumericLimit || hasOrdinalRequest || hasSingleRequest || hasNumberBeforeSize || hasNumberBeforeCategory || hasSuperlativeImpliedLimit;
       
       if (!hasExplicitLimit) {
         console.log(`[Limit Guard] Removing limit=${args.limit} - no explicit limit requested in: "${userQuestion}"`);
