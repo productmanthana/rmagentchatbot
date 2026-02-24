@@ -16872,7 +16872,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       {
         const qLow = userQuestion.toLowerCase();
         const multiYearMatch = qLow.match(/(\d{4}).*(?:with|and|vs|versus|compared?\s+to|to)\s+.*?(\d{4})/);
-        if (multiYearMatch && classification.function_name !== 'ai_data_analysis') {
+        if (multiYearMatch && classification.function_name !== 'ai_data_analysis' && classification.function_name !== 'get_best_worst_quarters' && classification.function_name !== 'get_monthly_momentum') {
           const year1 = parseInt(multiYearMatch[1]);
           const year2 = parseInt(multiYearMatch[2]);
           if (year1 !== year2 && year1 >= 2000 && year1 <= 2030 && year2 >= 2000 && year2 <= 2030) {
