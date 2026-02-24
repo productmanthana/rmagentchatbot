@@ -24780,7 +24780,11 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
         'get_schema_info', 'get_available_functions', 'ai_analysis', 'ai_followup_response',
         'get_clients_by_time_period', 'common_clients_between_companies', 'common_projects_between_companies'
       ]);
-      if (userQuestion && !skipReviewFunctions.has(functionName) && !args._llm_review_done) {
+      const isRankingWithPostFilter = (functionName === 'get_monthly_momentum' || functionName === 'get_best_worst_quarters') && args.sort_direction;
+      if (isRankingWithPostFilter) {
+        console.log(`[LLM-SQL-Review] ⏭️ SKIPPING review for ${functionName} with sort_direction=${args.sort_direction} (post-filter handles ranking)`);
+      }
+      if (userQuestion && !skipReviewFunctions.has(functionName) && !isRankingWithPostFilter && !args._llm_review_done) {
         args._llm_review_done = true;
         try {
           const review = await this.llmSqlReview(userQuestion, sql, sqlParams, functionName, args);
@@ -24796,7 +24800,13 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
               /\bMONTH_EQUALS\b/i.test(review.sql) ||
               /\bBETWEEN\s+@p\d+\s*(?:GROUP|ORDER|HAVING|\)|$)/i.test(review.sql) ||
               /\b@p\d+\s*$/.test(review.sql.trim());
-            if (hasSyntaxCorruption) {
+            const paramRefs = (review.sql.match(/@p(\d+)/g) || []);
+            const maxParamRef = paramRefs.reduce((max, p) => Math.max(max, parseInt(p.replace('@p', ''))), 0);
+            const actualParamCount = (review.params || sqlParams || []).length;
+            if (maxParamRef > actualParamCount) {
+              console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: SQL references @p${maxParamRef} but only ${actualParamCount} params exist. Keeping original.`);
+              try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: false, rejected: 'param_reference_overflow' }) + '\n'); } catch(e) {}
+            } else if (hasSyntaxCorruption) {
               console.log(`[LLM-SQL-Review] ❌ REJECTED CORRECTION: Detected syntax corruption in corrected SQL. Keeping original.`);
               try { fs.appendFileSync('/tmp/llm_review.log', JSON.stringify({ ts: new Date().toISOString(), functionName, question: userQuestion, reason: review.reason, applied: false, rejected: 'syntax_corruption' }) + '\n'); } catch(e) {}
             } else {
