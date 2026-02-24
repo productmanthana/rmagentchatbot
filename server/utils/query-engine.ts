@@ -14503,8 +14503,10 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         } else if (bqCompanyMatch) {
           bqEntityName = bqCompanyMatch[1].replace(/\b(us|our|the|company|firm)\b/gi, '').trim();
         }
-        console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Detected best/worst quarter query → forcing ai_data_analysis (entity="${bqEntityName}", year=${bqStartYear}-${bqEndYear}, companies=${JSON.stringify(bqCompanies)})`);
-        const bestQArgs: Record<string, any> = { analysis_question: userQuestion };
+        const bqIsWorst = /\b(?:worst|weakest|lowest|bottom)\b/i.test(userQuestion);
+        const bqSortDir = bqIsWorst ? 'ASC' : 'DESC';
+        console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Detected best/worst quarter query → forcing get_best_worst_quarters with sort_direction=${bqSortDir} (entity="${bqEntityName}", year=${bqStartYear}-${bqEndYear}, companies=${JSON.stringify(bqCompanies)})`);
+        const bestQArgs: Record<string, any> = { sort_direction: bqSortDir };
         if (bqCompanies.length > 1) {
           bestQArgs.companies = bqCompanies;
           console.log(`[QueryEngine] 📊 BEST QUARTER OVERRIDE: Multi-company comparison: ${bqCompanies.join(', ')}`);
@@ -14521,7 +14523,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         bestQArgs.start_date = `${bqStartYear}-01-01`;
         bestQArgs.end_date = `${bqEndYear}-12-31`;
         classification = {
-          function_name: 'ai_data_analysis',
+          function_name: 'get_best_worst_quarters',
           arguments: bestQArgs
         };
       } else {
@@ -23342,7 +23344,7 @@ Based on ${aggregates.count} projects:
     
     // Stopwords to ignore
     const stopwords = new Set([
-      'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'by', 'with',
+      'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'by', 'with', 'us', 'our', 'we', 'my', 'ours', 'them', 'it',
       'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
       'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
       'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'all', 'any',
