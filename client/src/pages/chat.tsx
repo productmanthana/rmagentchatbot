@@ -1228,6 +1228,7 @@ export default function ChatPage() {
   const [dismissedLimitNotification, setDismissedLimitNotification] = useState<Record<string, boolean>>({});
   const [usedSuggestions, setUsedSuggestions] = useState<Record<string, string>>({});  // messageId -> selected suggestion description
   const [showLargeDataAlert, setShowLargeDataAlert] = useState(false);
+  const [noResultsInputs, setNoResultsInputs] = useState<Record<string, string>>({});  // messageId -> rephrased search input
   const [clickedDisambiguationButton, setClickedDisambiguationButton] = useState<string | null>(null);  // Track which disambiguation button was clicked
   const mainInputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -4721,6 +4722,46 @@ export default function ChatPage() {
                                             </TabsContent>
                                           )}
                                         </Tabs>
+
+                                        {/* Try a Different Search - shown for no-results (ai_analysis) responses */}
+                                        {message.response.data?.[0]?.type === 'ai_analysis' && (
+                                          <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 space-y-3">
+                                            <div className="flex items-center gap-2">
+                                              <Search className="h-4 w-4 text-[#6B7280]" />
+                                              <span className="text-sm font-medium text-[#374151]">Try a different search</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                              <input
+                                                type="text"
+                                                className="flex-1 text-sm border border-[#E5E7EB] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#8BC34A]/50 focus:border-[#8BC34A] placeholder:text-[#9CA3AF]"
+                                                placeholder="Rephrase your question or try a different term..."
+                                                value={noResultsInputs[message.id] || ''}
+                                                onChange={(e) => setNoResultsInputs(prev => ({ ...prev, [message.id]: e.target.value }))}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter' && noResultsInputs[message.id]?.trim()) {
+                                                    handleExampleClick(noResultsInputs[message.id].trim());
+                                                    setNoResultsInputs(prev => ({ ...prev, [message.id]: '' }));
+                                                  }
+                                                }}
+                                                data-testid={`input-no-results-rephrase-${message.id}`}
+                                              />
+                                              <Button
+                                                size="sm"
+                                                className="bg-[#8BC34A] hover:bg-[#7CB342] text-white flex-shrink-0"
+                                                disabled={!noResultsInputs[message.id]?.trim() || queryMutation.isPending}
+                                                onClick={() => {
+                                                  if (noResultsInputs[message.id]?.trim()) {
+                                                    handleExampleClick(noResultsInputs[message.id].trim());
+                                                    setNoResultsInputs(prev => ({ ...prev, [message.id]: '' }));
+                                                  }
+                                                }}
+                                                data-testid={`button-no-results-search-${message.id}`}
+                                              >
+                                                <Send className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
 
                                         {/* Follow-up Questions Section - Temporarily hidden */}
                                         {!HIDE_FOLLOWUP && !(message.response.data?.[0]?.is_fallback) && 
