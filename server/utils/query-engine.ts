@@ -2200,6 +2200,17 @@ function normalizeQuerySynonyms(query: string): string {
     console.log('[QueryEngine] 🛡️ Preserving query - contains known status phrase');
     return query; // Return original without synonym replacements
   }
+
+  // PRESERVE BREAKDOWN/AGGREGATION PATTERNS - "revenue by X", "cost by X", "fee by X"
+  // e.g., "Revenue by division" should NOT become "fee by division" which gets misclassified
+  const AGGREGATION_COLUMNS = ['division', 'department', 'category', 'state', 'month', 'year', 'region', 'project type', 'type', 'client', 'company'];
+  const isBreakdownPattern = AGGREGATION_COLUMNS.some(col =>
+    new RegExp(`\\b(revenue|cost|value|fee|fees|costs|values)s?\\s+by\\s+${col}\\b`, 'i').test(queryLower)
+  );
+  if (isBreakdownPattern) {
+    console.log('[QueryEngine] 🛡️ Preserving query - matches breakdown aggregation pattern (e.g., revenue by division)');
+    return query; // Return original without synonym replacements
+  }
   
   // Sort by length descending to replace longer phrases first
   const sortedSynonyms = Object.entries(QUERY_SYNONYMS).sort((a, b) => b[0].length - a[0].length);
@@ -12507,7 +12518,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
       const FILLER_WORDS = ['show', 'list', 'get', 'display', 'provide', 'find', 'give', 'pull', 'fetch', 
         'all', 'me', 'the', 'a', 'an', 'my', 'our', 'projects', 'project', 'data', 'details', 'info',
         'information', 'report', 'reports', 'breakdown', 'breakdowns', 'summary', 'count', 'counts',
-        'total', 'totals', 'revenue', 'value', 'values', 'number', 'wise',
+        'total', 'totals', 'revenue', 'revenues', 'fee', 'fees', 'cost', 'costs', 'value', 'values', 'number', 'wise',
         'by', 'per', 'on', 'in', 'of', 'for', 'with', 'from', 'to', 'and', 'or', 'grouped', 'based'];
       const extractedWords = extractedValue.split(/\s+/).filter(w => w.length > 0);
       const isAllFillerWords = extractedWords.length > 0 && extractedWords.every(w => FILLER_WORDS.includes(w));
