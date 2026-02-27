@@ -1142,15 +1142,64 @@ function parseDidYouMean(text: string): { mainText: string; suggestions: string[
   return { mainText: text.replace(match[0], '').trim(), suggestions };
 }
 
-function buildCorrectedQuery(originalQuestion: string, messageText: string, suggestion: string): string {
+function buildCorrectedQuery(originalQuestion: string, messageText: string, suggestion: string, allSuggestions?: string[]): string {
+  // Strategy 1: Extract a typed entity like: for client "LiRo-Hill"
   const entityMatch = messageText.match(/for\s+(?:client|company|project|category|region|pm|manager)?\s*"([^"]+)"/i);
   const originalEntity = entityMatch?.[1];
-  if (originalEntity) {
+  if (originalEntity && originalEntity.toLowerCase() !== suggestion.toLowerCase()) {
     const escaped = originalEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const corrected = originalQuestion.replace(new RegExp(escaped, 'gi'), suggestion);
     if (corrected !== originalQuestion) return corrected;
   }
-  return `${originalQuestion} (use "${suggestion}" instead)`;
+
+  // Strategy 2: Look for hyphenated/spaced combos of all suggestions in the original question
+  // e.g. suggestions ["LiRo", "Hill"] → search for "liro-hill" or "hill-liro" in question
+  const others = (allSuggestions || []).filter(s => s !== suggestion);
+  for (const other of others) {
+    const escapedSuggestion = suggestion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedOther = other.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const patterns = [
+      new RegExp(`${escapedSuggestion}[-\\s]${escapedOther}`, 'gi'),
+      new RegExp(`${escapedOther}[-\\s]${escapedSuggestion}`, 'gi'),
+    ];
+    for (const pattern of patterns) {
+      const corrected = originalQuestion.replace(pattern, suggestion);
+      if (corrected !== originalQuestion) return corrected;
+    }
+  }
+
+  // Strategy 3: Scan for any word in the question that contains all suggestion parts
+  // e.g. "liro-hill" contains "liro" and "hill"
+  const words = originalQuestion.split(/\s+/);
+  for (const word of words) {
+    const cleanWord = word.replace(/[^a-z0-9\-]/gi, '');
+    const wordLower = cleanWord.toLowerCase();
+    const suggestionLower = suggestion.toLowerCase();
+    const allMatch = (allSuggestions || [suggestion]).every(s => wordLower.includes(s.toLowerCase()));
+    if (allMatch && !wordLower.includes(suggestionLower) || (allMatch && wordLower !== suggestionLower)) {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const corrected = originalQuestion.replace(new RegExp(escaped, 'gi'), suggestion);
+      if (corrected !== originalQuestion) return corrected;
+    }
+  }
+
+  // Strategy 4: Extract the keyword search phrase and replace any part that partially matches
+  const keywordPhraseMatch = messageText.match(/for\s+"([^"]+)"/i);
+  if (keywordPhraseMatch) {
+    const phrase = keywordPhraseMatch[1];
+    const phraseWords = phrase.split(/\s+/);
+    for (const pw of phraseWords) {
+      const pwLower = pw.toLowerCase();
+      const allSuggsMatch = (allSuggestions || [suggestion]).every(s => pwLower.includes(s.toLowerCase()));
+      if (allSuggsMatch) {
+        const escaped = pw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const corrected = originalQuestion.replace(new RegExp(escaped, 'gi'), suggestion);
+        if (corrected !== originalQuestion) return corrected;
+      }
+    }
+  }
+
+  return originalQuestion;
 }
 
 export default function ChatPage() {
@@ -4205,7 +4254,7 @@ export default function ChatPage() {
                                                 size="sm"
                                                 variant="outline"
                                                 className="bg-white border-[#F59E0B] text-[#92400E] hover:bg-[#FEF3C7]"
-                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s))}
+                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s, suggestions))}
                                                 data-testid={`button-did-you-mean-${i}`}
                                               >
                                                 {s}
@@ -4346,7 +4395,7 @@ export default function ChatPage() {
                                                             key={i}
                                                             size="sm"
                                                             className="bg-[#8BC34A] hover:bg-[#7CB342] text-white"
-                                                            onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s))}
+                                                            onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s, suggestions))}
                                                             data-testid={`button-did-you-mean-error-${i}`}
                                                           >
                                                             {s}
@@ -4608,7 +4657,7 @@ export default function ChatPage() {
                                                                 key={i}
                                                                 size="sm"
                                                                 className="bg-[#8BC34A] hover:bg-[#7CB342] text-white"
-                                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, narrative, s))}
+                                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, narrative, s, suggestions))}
                                                                 data-testid={`button-did-you-mean-analysis-${i}`}
                                                               >
                                                                 {s}
