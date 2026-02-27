@@ -1133,6 +1133,26 @@ function getSafeEmbedId(): string {
   }
 }
 
+function parseDidYouMean(text: string): { mainText: string; suggestions: string[] } {
+  if (!text) return { mainText: text, suggestions: [] };
+  const match = text.match(/\n\nDid you mean:\s*(.+?)(\?)?\s*$/i);
+  if (!match) return { mainText: text, suggestions: [] };
+  const suggestionsStr = match[1];
+  const suggestions = suggestionsStr.match(/"([^"]+)"/g)?.map((s: string) => s.replace(/"/g, '')) || [];
+  return { mainText: text.replace(match[0], '').trim(), suggestions };
+}
+
+function buildCorrectedQuery(originalQuestion: string, messageText: string, suggestion: string): string {
+  const entityMatch = messageText.match(/for\s+(?:client|company|project|category|region|pm|manager)?\s*"([^"]+)"/i);
+  const originalEntity = entityMatch?.[1];
+  if (originalEntity) {
+    const escaped = originalEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const corrected = originalQuestion.replace(new RegExp(escaped, 'gi'), suggestion);
+    if (corrected !== originalQuestion) return corrected;
+  }
+  return `${originalQuestion} (use "${suggestion}" instead)`;
+}
+
 export default function ChatPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -4164,14 +4184,39 @@ export default function ChatPage() {
                             {message.response && (
                               <div className="space-y-4">
                                 {/* Fallback/Alternative Notice Banner */}
-                                {message.response.success && message.response.is_fallback_result && message.response.message && (
-                                  <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-xl p-3 flex items-start gap-2">
-                                    <AlertCircle className="h-4 w-4 text-[#F59E0B] mt-0.5 flex-shrink-0" />
-                                    <p className="text-sm text-[#92400E]" data-testid="text-fallback-notice">
-                                      {message.response.message}
-                                    </p>
-                                  </div>
-                                )}
+                                {message.response.success && message.response.is_fallback_result && message.response.message && (() => {
+                                  const { mainText, suggestions } = parseDidYouMean(message.response.message);
+                                  const originalQuestion = message.response?.question || message.content || '';
+                                  return (
+                                    <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-xl p-3 space-y-2">
+                                      <div className="flex items-start gap-2">
+                                        <AlertCircle className="h-4 w-4 text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                                        <p className="text-sm text-[#92400E]" data-testid="text-fallback-notice">
+                                          {mainText}
+                                        </p>
+                                      </div>
+                                      {suggestions.length > 0 && (
+                                        <div className="pl-6 space-y-1">
+                                          <p className="text-xs text-[#92400E] font-medium">Did you mean:</p>
+                                          <div className="flex flex-wrap gap-2">
+                                            {suggestions.map((s, i) => (
+                                              <Button
+                                                key={i}
+                                                size="sm"
+                                                variant="outline"
+                                                className="bg-white border-[#F59E0B] text-[#92400E] hover:bg-[#FEF3C7]"
+                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s))}
+                                                data-testid={`button-did-you-mean-${i}`}
+                                              >
+                                                {s}
+                                              </Button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                                 {/* Summary Stats */}
                                 {message.response.summary && message.response.success && (
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -4285,6 +4330,34 @@ export default function ChatPage() {
                                           ? (message.response.message || "This operation is not allowed.")
                                           : message.response.error === "off_topic"
                                           ? (message.response.message || "I am designed for RMOne database queries only.")
+                                          : message.response.error === "no_results" && message.response.message
+                                          ? (() => {
+                                              const { mainText, suggestions } = parseDidYouMean(message.response.message);
+                                              const originalQuestion = message.response?.question || message.content || '';
+                                              return (
+                                                <div className="space-y-3">
+                                                  <p>{mainText}</p>
+                                                  {suggestions.length > 0 && (
+                                                    <div className="space-y-2">
+                                                      <p className="text-sm font-medium">Did you mean:</p>
+                                                      <div className="flex flex-wrap gap-2">
+                                                        {suggestions.map((s, i) => (
+                                                          <Button
+                                                            key={i}
+                                                            size="sm"
+                                                            className="bg-[#8BC34A] hover:bg-[#7CB342] text-white"
+                                                            onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, message.response.message, s))}
+                                                            data-testid={`button-did-you-mean-error-${i}`}
+                                                          >
+                                                            {s}
+                                                          </Button>
+                                                        ))}
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })()
                                           : `Great question! I need to talk to my creators to ensure that I have the right answer for you. Query #${message.id.slice(-6).toUpperCase()}`
                                         }
                                       </AlertDescription>
@@ -4519,7 +4592,34 @@ export default function ChatPage() {
                                                 <h3 className="font-semibold text-[#111827]">AI Analysis</h3>
                                               </div>
                                               <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
-                                                <MarkdownRenderer content={message.response.data[0].narrative} />
+                                                {(() => {
+                                                  const narrative = message.response.data[0].narrative || '';
+                                                  const { mainText, suggestions } = parseDidYouMean(narrative);
+                                                  const originalQuestion = message.response?.question || message.content || '';
+                                                  return (
+                                                    <>
+                                                      <MarkdownRenderer content={mainText} />
+                                                      {suggestions.length > 0 && (
+                                                        <div className="mt-4 space-y-2">
+                                                          <p className="text-sm text-[#374151] font-medium">Did you mean one of these?</p>
+                                                          <div className="flex flex-wrap gap-2">
+                                                            {suggestions.map((s, i) => (
+                                                              <Button
+                                                                key={i}
+                                                                size="sm"
+                                                                className="bg-[#8BC34A] hover:bg-[#7CB342] text-white"
+                                                                onClick={() => handleExampleClick(buildCorrectedQuery(originalQuestion, narrative, s))}
+                                                                data-testid={`button-did-you-mean-analysis-${i}`}
+                                                              >
+                                                                {s}
+                                                              </Button>
+                                                            ))}
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </>
+                                                  );
+                                                })()}
                                               </div>
                                             </div>
                                             {message.response.data[0].breakdown_data && message.response.data[0].breakdown_data.length > 0 && (
