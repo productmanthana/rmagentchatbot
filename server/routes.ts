@@ -240,6 +240,22 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Generate AI insights automatically for all successful queries
       // Skip for AI analysis responses since they already have narrative
       const isAIAnalysis = response.data?.[0]?.type === 'ai_analysis';
+
+      // For successful queries that return 0 rows (not ai_analysis), set a helpful empty message
+      if (response.success && (!response.data || response.data.length === 0) && !isAIAnalysis) {
+        const fnName = response.function_name || '';
+        const isGroupedQuery = fnName.includes('compare_') || fnName.includes('_by_division') || 
+          fnName.includes('_by_department') || fnName.includes('_by_category') || 
+          fnName.includes('_by_month') || fnName.includes('_by_state') || 
+          fnName.includes('_by_project_type') || fnName.includes('breakdown') ||
+          fnName.includes('revenue_');
+        if (isGroupedQuery) {
+          response.ai_insights = `No grouped data was found for this breakdown. The data column being grouped may not be populated for the records matching your filters, or there may be no records matching the specified time range or status. Try removing date filters or broadening your search.`;
+        } else {
+          response.ai_insights = `No records were found matching your query. Try rephrasing your question, using a broader date range, or checking for spelling variations in company or entity names.`;
+        }
+      }
+
       if (response.success && response.data && response.data.length > 0 && !isAIAnalysis) {
         try {
           console.log("[API] Starting AI insights generation with OpenAI GPT-5.2...");

@@ -4723,8 +4723,8 @@ export default function ChatPage() {
                                           )}
                                         </Tabs>
 
-                                        {/* Try a Different Search - shown for no-results (ai_analysis) responses */}
-                                        {message.response.data?.[0]?.type === 'ai_analysis' && (
+                                        {/* Try a Different Search - shown for no-results: either ai_analysis type or empty data */}
+                                        {(message.response.data?.[0]?.type === 'ai_analysis' || !message.response.data?.length) && (
                                           <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 space-y-3">
                                             <div className="flex items-center gap-2">
                                               <Search className="h-4 w-4 text-[#6B7280]" />
@@ -5291,10 +5291,11 @@ export default function ChatPage() {
                                             </div>
                                           )
                                         ) : (
-                                          <div className="rounded-lg border-2 border-red-400 bg-red-50 p-8 text-center text-red-600">
-                                            <div className="flex items-center justify-center gap-2">
-                                              <AlertCircle className="h-5 w-5" />
-                                              <span>No data available</span>
+                                          <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-8 text-center text-[#6B7280]">
+                                            <div className="flex flex-col items-center justify-center gap-2">
+                                              <Search className="h-8 w-8 text-[#D1D5DB]" />
+                                              <span className="text-sm font-medium">No results found</span>
+                                              <span className="text-xs text-[#9CA3AF]">The query ran successfully but returned no matching records.</span>
                                             </div>
                                           </div>
                                         )}
@@ -5314,11 +5315,8 @@ export default function ChatPage() {
                                             </p>
                                           </div>
                                         ) : (!message.response.data || message.response.data.length === 0) ? (
-                                          <div className="bg-red-50 border-2 border-red-400 rounded-lg p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2 text-red-600">
-                                              <AlertCircle className="h-5 w-5" />
-                                              <span>No data available for AI analysis</span>
-                                            </div>
+                                          <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4 text-center text-[#6B7280] text-sm">
+                                            No analysis available for this result.
                                           </div>
                                         ) : (
                                           <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg p-4">
