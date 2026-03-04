@@ -27676,39 +27676,73 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
     private calculateSummaryStats(data: any[]): SummaryStats {
     if (!data || data.length === 0) return {};
 
+    // For STATUS breakdown results (get_status_breakdown), "Records: 7" is misleading because
+    // 7 is the number of STATUS CATEGORIES, not the total number of projects.
+    // Sum the project_count values to give the real total projects across all status rows.
+    // For other aggregations (divisions, departments, etc.) data.length is already meaningful.
+    const firstRow = data[0] || {};
+    const isStatusBreakdown = 'StatusChoice' in firstRow && 'project_count' in firstRow;
+    let aggregatedCount = 0;
+    if (isStatusBreakdown) {
+      aggregatedCount = data.reduce((sum, item) => {
+        const n = parseInt(String(item.project_count ?? 0));
+        return sum + (isNaN(n) ? 0 : n);
+      }, 0);
+    }
+    const totalRecords = aggregatedCount > 0 ? aggregatedCount : data.length;
+
     const stats: SummaryStats = {
-      total_records: data.length,
+      total_records: totalRecords,
     };
 
     // Fee statistics
-    const fees: number[] = [];
-    for (const item of data) {
-      if (item["Fee"]) {
-        const fee = parseFloat(String(item["Fee"]));
-        if (!isNaN(fee)) fees.push(fee);
+    // For aggregation results (e.g. get_status_breakdown, compare_divisions, get_category_breakdown)
+    // rows carry total_value/total_revenue and avg_fee/avg_project_value instead of raw "Fee"
+    const isAggregationResult = aggregatedCount > 0;
+    if (isAggregationResult) {
+      const totalVal = data.reduce((sum, item) => {
+        const v = parseFloat(String(item.total_value ?? item.total_revenue ?? 0));
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+      if (totalVal > 0) {
+        stats.total_value = totalVal;
+        stats.avg_fee = totalVal / totalRecords;
+      }
+      const avgWin = data.reduce((sum, item) => {
+        const w = parseFloat(String(item.avg_win_rate ?? 0));
+        return sum + (isNaN(w) ? 0 : w);
+      }, 0);
+      if (avgWin > 0) stats.avg_win_rate = avgWin / data.length;
+    } else {
+      const fees: number[] = [];
+      for (const item of data) {
+        if (item["Fee"]) {
+          const fee = parseFloat(String(item["Fee"]));
+          if (!isNaN(fee)) fees.push(fee);
+        }
+      }
+      if (fees.length > 0) {
+        stats.total_value = fees.reduce((a, b) => a + b, 0);
+        stats.avg_fee = stats.total_value / fees.length;
+        stats.median_fee = fees.sort((a, b) => a - b)[Math.floor(fees.length / 2)];
+        stats.min_fee = Math.min(...fees);
+        stats.max_fee = Math.max(...fees);
       }
     }
 
-    if (fees.length > 0) {
-      stats.total_value = fees.reduce((a, b) => a + b, 0);
-      stats.avg_fee = stats.total_value / fees.length;
-      stats.median_fee = fees.sort((a, b) => a - b)[Math.floor(fees.length / 2)];
-      stats.min_fee = Math.min(...fees);
-      stats.max_fee = Math.max(...fees);
-    }
-
-    // Win rate statistics
-    const winRates: number[] = [];
-    for (const item of data) {
-      const winField = item["ChanceOfSuccess"] || item["Win_Percentage"];
-      if (winField) {
-        const winRate = parseFloat(String(winField));
-        if (!isNaN(winRate)) winRates.push(winRate);
+    // Win rate statistics (individual project rows only — aggregation results handled above)
+    if (!isAggregationResult) {
+      const winRates: number[] = [];
+      for (const item of data) {
+        const winField = item["ChanceOfSuccess"] || item["Win_Percentage"];
+        if (winField) {
+          const winRate = parseFloat(String(winField));
+          if (!isNaN(winRate)) winRates.push(winRate);
+        }
       }
-    }
-
-    if (winRates.length > 0) {
-      stats.avg_win_rate = winRates.reduce((a, b) => a + b, 0) / winRates.length;
+      if (winRates.length > 0) {
+        stats.avg_win_rate = winRates.reduce((a, b) => a + b, 0) / winRates.length;
+      }
     }
 
     // Status breakdown
