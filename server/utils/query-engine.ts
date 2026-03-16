@@ -2176,6 +2176,29 @@ const QUERY_SYNONYMS: Record<string, string> = {
   'win percentage': 'win rate',
   'win %': 'win rate',
   'win%': 'win rate',
+
+  // Vague/subjective qualifiers → map to contract value (nearest measurable metric)
+  'good purpose': 'by fee',
+  'overall good': 'highest',
+  'great purpose': 'by fee',
+  'best purpose': 'by fee',
+  'overall purpose': 'by fee',
+  'good impact': 'by fee',
+  'most impactful': 'highest fee',
+  'most significant': 'highest fee',
+  'most important': 'highest fee',
+  'most valuable': 'highest fee',
+  'most meaningful': 'highest fee',
+  'high impact': 'high value',
+  'high-impact': 'high value',
+  'impactful': 'high value',
+  'meaningful': 'high value',
+  'key projects': 'top projects by fee',
+  'best projects': 'top projects by fee',
+  'major projects': 'top projects by fee',
+  'notable projects': 'top projects by fee',
+  'prominent projects': 'top projects by fee',
+  'leading projects': 'top projects by fee',
 };
 
 /**
