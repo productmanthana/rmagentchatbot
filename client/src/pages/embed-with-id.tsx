@@ -41,6 +41,7 @@ export default function EmbedWithIdPage() {
   const params = useParams<{ embedId: string }>();
   const [validation, setValidation] = useState<EmbedValidation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startingUp, setStartingUp] = useState(false);
   const [displayId, setDisplayId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [jwtUsername, setJwtUsername] = useState<string | null>(null);
@@ -172,6 +173,14 @@ export default function EmbedWithIdPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ parentOrigin }),
         });
+
+        // If server is still starting up (503), retry automatically after a short delay
+        if (validateResponse.status === 503) {
+          setStartingUp(true);
+          setTimeout(() => validateAndCreateSession(), 5000);
+          return;
+        }
+
         const validateData = await validateResponse.json();
         
         if (!validateData.valid) {
@@ -179,6 +188,8 @@ export default function EmbedWithIdPage() {
           setLoading(false);
           return;
         }
+        
+        setStartingUp(false);
 
         // CRITICAL: Detect if this is a NEW JWT token (different from stored one)
         // If so, clear all cached session data to prevent role mixing
@@ -299,7 +310,12 @@ export default function EmbedWithIdPage() {
       <div className="h-full w-full flex items-center justify-center bg-gray-50" style={{ minHeight: '100vh', height: '100%' }}>
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-[#8BC34A] border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-600">Validating embed access...</p>
+          <p className="text-gray-600">
+            {startingUp ? "Server is starting up, please wait..." : "Validating embed access..."}
+          </p>
+          {startingUp && (
+            <p className="text-sm text-gray-400">This may take a few seconds after a server restart</p>
+          )}
         </div>
       </div>
     );
