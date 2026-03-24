@@ -136,42 +136,62 @@ app.use('/api', (req, res, next) => {
     log(`Server listening on ${protocol}://0.0.0.0:${port} - starting database initialization...`);
   });
 
-  // THEN: Initialize database and routes asynchronously
-  try {
-    // Initialize MS SQL app database if configured
-    if (isAppMssqlConfigured()) {
-      log("Initializing MS SQL app database...");
-      await initAppMssqlPool();
-    }
-
-    // Initialize unified storage layer (connects to appropriate database)
-    await initUnifiedStorage();
-
-    await registerRoutes(app);
-
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-
-      res.status(status).json({ message });
-      throw err;
-    });
-
-    // importantly only setup vite in development and after
-    // setting up all the other routes so the catch-all route
-    // doesn't interfere with the other routes
-    if (app.get("env") === "development") {
-      await setupVite(app, server);
-    } else {
-      serveStatic(app);
-    }
-
-    // Mark database as initialized
-    dbInitialized = true;
-    log(`Database initialized successfully - application ready`);
-  } catch (error) {
-    dbInitError = error as Error;
-    log(`Database initialization failed: ${(error as Error).message}`);
-    // Don't exit - keep server running for health checks, but API routes will return 503
+  // Always register static file serving AFTER all API routes (and regardless of DB status)
+  // This ensures the frontend SPA always loads even if the database connection failed on startup
+  if (app.get("env") === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
   }
+
+  // Initialize database and routes with retry logic (SQL Server may not be ready immediately after boot)
+  const MAX_RETRIES = 10;
+  const RETRY_DELAY_MS = 15000; // 15 seconds between retries
+
+  let routesRegistered = false;
+
+  const initWithRetry = async (attempt: number = 1): Promise<void> => {
+    if (dbInitialized) return; // Already initialized, skip
+
+    try {
+      log(`Database initialization attempt ${attempt}/${MAX_RETRIES}...`);
+
+      // Initialize MS SQL app database if configured
+      if (isAppMssqlConfigured()) {
+        log("Initializing MS SQL app database...");
+        await initAppMssqlPool();
+      }
+
+      // Initialize unified storage layer (connects to appropriate database)
+      await initUnifiedStorage();
+
+      if (!routesRegistered) {
+        await registerRoutes(app);
+        app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+          const status = err.status || err.statusCode || 500;
+          const message = err.message || "Internal Server Error";
+          res.status(status).json({ message });
+          throw err;
+        });
+        routesRegistered = true;
+      }
+
+      // Mark database as initialized
+      dbInitialized = true;
+      dbInitError = null;
+      log(`Database initialized successfully - application ready`);
+    } catch (error) {
+      dbInitError = error as Error;
+      log(`Database initialization failed (attempt ${attempt}/${MAX_RETRIES}): ${(error as Error).message}`);
+
+      if (attempt < MAX_RETRIES) {
+        log(`Retrying database connection in ${RETRY_DELAY_MS / 1000} seconds...`);
+        setTimeout(() => initWithRetry(attempt + 1), RETRY_DELAY_MS);
+      } else {
+        log(`All ${MAX_RETRIES} database connection attempts failed. API routes will return 503.`);
+      }
+    }
+  };
+
+  initWithRetry();
 })();
