@@ -14989,13 +14989,14 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
             'get_division_breakdown', 'get_department_breakdown',
             'get_revenue_by_division', 'get_revenue_by_department',
             'get_projects_by_category', 'compare_divisions', 'compare_departments',
-            'compare_regions', 'compare_states', 'compare_countries', 'get_revenue_by_state'
+            'compare_regions', 'compare_states', 'compare_countries', 'get_revenue_by_state',
+            'analyze_data_quality'
           ];
           
           // If regex suggested a high-confidence breakdown pattern AND AI chose a listing pattern
           // Override AI's choice (common misclassification case)
           // Note: compare_states is included so compare_regions can override when user asks for "regions" not "states"
-          const listingPatterns = ['get_largest_projects', 'get_projects_by_combined_filters', 'get_projects_by_year', 'get_projects_by_state', 'get_projects_by_project_type', 'compare_states'];
+          const listingPatterns = ['get_largest_projects', 'get_projects_by_combined_filters', 'get_projects_by_year', 'get_projects_by_state', 'get_projects_by_project_type', 'compare_states', 'get_projects_with_missing_fields'];
           
           const isSuperlativeQuery = /\b(?:highest|largest|biggest|smallest|lowest|top|bottom|best|worst|most|least|peak|weakest)\b/i.test(userQuestion);
           const aiChoseRankingFn = ['get_largest_projects', 'get_smallest_projects', 'get_best_worst_quarters', 'get_seasonal_patterns', 'get_monthly_momentum', 'get_revenue_by_state'].includes(aiFn);
