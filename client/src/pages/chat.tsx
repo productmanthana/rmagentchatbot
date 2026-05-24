@@ -5138,17 +5138,19 @@ export default function ChatPage() {
                                       {message.response.function_name === 'analyze_data_quality' && message.response.data?.[0]?._report_type === 'DATA_QUALITY_SUMMARY' ? (
                                         (() => {
                                           const summaryRow = message.response.data[0];
+                                          const total = Number(summaryRow['Total Records'] ?? 0);
+                                          const missingStatus = Number(summaryRow['Missing Status'] ?? 0);
+                                          const missingDescription = Number(summaryRow['Missing Description'] ?? 0);
                                           const dqChartConfig: ChartConfig = {
                                             type: 'doughnut',
-                                            title: 'Data Quality Summary',
+                                            title: 'Date Quality Breakdown',
                                             labels: [
                                               'Both Dates Valid',
                                               'Only Start Date',
                                               'Only End Date',
                                               'No Dates',
-                                              'Ridiculous Dates',
-                                              'Missing Status',
-                                              'Missing Description',
+                                              'Reversed (End < Start)',
+                                              'Out-of-Range Dates',
                                             ],
                                             datasets: [{
                                               label: 'Records',
@@ -5157,24 +5159,41 @@ export default function ChatPage() {
                                                 Number(summaryRow['Only Start Date (end missing)'] ?? 0),
                                                 Number(summaryRow['Only End Date (start missing)'] ?? 0),
                                                 Number(summaryRow['No Dates at All'] ?? 0),
-                                                Number(summaryRow['Ridiculous Dates (present but invalid year or reversed)'] ?? 0),
-                                                Number(summaryRow['Missing Status'] ?? 0),
-                                                Number(summaryRow['Missing Description'] ?? 0),
+                                                Number(summaryRow['End Date Before Start Date (reversed)'] ?? 0),
+                                                Number(summaryRow['Out-of-Range Dates (before 1970 or after 2060)'] ?? 0),
+                                              ],
+                                              backgroundColor: [
+                                                '#22C55E',
+                                                '#3B82F6',
+                                                '#F59E0B',
+                                                '#9CA3AF',
+                                                '#A855F7',
+                                                '#EF4444',
                                               ],
                                             }],
                                             tooltipFormat: 'number',
                                             showLegend: true,
-                                            colorScheme: 'vibrant',
                                           };
                                           return (
-                                            <div className="bg-white border border-[#E5E7EB] rounded-xl p-6" data-testid="data-quality-chart-tab">
-                                              <div className="flex items-center gap-2 mb-3">
-                                                <h4 className="font-semibold text-[#111827]">Data Quality Summary</h4>
-                                                <span className="text-xs text-[#6B7280] bg-[#E5E7EB] px-2 py-0.5 rounded">
-                                                  {Number(summaryRow['Total Records'] ?? 0).toLocaleString()} total records
-                                                </span>
+                                            <div className="space-y-4" data-testid="data-quality-chart-tab">
+                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-total-records">
+                                                  <p className="text-xs text-[#6B7280] mb-1">Total Records</p>
+                                                  <p className="text-2xl font-bold text-[#111827]">{total.toLocaleString()}</p>
+                                                </div>
+                                                <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-missing-status">
+                                                  <p className="text-xs text-[#6B7280] mb-1">Missing / Unmapped Status</p>
+                                                  <p className="text-2xl font-bold text-[#F59E0B]">{missingStatus.toLocaleString()}</p>
+                                                </div>
+                                                <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-missing-description">
+                                                  <p className="text-xs text-[#6B7280] mb-1">Missing Description</p>
+                                                  <p className="text-2xl font-bold text-[#EF4444]">{missingDescription.toLocaleString()}</p>
+                                                </div>
                                               </div>
-                                              <ChartVisualization config={dqChartConfig} />
+                                              <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
+                                                <h4 className="font-semibold text-[#111827] mb-3">Date Quality Breakdown</h4>
+                                                <ChartVisualization config={dqChartConfig} />
+                                              </div>
                                             </div>
                                           );
                                         })()
@@ -5391,42 +5410,60 @@ export default function ChatPage() {
                                             (() => {
                                               const summaryRow = message.response.data[0];
                                               const sampleRows = message.response.data.filter((r: any) => r._report_type === 'SAMPLE_BAD_DATE_ROW');
-                                              const dqLabels = [
-                                                'Both Dates Valid',
-                                                'Only Start Date',
-                                                'Only End Date',
-                                                'No Dates',
-                                                'Ridiculous Dates',
-                                                'Missing Status',
-                                                'Missing Description',
-                                              ];
-                                              const dqValues = [
-                                                Number(summaryRow['Correct Start and End Dates'] ?? 0),
-                                                Number(summaryRow['Only Start Date (end missing)'] ?? 0),
-                                                Number(summaryRow['Only End Date (start missing)'] ?? 0),
-                                                Number(summaryRow['No Dates at All'] ?? 0),
-                                                Number(summaryRow['Ridiculous Dates (present but invalid year or reversed)'] ?? 0),
-                                                Number(summaryRow['Missing Status'] ?? 0),
-                                                Number(summaryRow['Missing Description'] ?? 0),
-                                              ];
+                                              const total = Number(summaryRow['Total Records'] ?? 0);
+                                              const missingStatus = Number(summaryRow['Missing Status'] ?? 0);
+                                              const missingDescription = Number(summaryRow['Missing Description'] ?? 0);
                                               const dqChartConfig: ChartConfig = {
                                                 type: 'doughnut',
-                                                title: 'Data Quality Summary',
-                                                labels: dqLabels,
-                                                datasets: [{ label: 'Records', data: dqValues }],
+                                                title: 'Date Quality Breakdown',
+                                                labels: [
+                                                  'Both Dates Valid',
+                                                  'Only Start Date',
+                                                  'Only End Date',
+                                                  'No Dates',
+                                                  'Reversed (End < Start)',
+                                                  'Out-of-Range Dates',
+                                                ],
+                                                datasets: [{
+                                                  label: 'Records',
+                                                  data: [
+                                                    Number(summaryRow['Correct Start and End Dates'] ?? 0),
+                                                    Number(summaryRow['Only Start Date (end missing)'] ?? 0),
+                                                    Number(summaryRow['Only End Date (start missing)'] ?? 0),
+                                                    Number(summaryRow['No Dates at All'] ?? 0),
+                                                    Number(summaryRow['End Date Before Start Date (reversed)'] ?? 0),
+                                                    Number(summaryRow['Out-of-Range Dates (before 1970 or after 2060)'] ?? 0),
+                                                  ],
+                                                  backgroundColor: [
+                                                    '#22C55E',
+                                                    '#3B82F6',
+                                                    '#F59E0B',
+                                                    '#9CA3AF',
+                                                    '#A855F7',
+                                                    '#EF4444',
+                                                  ],
+                                                }],
                                                 tooltipFormat: 'number',
                                                 showLegend: true,
-                                                colorScheme: 'vibrant',
                                               };
                                               return (
                                                 <div className="space-y-6" data-testid="data-quality-report">
-                                                  <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-4">
-                                                    <div className="flex items-center gap-2 mb-3">
-                                                      <h4 className="font-semibold text-[#111827]">Data Quality Summary</h4>
-                                                      <span className="text-xs text-[#6B7280] bg-[#E5E7EB] px-2 py-0.5 rounded">
-                                                        {Number(summaryRow['Total Records'] ?? 0).toLocaleString()} total records
-                                                      </span>
+                                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-total-records-data">
+                                                      <p className="text-xs text-[#6B7280] mb-1">Total Records</p>
+                                                      <p className="text-2xl font-bold text-[#111827]">{total.toLocaleString()}</p>
                                                     </div>
+                                                    <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-missing-status-data">
+                                                      <p className="text-xs text-[#6B7280] mb-1">Missing / Unmapped Status</p>
+                                                      <p className="text-2xl font-bold text-[#F59E0B]">{missingStatus.toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="bg-white border border-[#E5E7EB] rounded-xl p-4" data-testid="stat-missing-description-data">
+                                                      <p className="text-xs text-[#6B7280] mb-1">Missing Description</p>
+                                                      <p className="text-2xl font-bold text-[#EF4444]">{missingDescription.toLocaleString()}</p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-4">
+                                                    <h4 className="font-semibold text-[#111827] mb-3">Date Quality Breakdown</h4>
                                                     <ChartVisualization config={dqChartConfig} />
                                                   </div>
                                                   {sampleRows.length > 0 && (
