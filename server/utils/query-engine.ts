@@ -6796,6 +6796,17 @@ export class QueryEngine {
         chart_type: "bar",
         chart_field: "Fee",
       },
+
+      // Data quality report - handled specially in executeQuery via handleDataQualityAnalysis
+      analyze_data_quality: {
+        sql: `-- This query is handled specially in executeQuery via handleDataQualityAnalysis
+              -- It runs two queries: a summary aggregate and a sample bad-rows query`,
+        params: [],
+        param_types: [],
+        optional_params: ["limit"],
+        chart_type: "bar",
+        chart_field: "Total Records",
+      },
     };
   }
 
@@ -8881,6 +8892,21 @@ export class QueryEngine {
               description: "Filter by state code. Optional.",
             },
             limit: { type: "integer", description: "Maximum number of projects to return (optional)" },
+          },
+          required: [],
+        },
+      },
+
+      {
+        name: "analyze_data_quality",
+        description: "Run a comprehensive data quality report on the project database. Use when user asks about 'ridiculous dates', 'bad start and end dates', 'wrong dates', 'date problems', 'date anomalies', 'date issues', 'missing dates', 'data quality report', 'identify date problems', 'source of date problem', 'missing description', 'missing status', 'incomplete records', 'data health check', 'data audit'. Returns: total record count, records with both valid dates, records with only start date, records with only end date, records with no dates, missing status count, missing description count, plus a sample table of the actual bad-date rows. Keywords: ridiculous, bad dates, wrong dates, date quality, date anomaly, date problem, missing date, data quality, data audit, data health.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "integer",
+              description: "Number of sample bad-date rows to show (default: 20, max: 50). Optional.",
+            },
           },
           required: [],
         },
@@ -12090,6 +12116,7 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
           'get_fee_clustering',                // Fee clustering by range
           'get_project_closest_to_average',    // Project closest to avg fee
           'get_middle_fee_project',            // Project at fee midpoint
+          'analyze_data_quality',              // Data quality report - ridiculous dates, missing fields
         ];
         
         functionsToSend = this.functionDefinitions.filter((f: any) => 
@@ -12511,6 +12538,19 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         { pattern: /^([\w-]+(?:\s+(?!project\s+type|module\s+name)[\w-]+)?)\s+(?:project\s+type|module\s+name|client|clients|title|titles|type|company|companies|module|modules|sector|sectors|category|categories|division|divisions|department|departments|region|regions|state|states|country|countries|status)$/i, fn: 'get_projects_by_category', extractGeneralTerm: true },
         // Pattern 3: "[keyword] [value]" - keyword at start (e.g., "client DFW", "title Hospital")
         { pattern: /^(?:client|clients|title|titles|type|company|companies|module|modules|sector|sectors|category|categories|division|divisions|department|departments|region|regions|state|states|country|countries|status)\s+([\w-]+(?:\s+[\w-]+){0,2})$/i, fn: 'get_projects_by_category', extractGeneralTerm: true },
+
+        // DATA QUALITY REPORT patterns - ridiculous/bad/missing dates and data health checks
+        { pattern: /ridiculous\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:bad|wrong|invalid|crazy|absurd)\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:date\s+)?(?:anomalies|anomaly|problem|problems|issue|issues|quality)\s+(?:in\s+)?(?:the\s+)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /dates?\s+(?:anomalies|anomaly|problem|problems|issue|issues|quality)/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:identify|find|detect|show|list)\s+(?:projects?\s+with\s+)?(?:ridiculous|bad|wrong|invalid|missing|absurd)\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:missing|null|empty|no)\s+(?:start\s+(?:and|&)\s+end\s+)?dates?\s+(?:analysis|report|breakdown|summary)/i, fn: 'analyze_data_quality' },
+        { pattern: /data\s+quality\s+(?:report|check|audit|analysis|summary)/i, fn: 'analyze_data_quality' },
+        { pattern: /data\s+(?:health|audit|integrity)\s+(?:check|report|analysis|summary)/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:source\s+of\s+(?:the\s+)?(?:date\s+)?problem|date\s+source\s+problem)/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:projects?\s+with\s+)?(?:start\s+(?:and|&|or)\s+end\s+)?dates?\s+(?:that\s+are\s+)?(?:ridiculous|wrong|bad|invalid|absurd)/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:how\s+many\s+)?records?\s+(?:with|have|having)\s+(?:correct|valid|missing|null|bad|wrong)\s+(?:start\s+(?:and\s+end\s+)?)?dates?/i, fn: 'analyze_data_quality' },
       ];
       
       // ═══════════════════════════════════════════════════════════════
@@ -24168,6 +24208,117 @@ DATABASE CONTEXT (for reference):
   }
 
   /**
+   * Handle data quality analysis: runs TWO queries — (1) a summary aggregate and (2) a sample of bad-date rows
+   */
+  private async handleDataQualityAnalysis(
+    args: Record<string, any>,
+    externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>
+  ): Promise<{ success: boolean; data: any[]; error?: string; sql_query?: string; sql_params?: any[] }> {
+    const tableName = process.env.CLIENT_TABLE_NAME || 'dbo.RMProjects';
+    const sampleLimit = Math.min(args.limit ?? 20, 50);
+
+    // ── Query 1: Summary aggregate ──────────────────────────────────────
+    const summarySql = `
+      SELECT
+        COUNT(*) AS [Total Records],
+        SUM(CASE
+          WHEN ("ConstStartDate" IS NOT NULL AND LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) <> '')
+            AND ("ClosedDate"     IS NOT NULL AND LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) <> '')
+          THEN 1 ELSE 0 END) AS [Both Start and End Dates Present],
+        SUM(CASE
+          WHEN ("ConstStartDate" IS NOT NULL AND LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) <> '')
+            AND ("ClosedDate"     IS NULL     OR  LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
+          THEN 1 ELSE 0 END) AS [Only Start Date (missing end)],
+        SUM(CASE
+          WHEN ("ConstStartDate" IS NULL     OR  LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+            AND ("ClosedDate"     IS NOT NULL AND LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) <> '')
+          THEN 1 ELSE 0 END) AS [Only End Date (missing start)],
+        SUM(CASE
+          WHEN ("ConstStartDate" IS NULL     OR  LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+            AND ("ClosedDate"     IS NULL     OR  LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
+          THEN 1 ELSE 0 END) AS [No Dates at All],
+        SUM(CASE
+          WHEN "StatusChoice" IS NULL OR LTRIM(RTRIM(CAST("StatusChoice" AS VARCHAR(100)))) = ''
+          THEN 1 ELSE 0 END) AS [Missing Status],
+        SUM(CASE
+          WHEN "Description" IS NULL OR LTRIM(RTRIM(CAST("Description" AS VARCHAR(MAX)))) = ''
+          THEN 1 ELSE 0 END) AS [Missing Description]
+      FROM ${tableName}`;
+
+    // ── Query 2: Sample bad-date rows ────────────────────────────────────
+    const sampleSql = `
+      SELECT TOP ${sampleLimit}
+        "Title",
+        CAST("ConstStartDate" AS VARCHAR(50)) AS [Start Date],
+        CAST("ClosedDate"     AS VARCHAR(50)) AS [End Date],
+        ISNULL("StatusChoice", '(none)')      AS [Status],
+        ISNULL("Company", '(none)')           AS [Company],
+        ISNULL("ModuleName", '(none)')        AS [Module],
+        CASE
+          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+            AND ("ClosedDate" IS NULL OR LTRIM(RTRIM(CAST("ClosedDate" AS VARCHAR(50)))) = '')
+            THEN 'Missing both dates'
+          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+            THEN 'Missing start date'
+          ELSE 'Missing end date'
+        END AS [Date Issue]
+      FROM ${tableName}
+      WHERE
+        ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+        OR ("ClosedDate"  IS NULL OR LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
+      ORDER BY
+        CASE
+          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
+            AND ("ClosedDate" IS NULL OR LTRIM(RTRIM(CAST("ClosedDate" AS VARCHAR(50)))) = '')
+            THEN 0
+          ELSE 1
+        END,
+        "Title"`;
+
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[DataQuality] Running summary SQL:`);
+    console.log(summarySql);
+    console.log(`[DataQuality] Running sample-rows SQL:`);
+    console.log(sampleSql);
+    console.log(`${'='.repeat(80)}\n`);
+
+    try {
+      const [summaryRows, sampleRows] = await Promise.all([
+        externalDbQuery(summarySql, []),
+        externalDbQuery(sampleSql, []),
+      ]);
+
+      const summary = summaryRows[0] ?? {};
+      console.log(`[DataQuality] Summary:`, JSON.stringify(summary));
+      console.log(`[DataQuality] Sample rows count: ${sampleRows.length}`);
+
+      // Build a combined result set that the LLM can read naturally
+      // Row 0 = summary header row, rows 1+ = sample bad-date records
+      const combined: any[] = [
+        {
+          _report_type: 'DATA_QUALITY_SUMMARY',
+          ...summary,
+        },
+        ...sampleRows.map((r: any) => ({ _report_type: 'SAMPLE_BAD_DATE_ROW', ...r })),
+      ];
+
+      return {
+        success: true,
+        data: combined,
+        sql_query: summarySql + '\n\n-- Sample rows:\n' + sampleSql,
+        sql_params: [],
+      };
+    } catch (error) {
+      console.error(`[DataQuality] Error:`, error);
+      return {
+        success: false,
+        data: [],
+        error: String(error),
+      };
+    }
+  }
+
+  /**
    * Handle pattern analysis queries: analyze reference group → find upcoming projects with similar patterns
    */
   private async handlePatternAnalysisQuery(
@@ -24495,6 +24646,11 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
       // Special handling for get_upcoming_similar_to_group_pattern (two-step pattern analysis)
       if (functionName === "get_upcoming_similar_to_group_pattern") {
         return await this.handlePatternAnalysisQuery(args, externalDbQuery);
+      }
+
+      // Special handling for analyze_data_quality (two-query: summary + bad-rows sample)
+      if (functionName === "analyze_data_quality") {
+        return await this.handleDataQualityAnalysis(args, externalDbQuery);
       }
 
       // Now check for standard SQL template

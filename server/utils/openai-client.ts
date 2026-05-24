@@ -322,6 +322,28 @@ COMPREHENSIVE UNDERSTANDING RULES:
 4. UNDERSTAND CONTEXT: If user says "show me XYZ" where XYZ is not a known category, treat it as keyword search
 5. COMBINE MULTIPLE FILTERS: When user mentions multiple criteria, include ALL in arguments
 
+--- DATA QUALITY REPORT ---
+User: "projects with ridiculous start and end dates"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "data quality report"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "how many records have wrong dates"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "show me bad dates analysis"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "date anomalies in the database"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "source of the date problem"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "identify projects with missing start or end dates"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
 Return ONLY valid JSON with "function_name" and "arguments" fields.`;
 
     const maxRetries = 5; // Increased for better rate limit handling with 200+ concurrent users
