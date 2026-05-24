@@ -12542,6 +12542,8 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         // DATA QUALITY REPORT patterns - ridiculous/bad/missing dates and data health checks
         { pattern: /ridiculous\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
         { pattern: /(?:bad|wrong|invalid|crazy|absurd)\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /\bmissing\s+(?:start\s+(?:or|and|&)\s+end\s+)?dates?\b/i, fn: 'analyze_data_quality' },
+        { pattern: /\bmissing\s+dates?\b/i, fn: 'analyze_data_quality' },
         { pattern: /(?:date\s+)?(?:anomalies|anomaly|problem|problems|issue|issues|quality)\s+(?:in\s+)?(?:the\s+)?dates?/i, fn: 'analyze_data_quality' },
         { pattern: /dates?\s+(?:anomalies|anomaly|problem|problems|issue|issues|quality)/i, fn: 'analyze_data_quality' },
         { pattern: /(?:identify|find|detect|show|list)\s+(?:projects?\s+with\s+)?(?:ridiculous|bad|wrong|invalid|missing|absurd)\s+(?:start\s+(?:and|&|or)\s+end\s+)?dates?/i, fn: 'analyze_data_quality' },
