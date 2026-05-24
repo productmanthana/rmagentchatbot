@@ -1748,40 +1748,80 @@ Please provide a helpful analysis for the follow-up question.`,
 
 
   // ═══════════════════════════════════════════════════════════════
-  // EXCEL EXPORT - Download all project data as Excel file
+  // EXPORT - Download project data as CSV (Excel-compatible)
+  // Switched from XLSX (synchronous, blocks event loop, crashes on
+  // large datasets) to CSV streaming with UTF-8 BOM so Excel opens
+  // it natively. Accepts optional ?limit= query param (max 50000).
   // ═══════════════════════════════════════════════════════════════
   app.get("/api/export/projects", isAuthenticated, async (req, res) => {
     try {
-      console.log('[Export] Starting project data export...');
-      
-      // Use MS SQL via queryExternalDb (table name is auto-replaced)
-      const rows = await queryExternalDb('SELECT * FROM "POR"', []);
-      
-      console.log(`[Export] Found ${rows.length} projects`);
+      const requestedLimit = parseInt((req.query.limit as string) || '0', 10);
+      const rowLimit = requestedLimit > 0 ? Math.min(requestedLimit, 50000) : 50000;
 
-      const worksheet = XLSX.utils.json_to_sheet(rows);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Projects');
+      console.log(`[Export] Starting export (limit=${rowLimit})...`);
 
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      // Fetch rows — use TOP to prevent unbounded memory growth
+      const rows = await queryExternalDb(`SELECT TOP ${rowLimit} * FROM "POR"`, []);
 
+      console.log(`[Export] Fetched ${rows.length} rows — building CSV...`);
+
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'No data found to export' });
+      }
+
+      // --- Build CSV with UTF-8 BOM (Excel needs BOM to recognise UTF-8) ---
+      const headers = Object.keys(rows[0]);
+
+      // Helper: escape a cell value for CSV (wrap in quotes, escape inner quotes)
+      function escapeCell(val: any): string {
+        if (val === null || val === undefined) return '';
+        const s = String(val);
+        if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      }
+
+      // Stream the response so the client starts receiving data immediately
+      // and Node.js is never blocked for long building one giant string.
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `projects_export_${timestamp}.xlsx`;
+      const filename = `projects_export_${timestamp}.csv`;
 
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Length', buffer.length);
-      
-      res.send(buffer);
-      console.log(`[Export] ✅ Export complete: ${rows.length} projects, ${buffer.length} bytes`);
+      // Add row-count hint so the client can show progress
+      res.setHeader('X-Total-Rows', String(rows.length));
+
+      // UTF-8 BOM — tells Excel this is UTF-8
+      res.write('\uFEFF');
+
+      // Header row
+      res.write(headers.map(escapeCell).join(',') + '\r\n');
+
+      // Data rows — write in batches of 500 to yield the event loop periodically
+      const BATCH = 500;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const chunk = rows.slice(i, i + BATCH);
+        const lines = chunk.map((row: any) =>
+          headers.map(h => escapeCell(row[h])).join(',')
+        ).join('\r\n');
+        res.write(lines + '\r\n');
+        // Yield to the event loop between batches
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+
+      res.end();
+      console.log(`[Export] ✅ Export complete: ${rows.length} rows`);
 
     } catch (error: any) {
       console.error('[Export] ❌ Export failed:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Export failed',
-        details: error.message
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Export failed',
+          details: error.message
+        });
+      }
     }
   });
 

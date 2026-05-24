@@ -1202,6 +1202,73 @@ function buildCorrectedQuery(originalQuestion: string, messageText: string, sugg
   return originalQuestion;
 }
 
+// ─── ExportCsvButton ────────────────────────────────────────────────────────
+// Builds the CSV in chunks via setTimeout so the browser main thread is never
+// blocked for long, preventing the tab from freezing or crashing on large data.
+function ExportCsvButton({ data }: { data: any[] }) {
+  const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
+
+  function escapeCell(val: any): string {
+    if (val === null || val === undefined) return '';
+    const s = String(val);
+    if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  async function handleExport() {
+    if (!data || data.length === 0) return;
+    setExporting(true);
+    try {
+      const headers = Object.keys(data[0]);
+      const parts: string[] = ['\uFEFF', headers.map(escapeCell).join(','), '\r\n'];
+
+      // Process rows in batches of 500 — yield between batches so the UI stays responsive
+      const BATCH = 500;
+      for (let i = 0; i < data.length; i += BATCH) {
+        const chunk = data.slice(i, i + BATCH);
+        parts.push(
+          chunk.map((row: any) => headers.map(h => escapeCell(row[h])).join(',')).join('\r\n'),
+          '\r\n'
+        );
+        // Yield to browser between batches
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
+
+      const blob = new Blob(parts, { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `data-export-${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({ title: 'CSV Downloaded', description: `${data.length.toLocaleString()} rows exported` });
+    } catch (err) {
+      toast({ title: 'Export failed', description: 'Could not build the CSV file', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <Button
+      size="sm"
+      className="bg-[#3B82F6] hover:bg-[#1D4ED8] text-white"
+      onClick={handleExport}
+      disabled={exporting || !data || data.length === 0}
+      data-testid="button-export-csv"
+    >
+      <Download className="h-4 w-4 mr-2" />
+      {exporting ? `Exporting…` : 'Export CSV'}
+    </Button>
+  );
+}
+
 export default function ChatPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -5726,41 +5793,7 @@ export default function ChatPage() {
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-[#111827] text-xl">Data Table (Full View)</DialogTitle>
-              <Button
-                size="sm"
-                className="bg-[#3B82F6] hover:bg-[#1D4ED8] text-white"
-                onClick={() => {
-                  if (maximizedTable?.data && maximizedTable.data.length > 0) {
-                    const headers = Object.keys(maximizedTable.data[0]);
-                    const csv = [
-                      headers.join(","),
-                      ...maximizedTable.data.map((row: any) =>
-                        headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")
-                      ),
-                    ].join("\n");
-                    
-                    // Create download link
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `data-export-${Date.now()}.csv`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                    
-                    toast({
-                      title: "CSV Downloaded",
-                      description: "Data exported successfully",
-                    });
-                  }
-                }}
-                data-testid="button-export-csv"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
+              <ExportCsvButton data={maximizedTable?.data ?? []} />
             </div>
           </DialogHeader>
           
