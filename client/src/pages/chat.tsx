@@ -4337,7 +4337,7 @@ export default function ChatPage() {
                                 {/* Summary Stats */}
                                 {message.response.summary && message.response.success && (
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    {message.response.summary.total_records !== undefined && (
+                                    {message.response.summary.total_records !== undefined && message.response.function_name !== 'analyze_data_quality' && (
                                       <div className="bg-[#E8F5E9] border border-[#8BC34A]/30 rounded-xl p-4">
                                         <p className="text-xs text-[#558B2F] mb-1">Records</p>
                                         <p className="text-xl font-bold text-[#8BC34A]" data-testid="text-total-records">

@@ -244,8 +244,12 @@ export function ChartVisualization({ config }: ChartVisualizationProps) {
         formatter: (value: any, context: any) => {
           const label = context.chart.data.labels?.[context.dataIndex];
           if (!label) return "";
+          const numValue = Number(value) || 0;
+          const dataset = context.chart.data.datasets?.[context.datasetIndex];
+          const total = (dataset?.data || []).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+          if (total > 0 && numValue / total < 0.05) return "";
           const labelStr = String(label);
-          return labelStr.length > 12 ? labelStr.substring(0, 12) + "..." : labelStr;
+          return labelStr.length > 12 ? labelStr.substring(0, 12) + "\u2026" : labelStr;
         },
         textStrokeColor: "#000",
         textStrokeWidth: 2,
