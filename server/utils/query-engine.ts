@@ -24209,6 +24209,8 @@ DATABASE CONTEXT (for reference):
 
   /**
    * Handle data quality analysis: runs TWO queries — (1) a summary aggregate and (2) a sample of bad-date rows
+   * A "valid" date = TRY_CONVERT(DATE) succeeds AND year is between 1980 and 2040.
+   * A "ridiculous" date = parseable BUT year is outside 1980–2040 OR ClosedDate < ConstStartDate.
    */
   private async handleDataQualityAnalysis(
     args: Record<string, any>,
@@ -24217,63 +24219,136 @@ DATABASE CONTEXT (for reference):
     const tableName = process.env.CLIENT_TABLE_NAME || 'dbo.RMProjects';
     const sampleLimit = Math.min(args.limit ?? 20, 50);
 
-    // ── Query 1: Summary aggregate ──────────────────────────────────────
+    // ── Query 1: Summary aggregate using TRY_CONVERT for real date validation ──
+    // "valid" = TRY_CONVERT succeeds AND year 1980-2040
+    // "ridiculous" = parseable but year outside range OR end < start
     const summarySql = `
+      WITH date_cte AS (
+        SELECT
+          TRY_CONVERT(DATE, "ConstStartDate") AS parsed_start,
+          TRY_CONVERT(DATE, "ClosedDate")     AS parsed_end,
+          "StatusChoice",
+          "Description"
+        FROM ${tableName}
+      ),
+      classified AS (
+        SELECT
+          -- start is "valid" only if TRY_CONVERT succeeds AND year in [1980,2040]
+          CASE WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS start_ok,
+          -- end is "valid" only if TRY_CONVERT succeeds AND year in [1980,2040]
+          CASE WHEN parsed_end IS NOT NULL AND YEAR(parsed_end) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS end_ok,
+          -- "ridiculous" end-before-start: both parse AND in range BUT end < start
+          CASE WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+                AND parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
+                AND parsed_end < parsed_start
+               THEN 1 ELSE 0 END AS end_before_start,
+          "StatusChoice",
+          "Description"
+        FROM date_cte
+      )
       SELECT
         COUNT(*) AS [Total Records],
-        SUM(CASE
-          WHEN ("ConstStartDate" IS NOT NULL AND LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) <> '')
-            AND ("ClosedDate"     IS NOT NULL AND LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) <> '')
-          THEN 1 ELSE 0 END) AS [Both Start and End Dates Present],
-        SUM(CASE
-          WHEN ("ConstStartDate" IS NOT NULL AND LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) <> '')
-            AND ("ClosedDate"     IS NULL     OR  LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
-          THEN 1 ELSE 0 END) AS [Only Start Date (missing end)],
-        SUM(CASE
-          WHEN ("ConstStartDate" IS NULL     OR  LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-            AND ("ClosedDate"     IS NOT NULL AND LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) <> '')
-          THEN 1 ELSE 0 END) AS [Only End Date (missing start)],
-        SUM(CASE
-          WHEN ("ConstStartDate" IS NULL     OR  LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-            AND ("ClosedDate"     IS NULL     OR  LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
-          THEN 1 ELSE 0 END) AS [No Dates at All],
-        SUM(CASE
-          WHEN "StatusChoice" IS NULL OR LTRIM(RTRIM(CAST("StatusChoice" AS VARCHAR(100)))) = ''
-          THEN 1 ELSE 0 END) AS [Missing Status],
-        SUM(CASE
-          WHEN "Description" IS NULL OR LTRIM(RTRIM(CAST("Description" AS VARCHAR(MAX)))) = ''
-          THEN 1 ELSE 0 END) AS [Missing Description]
-      FROM ${tableName}`;
+        -- Both dates valid AND start <= end
+        SUM(CASE WHEN start_ok = 1 AND end_ok = 1 AND end_before_start = 0 THEN 1 ELSE 0 END)
+          AS [Correct Start and End Dates],
+        -- Only start valid (end missing, unparseable, out-of-range, or before start)
+        SUM(CASE WHEN start_ok = 1 AND end_ok = 0 THEN 1 ELSE 0 END)
+          AS [Only Start Date (missing or ridiculous end)],
+        -- Only end valid (start missing, unparseable, or out-of-range)
+        SUM(CASE WHEN start_ok = 0 AND end_ok = 1 THEN 1 ELSE 0 END)
+          AS [Only End Date (missing or ridiculous start)],
+        -- Neither date valid
+        SUM(CASE WHEN start_ok = 0 AND end_ok = 0 THEN 1 ELSE 0 END)
+          AS [No Valid Dates (both missing or ridiculous)],
+        -- End before start (both valid by range but logically reversed)
+        SUM(end_before_start)
+          AS [End Date Before Start Date (reversed)],
+        -- Missing status
+        SUM(CASE WHEN "StatusChoice" IS NULL
+                   OR LTRIM(RTRIM(CAST("StatusChoice" AS NVARCHAR(100)))) = ''
+             THEN 1 ELSE 0 END) AS [Missing Status],
+        -- Missing description
+        SUM(CASE WHEN "Description" IS NULL
+                   OR LTRIM(RTRIM(CAST("Description" AS NVARCHAR(4000)))) = ''
+             THEN 1 ELSE 0 END) AS [Missing Description]
+      FROM classified`;
 
-    // ── Query 2: Sample bad-date rows ────────────────────────────────────
+    // ── Query 2: Sample bad-date rows — ALL problem categories ───────────
+    // Includes: NULL/empty, unparseable, out-of-range, end-before-start
     const sampleSql = `
+      WITH date_cte AS (
+        SELECT
+          "Title",
+          CAST("ConstStartDate" AS NVARCHAR(50)) AS [Start Date Raw],
+          CAST("ClosedDate"     AS NVARCHAR(50)) AS [End Date Raw],
+          TRY_CONVERT(DATE, "ConstStartDate")    AS parsed_start,
+          TRY_CONVERT(DATE, "ClosedDate")        AS parsed_end,
+          ISNULL(CAST("StatusChoice" AS NVARCHAR(100)), '(none)') AS [Status],
+          ISNULL(CAST("Company"     AS NVARCHAR(200)), '(none)') AS [Company],
+          ISNULL(CAST("ModuleName"  AS NVARCHAR(100)), '(none)') AS [Module]
+        FROM ${tableName}
+      )
       SELECT TOP ${sampleLimit}
-        "Title",
-        CAST("ConstStartDate" AS VARCHAR(50)) AS [Start Date],
-        CAST("ClosedDate"     AS VARCHAR(50)) AS [End Date],
-        ISNULL("StatusChoice", '(none)')      AS [Status],
-        ISNULL("Company", '(none)')           AS [Company],
-        ISNULL("ModuleName", '(none)')        AS [Module],
+        [Title],
+        [Start Date Raw] AS [Start Date],
+        [End Date Raw]   AS [End Date],
+        [Status],
+        [Company],
+        [Module],
         CASE
-          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-            AND ("ClosedDate" IS NULL OR LTRIM(RTRIM(CAST("ClosedDate" AS VARCHAR(50)))) = '')
+          -- Both completely missing
+          WHEN ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
+            AND ([End Date Raw]   IS NULL OR LTRIM(RTRIM([End Date Raw]))   = '')
             THEN 'Missing both dates'
-          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-            THEN 'Missing start date'
-          ELSE 'Missing end date'
+          -- Start missing / unparseable / out-of-range; end also bad
+          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
+            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
+            THEN 'Both dates invalid (unparseable or ridiculous year)'
+          -- Start OK, end reversed (end < start)
+          WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+            AND parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
+            AND parsed_end < parsed_start
+            THEN 'End date is before start date (reversed)'
+          -- Only start bad
+          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
+            AND  parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
+            THEN 'Start date missing or ridiculous'
+          -- Only end bad
+          WHEN  parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
+            THEN 'End date missing or ridiculous'
+          ELSE 'Other date issue'
         END AS [Date Issue]
-      FROM ${tableName}
+      FROM date_cte
       WHERE
-        ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-        OR ("ClosedDate"  IS NULL OR LTRIM(RTRIM(CAST("ClosedDate"     AS VARCHAR(50)))) = '')
+        -- NULL or empty start date
+        ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
+        -- NULL or empty end date
+        OR ([End Date Raw] IS NULL OR LTRIM(RTRIM([End Date Raw])) = '')
+        -- Start unparseable or out-of-range
+        OR parsed_start IS NULL
+        OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040
+        -- End unparseable or out-of-range
+        OR parsed_end IS NULL
+        OR YEAR(parsed_end) NOT BETWEEN 1980 AND 2040
+        -- End before start
+        OR (parsed_start IS NOT NULL AND parsed_end IS NOT NULL AND parsed_end < parsed_start)
       ORDER BY
+        -- Show most severe issues first
         CASE
-          WHEN ("ConstStartDate" IS NULL OR LTRIM(RTRIM(CAST("ConstStartDate" AS VARCHAR(50)))) = '')
-            AND ("ClosedDate" IS NULL OR LTRIM(RTRIM(CAST("ClosedDate" AS VARCHAR(50)))) = '')
+          WHEN ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
+            AND ([End Date Raw]   IS NULL OR LTRIM(RTRIM([End Date Raw]))   = '')
             THEN 0
-          ELSE 1
+          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
+            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
+            THEN 1
+          WHEN parsed_start IS NOT NULL AND parsed_end IS NOT NULL AND parsed_end < parsed_start
+            THEN 2
+          ELSE 3
         END,
-        "Title"`;
+        [Title]`;
 
     console.log(`\n${'='.repeat(80)}`);
     console.log(`[DataQuality] Running summary SQL:`);
