@@ -344,6 +344,21 @@ User: "source of the date problem"
 User: "identify projects with missing start or end dates"
 → {"function_name": "analyze_data_quality", "arguments": {}}
 
+User: "how many projects do not have opportunity status"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "how many projects do not have opportunity description"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "projects with missing status"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "projects without description"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
+User: "show me records missing opportunity status"
+→ {"function_name": "analyze_data_quality", "arguments": {}}
+
 Return ONLY valid JSON with "function_name" and "arguments" fields.`;
 
     const maxRetries = 5; // Increased for better rate limit handling with 200+ concurrent users

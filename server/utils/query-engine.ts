@@ -12553,6 +12553,10 @@ If a hint conflicts with your understanding, trust the hint - they are reliable.
         { pattern: /(?:source\s+of\s+(?:the\s+)?(?:date\s+)?problem|date\s+source\s+problem)/i, fn: 'analyze_data_quality' },
         { pattern: /(?:projects?\s+with\s+)?(?:start\s+(?:and|&|or)\s+end\s+)?dates?\s+(?:that\s+are\s+)?(?:ridiculous|wrong|bad|invalid|absurd)/i, fn: 'analyze_data_quality' },
         { pattern: /(?:how\s+many\s+)?records?\s+(?:with|have|having)\s+(?:correct|valid|missing|null|bad|wrong)\s+(?:start\s+(?:and\s+end\s+)?)?dates?/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:how\s+many\s+|number\s+of\s+)?(?:projects?|records?)\s+(?:do\s+not|don'?t|do\s+nt)\s+have\s+(?:opportunity\s+|an?\s+)?(?:status|description)\b/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:projects?|records?)\s+(?:with(?:out)?|missing|having\s+no)\s+(?:opportunity\s+|an?\s+)?(?:status|description)\b/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:how\s+many\s+)?(?:projects?|records?)\s+(?:are\s+)?(?:missing|without|have\s+no)\s+(?:a\s+|an\s+|the\s+)?(?:opportunity\s+)?(?:status|description)\b/i, fn: 'analyze_data_quality' },
+        { pattern: /(?:missing|empty|null|blank)\s+(?:opportunity\s+)?(?:status|description)\b/i, fn: 'analyze_data_quality' },
       ];
       
       // ═══════════════════════════════════════════════════════════════
