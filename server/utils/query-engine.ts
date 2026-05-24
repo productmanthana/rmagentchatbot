@@ -24208,23 +24208,37 @@ DATABASE CONTEXT (for reference):
   }
 
   /**
-   * Handle data quality analysis: runs TWO queries — (1) a summary aggregate and (2) a sample of bad-date rows
-   * A "valid" date = TRY_CONVERT(DATE) succeeds AND year is between 1980 and 2040.
-   * A "ridiculous" date = parseable BUT year is outside 1980–2040 OR ClosedDate < ConstStartDate.
+   * Handle data quality analysis: runs TWO queries — (1) a summary aggregate and (2) a sample of bad-date rows.
+   *
+   * Five mutually-exclusive date buckets (sum = Total Records):
+   *   A. Correct         — both dates present, parseable, year 1980-2040, and start ≤ end
+   *   B. Only start      — start present; end simply ABSENT (NULL/empty)
+   *   C. Only end        — end present; start simply ABSENT (NULL/empty)
+   *   D. Neither present — both dates ABSENT (NULL/empty)
+   *   E. Ridiculous      — at least one date is present but unparseable / year outside 1980-2040,
+   *                         OR both are valid-range but end < start (reversed)
+   * Plus two non-exclusive field-completeness counts: Missing Status, Missing Description.
    */
   private async handleDataQualityAnalysis(
     args: Record<string, any>,
     externalDbQuery: (sql: string, params?: any[]) => Promise<any[]>
   ): Promise<{ success: boolean; data: any[]; error?: string; sql_query?: string; sql_params?: any[] }> {
     const tableName = process.env.CLIENT_TABLE_NAME || 'dbo.RMProjects';
-    const sampleLimit = Math.min(args.limit ?? 20, 50);
+    const sampleLimit = Math.max(1, Math.min(args.limit ?? 20, 50));
 
-    // ── Query 1: Summary aggregate using TRY_CONVERT for real date validation ──
-    // "valid" = TRY_CONVERT succeeds AND year 1980-2040
-    // "ridiculous" = parseable but year outside range OR end < start
+    // ── Query 1: Summary aggregate ──────────────────────────────────────────
+    // Uses TRY_CONVERT to distinguish "absent" (NULL/empty) from "present-but-bad" (ridiculous).
     const summarySql = `
-      WITH date_cte AS (
+      WITH raw AS (
         SELECT
+          -- Raw absence flags: 1 if the field is NULL or whitespace-only
+          CASE WHEN "ConstStartDate" IS NULL
+                 OR LTRIM(RTRIM(CAST("ConstStartDate" AS NVARCHAR(50)))) = ''
+               THEN 1 ELSE 0 END AS start_absent,
+          CASE WHEN "ClosedDate" IS NULL
+                 OR LTRIM(RTRIM(CAST("ClosedDate" AS NVARCHAR(50)))) = ''
+               THEN 1 ELSE 0 END AS end_absent,
+          -- TRY_CONVERT: NULL when absent OR unparseable
           TRY_CONVERT(DATE, "ConstStartDate") AS parsed_start,
           TRY_CONVERT(DATE, "ClosedDate")     AS parsed_end,
           "StatusChoice",
@@ -24233,119 +24247,133 @@ DATABASE CONTEXT (for reference):
       ),
       classified AS (
         SELECT
-          -- start is "valid" only if TRY_CONVERT succeeds AND year in [1980,2040]
-          CASE WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
-               THEN 1 ELSE 0 END AS start_ok,
-          -- end is "valid" only if TRY_CONVERT succeeds AND year in [1980,2040]
-          CASE WHEN parsed_end IS NOT NULL AND YEAR(parsed_end) BETWEEN 1980 AND 2040
-               THEN 1 ELSE 0 END AS end_ok,
-          -- "ridiculous" end-before-start: both parse AND in range BUT end < start
-          CASE WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
-                AND parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
-                AND parsed_end < parsed_start
-               THEN 1 ELSE 0 END AS end_before_start,
+          -- "valid" = present + parseable + year in [1980,2040]
+          CASE WHEN start_absent = 0
+                AND parsed_start IS NOT NULL
+                AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS start_valid,
+          CASE WHEN end_absent = 0
+                AND parsed_end IS NOT NULL
+                AND YEAR(parsed_end) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS end_valid,
+          start_absent,
+          end_absent,
+          parsed_start,
+          parsed_end,
           "StatusChoice",
           "Description"
-        FROM date_cte
+        FROM raw
       )
       SELECT
         COUNT(*) AS [Total Records],
-        -- Both dates valid AND start <= end
-        SUM(CASE WHEN start_ok = 1 AND end_ok = 1 AND end_before_start = 0 THEN 1 ELSE 0 END)
+
+        -- A. Correct: both valid AND start ≤ end (not reversed)
+        SUM(CASE WHEN start_valid = 1 AND end_valid = 1
+                   AND parsed_end >= parsed_start
+                 THEN 1 ELSE 0 END)
           AS [Correct Start and End Dates],
-        -- Only start valid (end missing, unparseable, out-of-range, or before start)
-        SUM(CASE WHEN start_ok = 1 AND end_ok = 0 THEN 1 ELSE 0 END)
-          AS [Only Start Date (missing or ridiculous end)],
-        -- Only end valid (start missing, unparseable, or out-of-range)
-        SUM(CASE WHEN start_ok = 0 AND end_ok = 1 THEN 1 ELSE 0 END)
-          AS [Only End Date (missing or ridiculous start)],
-        -- Neither date valid
-        SUM(CASE WHEN start_ok = 0 AND end_ok = 0 THEN 1 ELSE 0 END)
-          AS [No Valid Dates (both missing or ridiculous)],
-        -- End before start (both valid by range but logically reversed)
-        SUM(end_before_start)
-          AS [End Date Before Start Date (reversed)],
-        -- Missing status
+
+        -- B. Only start, end simply absent (NULL/empty — not ridiculous, just missing)
+        SUM(CASE WHEN start_valid = 1 AND end_absent = 1
+                 THEN 1 ELSE 0 END)
+          AS [Only Start Date (end missing)],
+
+        -- C. Only end, start simply absent
+        SUM(CASE WHEN start_absent = 1 AND end_valid = 1
+                 THEN 1 ELSE 0 END)
+          AS [Only End Date (start missing)],
+
+        -- D. Neither present (both NULL/empty)
+        SUM(CASE WHEN start_absent = 1 AND end_absent = 1
+                 THEN 1 ELSE 0 END)
+          AS [No Dates at All],
+
+        -- E. Ridiculous = everything else (present but unparseable/out-of-range/reversed)
+        --    Derived as complement so all five buckets sum to Total Records exactly.
+        COUNT(*)
+          - SUM(CASE WHEN start_valid = 1 AND end_valid = 1 AND parsed_end >= parsed_start THEN 1 ELSE 0 END)
+          - SUM(CASE WHEN start_valid = 1 AND end_absent = 1 THEN 1 ELSE 0 END)
+          - SUM(CASE WHEN start_absent = 1 AND end_valid = 1 THEN 1 ELSE 0 END)
+          - SUM(CASE WHEN start_absent = 1 AND end_absent = 1 THEN 1 ELSE 0 END)
+          AS [Ridiculous Dates (present but invalid year or reversed)],
+
+        -- Non-exclusive field-completeness counts
         SUM(CASE WHEN "StatusChoice" IS NULL
                    OR LTRIM(RTRIM(CAST("StatusChoice" AS NVARCHAR(100)))) = ''
-             THEN 1 ELSE 0 END) AS [Missing Status],
-        -- Missing description
+                 THEN 1 ELSE 0 END) AS [Missing Status],
+
         SUM(CASE WHEN "Description" IS NULL
                    OR LTRIM(RTRIM(CAST("Description" AS NVARCHAR(4000)))) = ''
-             THEN 1 ELSE 0 END) AS [Missing Description]
+                 THEN 1 ELSE 0 END) AS [Missing Description]
+
       FROM classified`;
 
-    // ── Query 2: Sample bad-date rows — ALL problem categories ───────────
-    // Includes: NULL/empty, unparseable, out-of-range, end-before-start
+    // ── Query 2: Sample bad-date rows — ALL problem categories ─────────────
+    // Covers: absent dates, unparseable, out-of-range years, reversed start/end.
     const sampleSql = `
-      WITH date_cte AS (
+      WITH raw AS (
         SELECT
           "Title",
-          CAST("ConstStartDate" AS NVARCHAR(50)) AS [Start Date Raw],
-          CAST("ClosedDate"     AS NVARCHAR(50)) AS [End Date Raw],
+          CAST("ConstStartDate" AS NVARCHAR(50)) AS start_raw,
+          CAST("ClosedDate"     AS NVARCHAR(50)) AS end_raw,
           TRY_CONVERT(DATE, "ConstStartDate")    AS parsed_start,
           TRY_CONVERT(DATE, "ClosedDate")        AS parsed_end,
           ISNULL(CAST("StatusChoice" AS NVARCHAR(100)), '(none)') AS [Status],
           ISNULL(CAST("Company"     AS NVARCHAR(200)), '(none)') AS [Company],
-          ISNULL(CAST("ModuleName"  AS NVARCHAR(100)), '(none)') AS [Module]
+          ISNULL(CAST("ModuleName"  AS NVARCHAR(100)), '(none)') AS [Module],
+          CASE WHEN "ConstStartDate" IS NULL
+                 OR LTRIM(RTRIM(CAST("ConstStartDate" AS NVARCHAR(50)))) = ''
+               THEN 1 ELSE 0 END AS start_absent,
+          CASE WHEN "ClosedDate" IS NULL
+                 OR LTRIM(RTRIM(CAST("ClosedDate" AS NVARCHAR(50)))) = ''
+               THEN 1 ELSE 0 END AS end_absent
         FROM ${tableName}
+      ),
+      classified AS (
+        SELECT *,
+          CASE WHEN start_absent = 0
+                AND parsed_start IS NOT NULL
+                AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS start_valid,
+          CASE WHEN end_absent = 0
+                AND parsed_end IS NOT NULL
+                AND YEAR(parsed_end) BETWEEN 1980 AND 2040
+               THEN 1 ELSE 0 END AS end_valid
+        FROM raw
       )
       SELECT TOP ${sampleLimit}
         [Title],
-        [Start Date Raw] AS [Start Date],
-        [End Date Raw]   AS [End Date],
-        [Status],
-        [Company],
-        [Module],
+        ISNULL(start_raw, '(null)') AS [Start Date],
+        ISNULL(end_raw,   '(null)') AS [End Date],
+        [Status], [Company], [Module],
         CASE
-          -- Both completely missing
-          WHEN ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
-            AND ([End Date Raw]   IS NULL OR LTRIM(RTRIM([End Date Raw]))   = '')
-            THEN 'Missing both dates'
-          -- Start missing / unparseable / out-of-range; end also bad
-          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
-            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
-            THEN 'Both dates invalid (unparseable or ridiculous year)'
-          -- Start OK, end reversed (end < start)
-          WHEN parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
-            AND parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
-            AND parsed_end < parsed_start
-            THEN 'End date is before start date (reversed)'
-          -- Only start bad
-          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
-            AND  parsed_end   IS NOT NULL AND YEAR(parsed_end)   BETWEEN 1980 AND 2040
-            THEN 'Start date missing or ridiculous'
-          -- Only end bad
-          WHEN  parsed_start IS NOT NULL AND YEAR(parsed_start) BETWEEN 1980 AND 2040
-            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
-            THEN 'End date missing or ridiculous'
+          WHEN start_absent = 1 AND end_absent = 1
+            THEN 'No dates at all (both absent)'
+          WHEN start_absent = 1 AND end_valid = 1
+            THEN 'Start date absent, end date OK'
+          WHEN start_valid = 1 AND end_absent = 1
+            THEN 'End date absent, start date OK'
+          WHEN start_valid = 1 AND end_valid = 1 AND parsed_end < parsed_start
+            THEN 'Reversed: end date is before start date'
+          WHEN start_absent = 0 AND start_valid = 0 AND end_absent = 0 AND end_valid = 0
+            THEN 'Both dates present but unparseable or ridiculous year'
+          WHEN start_absent = 0 AND start_valid = 0
+            THEN 'Start date present but unparseable or ridiculous year'
+          WHEN end_absent = 0 AND end_valid = 0
+            THEN 'End date present but unparseable or ridiculous year'
           ELSE 'Other date issue'
         END AS [Date Issue]
-      FROM date_cte
+      FROM classified
       WHERE
-        -- NULL or empty start date
-        ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
-        -- NULL or empty end date
-        OR ([End Date Raw] IS NULL OR LTRIM(RTRIM([End Date Raw])) = '')
-        -- Start unparseable or out-of-range
-        OR parsed_start IS NULL
-        OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040
-        -- End unparseable or out-of-range
-        OR parsed_end IS NULL
-        OR YEAR(parsed_end) NOT BETWEEN 1980 AND 2040
-        -- End before start
-        OR (parsed_start IS NOT NULL AND parsed_end IS NOT NULL AND parsed_end < parsed_start)
+        -- Exclude only "Correct" rows (bucket A); show everything else
+        NOT (start_valid = 1 AND end_valid = 1 AND parsed_end >= parsed_start)
       ORDER BY
-        -- Show most severe issues first
+        -- Severity: absent-both first, then ridiculous, then reversed, then single-absent
         CASE
-          WHEN ([Start Date Raw] IS NULL OR LTRIM(RTRIM([Start Date Raw])) = '')
-            AND ([End Date Raw]   IS NULL OR LTRIM(RTRIM([End Date Raw]))   = '')
-            THEN 0
-          WHEN (parsed_start IS NULL OR YEAR(parsed_start) NOT BETWEEN 1980 AND 2040)
-            AND (parsed_end   IS NULL OR YEAR(parsed_end)   NOT BETWEEN 1980 AND 2040)
-            THEN 1
-          WHEN parsed_start IS NOT NULL AND parsed_end IS NOT NULL AND parsed_end < parsed_start
-            THEN 2
+          WHEN start_absent = 1 AND end_absent = 1                              THEN 0
+          WHEN (start_absent = 0 AND start_valid = 0)
+            OR (end_absent = 0   AND end_valid   = 0)                           THEN 1
+          WHEN start_valid = 1 AND end_valid = 1 AND parsed_end < parsed_start  THEN 2
           ELSE 3
         END,
         [Title]`;
