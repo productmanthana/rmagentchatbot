@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useLocation } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
-import { QueryResponse, DEFAULT_FAQ_CATEGORIES, type FAQSampleQuestion } from "@shared/schema";
+import { QueryResponse, DEFAULT_FAQ_CATEGORIES, type FAQSampleQuestion, type ChartConfig } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { 
   useChats, 
@@ -5135,7 +5135,50 @@ export default function ChatPage() {
                                         </div>
 
                                     <TabsContent value="chart" className="space-y-4 mt-4">
-                                      {message.response.chart_config ? (
+                                      {message.response.function_name === 'analyze_data_quality' && message.response.data?.[0]?._report_type === 'DATA_QUALITY_SUMMARY' ? (
+                                        (() => {
+                                          const summaryRow = message.response.data[0];
+                                          const dqChartConfig: ChartConfig = {
+                                            type: 'doughnut',
+                                            title: 'Data Quality Summary',
+                                            labels: [
+                                              'Both Dates Valid',
+                                              'Only Start Date',
+                                              'Only End Date',
+                                              'No Dates',
+                                              'Ridiculous Dates',
+                                              'Missing Status',
+                                              'Missing Description',
+                                            ],
+                                            datasets: [{
+                                              label: 'Records',
+                                              data: [
+                                                Number(summaryRow['Correct Start and End Dates'] ?? 0),
+                                                Number(summaryRow['Only Start Date (end missing)'] ?? 0),
+                                                Number(summaryRow['Only End Date (start missing)'] ?? 0),
+                                                Number(summaryRow['No Dates at All'] ?? 0),
+                                                Number(summaryRow['Ridiculous Dates (present but invalid year or reversed)'] ?? 0),
+                                                Number(summaryRow['Missing Status'] ?? 0),
+                                                Number(summaryRow['Missing Description'] ?? 0),
+                                              ],
+                                            }],
+                                            tooltipFormat: 'number',
+                                            showLegend: true,
+                                            colorScheme: 'vibrant',
+                                          };
+                                          return (
+                                            <div className="bg-white border border-[#E5E7EB] rounded-xl p-6" data-testid="data-quality-chart-tab">
+                                              <div className="flex items-center gap-2 mb-3">
+                                                <h4 className="font-semibold text-[#111827]">Data Quality Summary</h4>
+                                                <span className="text-xs text-[#6B7280] bg-[#E5E7EB] px-2 py-0.5 rounded">
+                                                  {Number(summaryRow['Total Records'] ?? 0).toLocaleString()} total records
+                                                </span>
+                                              </div>
+                                              <ChartVisualization config={dqChartConfig} />
+                                            </div>
+                                          );
+                                        })()
+                                      ) : message.response.chart_config ? (
                                         <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
                                           <ChartComparison config={message.response.chart_config} />
                                         </div>
@@ -5344,6 +5387,66 @@ export default function ChatPage() {
                                                 </div>
                                               )}
                                             </div>
+                                          ) : message.response.function_name === 'analyze_data_quality' && message.response.data?.[0]?._report_type === 'DATA_QUALITY_SUMMARY' ? (
+                                            (() => {
+                                              const summaryRow = message.response.data[0];
+                                              const sampleRows = message.response.data.filter((r: any) => r._report_type === 'SAMPLE_BAD_DATE_ROW');
+                                              const dqLabels = [
+                                                'Both Dates Valid',
+                                                'Only Start Date',
+                                                'Only End Date',
+                                                'No Dates',
+                                                'Ridiculous Dates',
+                                                'Missing Status',
+                                                'Missing Description',
+                                              ];
+                                              const dqValues = [
+                                                Number(summaryRow['Correct Start and End Dates'] ?? 0),
+                                                Number(summaryRow['Only Start Date (end missing)'] ?? 0),
+                                                Number(summaryRow['Only End Date (start missing)'] ?? 0),
+                                                Number(summaryRow['No Dates at All'] ?? 0),
+                                                Number(summaryRow['Ridiculous Dates (present but invalid year or reversed)'] ?? 0),
+                                                Number(summaryRow['Missing Status'] ?? 0),
+                                                Number(summaryRow['Missing Description'] ?? 0),
+                                              ];
+                                              const dqChartConfig: ChartConfig = {
+                                                type: 'doughnut',
+                                                title: 'Data Quality Summary',
+                                                labels: dqLabels,
+                                                datasets: [{ label: 'Records', data: dqValues }],
+                                                tooltipFormat: 'number',
+                                                showLegend: true,
+                                                colorScheme: 'vibrant',
+                                              };
+                                              return (
+                                                <div className="space-y-6" data-testid="data-quality-report">
+                                                  <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-4">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                      <h4 className="font-semibold text-[#111827]">Data Quality Summary</h4>
+                                                      <span className="text-xs text-[#6B7280] bg-[#E5E7EB] px-2 py-0.5 rounded">
+                                                        {Number(summaryRow['Total Records'] ?? 0).toLocaleString()} total records
+                                                      </span>
+                                                    </div>
+                                                    <ChartVisualization config={dqChartConfig} />
+                                                  </div>
+                                                  {sampleRows.length > 0 && (
+                                                    <div>
+                                                      <h4 className="font-semibold text-[#111827] mb-3">
+                                                        Sample Records with Date Issues
+                                                        <span className="text-xs font-normal text-[#6B7280] ml-2">({sampleRows.length} shown)</span>
+                                                      </h4>
+                                                      <TableWithExternalScrollbar
+                                                        data={sampleRows}
+                                                        messageId={`${message.id}-dq-samples`}
+                                                        enableColumnSelection={false}
+                                                        selectedColumns={new Set()}
+                                                        onColumnSelectionChange={() => {}}
+                                                      />
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })()
                                           ) : (
                                             <div className="relative">
                                               <TableWithExternalScrollbar 
