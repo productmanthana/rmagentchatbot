@@ -24409,11 +24409,45 @@ DATABASE CONTEXT (for reference):
       console.log(`[DataQuality] Summary:`, JSON.stringify(summary));
       console.log(`[DataQuality] Sample rows count: ${sampleRows.length}`);
 
+      // Detect focused single-metric questions so the UI can show a direct answer
+      // instead of the full data-quality report.
+      const q = String(args._original_question || '').toLowerCase();
+      let focusedMetric: string | null = null;
+      let focusedLabel: string | null = null;
+      let focusedValue: number | null = null;
+      const pick = (m: string, l: string, key: string) => {
+        focusedMetric = m;
+        focusedLabel = l;
+        focusedValue = Number((summary as any)[key] ?? 0);
+      };
+      if (/\bonly\s+end\s+date|end\s+date\s+only|missing\s+start\s+date\s+(?:only|alone)|no\s+start\s+date\b/.test(q)) {
+        pick('only_end_date', 'Records with Only End Date', 'Only End Date (start missing)');
+      } else if (/\bonly\s+start\s+date|start\s+date\s+only|missing\s+end\s+date\s+(?:only|alone)|no\s+end\s+date\b/.test(q)) {
+        pick('only_start_date', 'Records with Only Start Date', 'Only Start Date (end missing)');
+      } else if (/\bno\s+dates?\b|\bmissing\s+(?:both\s+)?dates?\b|without\s+any\s+dates?/.test(q)) {
+        pick('no_dates', 'Records with No Dates', 'No Dates at All');
+      } else if (/\breversed|end\s+(?:before|<|less\s+than)\s+start/.test(q)) {
+        pick('reversed', 'Records with Reversed Dates (End < Start)', 'End Date Before Start Date (reversed)');
+      } else if (/out[- ]?of[- ]?range|outside\s+\d{4}|before\s+1970|after\s+2060/.test(q)) {
+        pick('out_of_range', 'Records with Out-of-Range Dates', 'Out-of-Range Dates (before 1970 or after 2060)');
+      } else if (/\bboth\s+dates?\s+(?:are\s+)?(?:valid|correct)|correct\s+start\s+and\s+end\s+dates?|valid\s+dates?\s+(?:both|only)/.test(q)) {
+        pick('both_valid', 'Records with Both Dates Valid', 'Correct Start and End Dates');
+      } else if (/(?:missing|do\s+not\s+have|don'?t\s+have|without|no)\s+(?:an?\s+|the\s+)?(?:opportunity\s+)?status\b/.test(q) &&
+                 !/description/.test(q)) {
+        pick('missing_status', 'Records with Missing / Unmapped Status', 'Missing Status');
+      } else if (/(?:missing|do\s+not\s+have|don'?t\s+have|without|no)\s+(?:an?\s+|the\s+)?(?:opportunity\s+)?description\b/.test(q) &&
+                 !/status/.test(q)) {
+        pick('missing_description', 'Records with Missing Description', 'Missing Description');
+      }
+
       // Build a combined result set that the LLM can read naturally
       // Row 0 = summary header row, rows 1+ = sample bad-date records
       const combined: any[] = [
         {
           _report_type: 'DATA_QUALITY_SUMMARY',
+          _focused_metric: focusedMetric,
+          _focused_label: focusedLabel,
+          _focused_value: focusedValue,
           ...summary,
         },
         ...sampleRows.map((r: any) => ({ _report_type: 'SAMPLE_BAD_DATE_ROW', ...r })),
@@ -24767,6 +24801,7 @@ Only suggest corrections when you are CONFIDENT there is a mistake. Return ONLY 
 
       // Special handling for analyze_data_quality (two-query: summary + bad-rows sample)
       if (functionName === "analyze_data_quality") {
+        args._original_question = userQuestion;
         return await this.handleDataQualityAnalysis(args, externalDbQuery);
       }
 

@@ -5141,6 +5141,19 @@ export default function ChatPage() {
                                           const total = Number(summaryRow['Total Records'] ?? 0);
                                           const missingStatus = Number(summaryRow['Missing Status'] ?? 0);
                                           const missingDescription = Number(summaryRow['Missing Description'] ?? 0);
+                                          const focusedMetric = summaryRow._focused_metric as string | null;
+                                          const focusedLabel = summaryRow._focused_label as string | null;
+                                          const focusedValue = Number(summaryRow._focused_value ?? 0);
+                                          if (focusedMetric) {
+                                            const pct = total > 0 ? ((focusedValue / total) * 100).toFixed(2) : '0';
+                                            return (
+                                              <div className="bg-white border border-[#E5E7EB] rounded-xl p-8" data-testid="stat-focused-chart">
+                                                <p className="text-sm text-[#6B7280] mb-2">{focusedLabel}</p>
+                                                <p className="text-5xl font-bold text-[#111827]">{focusedValue.toLocaleString()}</p>
+                                                <p className="text-sm text-[#6B7280] mt-2">{pct}% of {total.toLocaleString()} total records</p>
+                                              </div>
+                                            );
+                                          }
                                           const dqChartConfig: ChartConfig = {
                                             type: 'doughnut',
                                             title: 'Date Quality Breakdown',
@@ -5413,6 +5426,19 @@ export default function ChatPage() {
                                               const total = Number(summaryRow['Total Records'] ?? 0);
                                               const missingStatus = Number(summaryRow['Missing Status'] ?? 0);
                                               const missingDescription = Number(summaryRow['Missing Description'] ?? 0);
+                                              const focusedMetric = summaryRow._focused_metric as string | null;
+                                              const focusedLabel = summaryRow._focused_label as string | null;
+                                              const focusedValue = Number(summaryRow._focused_value ?? 0);
+                                              if (focusedMetric) {
+                                                const pct = total > 0 ? ((focusedValue / total) * 100).toFixed(2) : '0';
+                                                return (
+                                                  <div className="bg-white border border-[#E5E7EB] rounded-xl p-8" data-testid="stat-focused-response">
+                                                    <p className="text-sm text-[#6B7280] mb-2">{focusedLabel}</p>
+                                                    <p className="text-5xl font-bold text-[#111827]">{focusedValue.toLocaleString()}</p>
+                                                    <p className="text-sm text-[#6B7280] mt-2">{pct}% of {total.toLocaleString()} total records</p>
+                                                  </div>
+                                                );
+                                              }
                                               const dqChartConfig: ChartConfig = {
                                                 type: 'doughnut',
                                                 title: 'Date Quality Breakdown',
