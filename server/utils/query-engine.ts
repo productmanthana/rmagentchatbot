@@ -24212,13 +24212,13 @@ DATABASE CONTEXT (for reference):
   /**
    * Handle data quality analysis: runs TWO queries — (1) a summary aggregate and (2) a sample of bad-date rows.
    *
-   * Five mutually-exclusive date buckets (sum = Total Records):
-   *   A. Correct         — both dates present, parseable, year 1980-2040, and start ≤ end
-   *   B. Only start      — start present; end simply ABSENT (NULL/empty)
-   *   C. Only end        — end present; start simply ABSENT (NULL/empty)
-   *   D. Neither present — both dates ABSENT (NULL/empty)
-   *   E. Ridiculous      — at least one date is present but unparseable / year outside 1980-2040,
-   *                         OR both are valid-range but end < start (reversed)
+   * Six mutually-exclusive date buckets (sum = Total Records):
+   *   A. Correct          — both dates present, parseable, year 1970-2060, and start ≤ end
+   *   B. Only start       — start present & valid; end simply ABSENT (NULL/empty)
+   *   C. Only end         — end present & valid; start simply ABSENT (NULL/empty)
+   *   D. Neither present  — both dates ABSENT (NULL/empty)
+   *   E. Reversed         — both dates present & in-range but end < start
+   *   F. Out-of-range     — at least one date is present but unparseable or year outside 1970-2060
    * Plus two non-exclusive field-completeness counts: Missing Status, Missing Description.
    */
   private async handleDataQualityAnalysis(
@@ -24249,14 +24249,14 @@ DATABASE CONTEXT (for reference):
       ),
       classified AS (
         SELECT
-          -- "valid" = present + parseable + year in [1980,2040]
+          -- "valid" = present + parseable + year in [1970,2060]
           CASE WHEN start_absent = 0
                 AND parsed_start IS NOT NULL
-                AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+                AND YEAR(parsed_start) BETWEEN 1970 AND 2060
                THEN 1 ELSE 0 END AS start_valid,
           CASE WHEN end_absent = 0
                 AND parsed_end IS NOT NULL
-                AND YEAR(parsed_end) BETWEEN 1980 AND 2040
+                AND YEAR(parsed_end) BETWEEN 1970 AND 2060
                THEN 1 ELSE 0 END AS end_valid,
           start_absent,
           end_absent,
@@ -24290,14 +24290,21 @@ DATABASE CONTEXT (for reference):
                  THEN 1 ELSE 0 END)
           AS [No Dates at All],
 
-        -- E. Ridiculous = everything else (present but unparseable/out-of-range/reversed)
-        --    Derived as complement so all five buckets sum to Total Records exactly.
+        -- E. Reversed: both valid but end date is before start date
+        SUM(CASE WHEN start_valid = 1 AND end_valid = 1
+                   AND parsed_end < parsed_start
+                 THEN 1 ELSE 0 END)
+          AS [End Date Before Start Date (reversed)],
+
+        -- F. Out-of-range = everything else (present but unparseable/year outside 1970–2060)
+        --    Derived as complement so all six buckets sum to Total Records exactly.
         COUNT(*)
           - SUM(CASE WHEN start_valid = 1 AND end_valid = 1 AND parsed_end >= parsed_start THEN 1 ELSE 0 END)
           - SUM(CASE WHEN start_valid = 1 AND end_absent = 1 THEN 1 ELSE 0 END)
           - SUM(CASE WHEN start_absent = 1 AND end_valid = 1 THEN 1 ELSE 0 END)
           - SUM(CASE WHEN start_absent = 1 AND end_absent = 1 THEN 1 ELSE 0 END)
-          AS [Ridiculous Dates (present but invalid year or reversed)],
+          - SUM(CASE WHEN start_valid = 1 AND end_valid = 1 AND parsed_end < parsed_start THEN 1 ELSE 0 END)
+          AS [Out-of-Range Dates (before 1970 or after 2060)],
 
         -- Non-exclusive field-completeness counts
         SUM(CASE WHEN "StatusChoice" IS NULL
@@ -24335,11 +24342,11 @@ DATABASE CONTEXT (for reference):
         SELECT *,
           CASE WHEN start_absent = 0
                 AND parsed_start IS NOT NULL
-                AND YEAR(parsed_start) BETWEEN 1980 AND 2040
+                AND YEAR(parsed_start) BETWEEN 1970 AND 2060
                THEN 1 ELSE 0 END AS start_valid,
           CASE WHEN end_absent = 0
                 AND parsed_end IS NOT NULL
-                AND YEAR(parsed_end) BETWEEN 1980 AND 2040
+                AND YEAR(parsed_end) BETWEEN 1970 AND 2060
                THEN 1 ELSE 0 END AS end_valid
         FROM raw
       )
@@ -24358,11 +24365,11 @@ DATABASE CONTEXT (for reference):
           WHEN start_valid = 1 AND end_valid = 1 AND parsed_end < parsed_start
             THEN 'Reversed: end date is before start date'
           WHEN start_absent = 0 AND start_valid = 0 AND end_absent = 0 AND end_valid = 0
-            THEN 'Both dates present but unparseable or ridiculous year'
+            THEN 'Both dates out-of-range or unparseable (before 1970 / after 2060)'
           WHEN start_absent = 0 AND start_valid = 0
-            THEN 'Start date present but unparseable or ridiculous year'
+            THEN 'Start date out-of-range or unparseable (before 1970 / after 2060)'
           WHEN end_absent = 0 AND end_valid = 0
-            THEN 'End date present but unparseable or ridiculous year'
+            THEN 'End date out-of-range or unparseable (before 1970 / after 2060)'
           ELSE 'Other date issue'
         END AS [Date Issue]
       FROM classified
