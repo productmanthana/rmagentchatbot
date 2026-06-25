@@ -1972,7 +1972,7 @@ Please provide a helpful analysis for the follow-up question.`,
       const link = await mssqlStorage.createEmbedLink({
         embed_id: embedId,
         role: linkRole,
-        allowed_domain: allowed_domain.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, ''),
+        allowed_domain: normalizeDomains(allowed_domain),
         name,
         created_by: userId,
         created_by_email: userEmail,
@@ -2022,9 +2022,69 @@ Please provide a helpful analysis for the follow-up question.`,
     }
   });
 
+  // Update an embed link's name and allowed domain(s) (superadmin only)
+  app.put("/api/embed-links/:id", isAuthenticated, async (req, res) => {
+    try {
+      const role = await getUserRole(req);
+      if (role !== 'superadmin') {
+        return res.status(403).json({ error: "Superadmin access required" });
+      }
+
+      const validation = insertEmbedLinkSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+
+      const { name, allowed_domain } = validation.data;
+      const normalized = normalizeDomains(allowed_domain);
+      if (!normalized) {
+        return res.status(400).json({ error: "Domain is required" });
+      }
+
+      const affected = await mssqlStorage.updateEmbedLink(req.params.id, {
+        name: name.trim(),
+        allowed_domain: normalized,
+      });
+      if (!affected) {
+        return res.status(404).json({ error: "Embed link not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error updating embed link:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Helper to generate a simple token
   function generateEmbedToken(): string {
     return `emb_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  }
+
+  // Normalize a comma-separated list of domains (strips protocol/trailing slash, lowercases, dedupes empties)
+  function normalizeDomains(input: string): string {
+    return input
+      .split(',')
+      .map(d => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, ''))
+      .filter(Boolean)
+      .join(',');
+  }
+
+  // Check if a request domain matches any allowed domain (supports comma-separated list, wildcard, and subdomains)
+  function isDomainAllowed(requestDomain: string, allowedDomainStr: string): boolean {
+    // Normalize the request side too: strip scheme, path, and port so a full origin
+    // (e.g. "https://app.rmone.com:443/page") matches a stored host ("rmone.com").
+    const req = requestDomain
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/:\d+$/, '');
+    const domains = allowedDomainStr.toLowerCase().split(',').map(d => d.trim()).filter(Boolean);
+    return domains.some(allowed =>
+      allowed === '*' ||
+      req === allowed ||
+      req.endsWith(`.${allowed}`)
+    );
   }
 
   // Create embed session (public - creates a session for embed users)
@@ -2045,16 +2105,12 @@ Please provide a helpful analysis for the follow-up question.`,
 
       // Use parentOrigin from request body (sent by client detecting iframe parent)
       const requestDomain = (parentOrigin || '').toLowerCase();
-      const allowedDomain = link.allowed_domain.toLowerCase();
       
-      // Check domain restriction (same logic as validate endpoint)
-      const isWildcard = allowedDomain === '*';
+      // Check domain restriction (supports comma-separated domains; same logic as validate endpoint)
       const isDevelopment = process.env.NODE_ENV === 'development';
       const isDirectAccess = !parentOrigin; // Not in an iframe
-      const exactMatch = requestDomain === allowedDomain;
-      const subdomainMatch = requestDomain.endsWith(`.${allowedDomain}`);
       
-      const isAllowed = isWildcard || isDevelopment || isDirectAccess || exactMatch || subdomainMatch;
+      const isAllowed = isDevelopment || isDirectAccess || isDomainAllowed(requestDomain, link.allowed_domain);
 
       if (!isAllowed) {
         return res.status(403).json({ error: "Domain not authorized" });
@@ -2192,25 +2248,21 @@ Please provide a helpful analysis for the follow-up question.`,
 
       // Use parentOrigin from request body (sent by client detecting iframe parent)
       const requestDomain = (parentOrigin || '').toLowerCase();
-      const allowedDomain = link.allowed_domain.toLowerCase();
       
-      // Check domain restriction
+      // Check domain restriction (supports a comma-separated list of allowed domains)
       // Allow if:
-      // 1. Wildcard domain (*)
-      // 2. Exact domain match
-      // 3. Subdomain match (request is subdomain of allowed)
+      // 1. Wildcard domain (*) in the list
+      // 2. Exact domain match against any listed domain
+      // 3. Subdomain match (request is subdomain of any listed domain)
       // 4. No parent origin (direct access, not in iframe) - embed ID acts as token
       // 5. Development mode
-      const isWildcard = allowedDomain === '*';
       const isDevelopment = process.env.NODE_ENV === 'development';
       const isDirectAccess = !parentOrigin; // Not in an iframe
-      const exactMatch = requestDomain === allowedDomain;
-      const subdomainMatch = requestDomain.endsWith(`.${allowedDomain}`);
       
-      const isAllowed = isWildcard || isDevelopment || isDirectAccess || exactMatch || subdomainMatch;
+      const isAllowed = isDevelopment || isDirectAccess || isDomainAllowed(requestDomain, link.allowed_domain);
 
       if (!isAllowed) {
-        console.log(`[Embed] Domain mismatch: ${requestDomain} vs allowed ${allowedDomain}`);
+        console.log(`[Embed] Domain mismatch: ${requestDomain} vs allowed ${link.allowed_domain}`);
         return res.status(403).json({ 
           valid: false, 
           error: "Domain not authorized for this embed link" 

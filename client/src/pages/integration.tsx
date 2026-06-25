@@ -7,8 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock } from "lucide-react";
+import { Copy, Check, Code, Link as LinkIcon, ArrowLeft, Globe, Shield, Clock, Pencil } from "lucide-react";
 import { Link as WouterLink } from "wouter";
 import { useEmbedContext } from "./embed-with-id";
 
@@ -45,6 +53,9 @@ export default function IntegrationPage() {
   const [domain, setDomain] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedType, setCopiedType] = useState<'url' | 'iframe' | null>(null);
+  const [editLink, setEditLink] = useState<EmbedLink | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDomain, setEditDomain] = useState("");
 
   // Get embed context for navigation
   const contextEmbed = useEmbedContext();
@@ -101,6 +112,28 @@ export default function IntegrationPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, name, allowed_domain }: { id: string; name: string; allowed_domain: string }) => {
+      const response = await apiRequest("PUT", `/api/embed-links/${id}`, { name, allowed_domain });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/embed-links"] });
+      setEditLink(null);
+      toast({
+        title: "Embed Link Updated",
+        description: "The embed link has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update embed link",
+      });
+    },
+  });
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const response = await apiRequest("PATCH", `/api/embed-links/${id}/toggle`, { is_active });
@@ -134,6 +167,25 @@ export default function IntegrationPage() {
       return;
     }
     createMutation.mutate({ name, allowed_domain: domain });
+  };
+
+  const openEdit = (link: EmbedLink) => {
+    setEditLink(link);
+    setEditName(link.name);
+    setEditDomain(link.allowed_domain);
+  };
+
+  const handleUpdate = () => {
+    if (!editLink) return;
+    if (!editName.trim() || !editDomain.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Please fill in all fields",
+      });
+      return;
+    }
+    updateMutation.mutate({ id: editLink.id, name: editName, allowed_domain: editDomain });
   };
 
   const getEmbedUrl = (embedId: string) => {
@@ -242,7 +294,7 @@ export default function IntegrationPage() {
                   data-testid="input-domain"
                 />
                 <p className="text-xs text-gray-500">
-                  Only this domain can use the embed link
+                  Separate multiple domains with commas (e.g., rmone.com, clientsite.com). Subdomains are included automatically.
                 </p>
               </div>
 
@@ -362,7 +414,7 @@ export default function IntegrationPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
                           <Globe className="h-4 w-4" />
-                          <span>Domain: <span className="font-mono text-gray-800 dark:text-gray-200">{link.allowed_domain}</span></span>
+                          <span>{link.allowed_domain.includes(',') ? 'Domains' : 'Domain'}: <span className="font-mono text-gray-800 dark:text-gray-200">{link.allowed_domain.split(',').join(', ')}</span></span>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <span className="flex items-center gap-1">
@@ -377,6 +429,14 @@ export default function IntegrationPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(link)}
+                          data-testid={`button-edit-${link.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Label htmlFor={`toggle-${link.id}`} className="text-xs text-gray-500">
                           {link.is_active ? "Enabled" : "Disabled"}
                         </Label>
@@ -447,6 +507,57 @@ export default function IntegrationPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!editLink} onOpenChange={(open) => !open && setEditLink(null)}>
+        <DialogContent data-testid="dialog-edit-embed">
+          <DialogHeader>
+            <DialogTitle>Edit Embed Link</DialogTitle>
+            <DialogDescription>
+              Update the name and allowed domain(s) for this embed link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Link Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                data-testid="input-edit-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-domain">Allowed Domain(s)</Label>
+              <Input
+                id="edit-domain"
+                value={editDomain}
+                onChange={(e) => setEditDomain(e.target.value)}
+                data-testid="input-edit-domain"
+              />
+              <p className="text-xs text-gray-500">
+                Separate multiple domains with commas (e.g., rmone.com, clientsite.com). Subdomains are included automatically.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditLink(null)}
+              data-testid="button-cancel-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={updateMutation.isPending}
+              className="bg-[#8BC34A] hover:bg-[#7CB342] text-white"
+              data-testid="button-save-edit"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
