@@ -48,7 +48,10 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: "auto",
-      sameSite: "lax",
+      // "none" + Secure + Partitioned allows the session cookie to work
+      // when the app is embedded in an iframe on another site (e.g. gc.rmone.com)
+      sameSite: "none",
+      partitioned: true,
       maxAge: sessionTtl,
     },
   });
@@ -177,6 +180,29 @@ export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
 
+  // Safety fallback: SameSite=None requires HTTPS. If the app is ever
+  // accessed over plain HTTP, rewrite the outgoing session cookie to
+  // "lax" (and drop Partitioned) so login still works.
+  app.use((req: any, res, next) => {
+    if (!req.secure) {
+      const originalSetHeader = res.setHeader.bind(res);
+      res.setHeader = function (name: any, value: any) {
+        if (String(name).toLowerCase() === "set-cookie") {
+          const cookies = Array.isArray(value) ? value : [value];
+          value = cookies.map((c: any) =>
+            typeof c === "string"
+              ? c
+                  .replace(/;\s*Partitioned/gi, "")
+                  .replace(/SameSite=None/gi, "SameSite=Lax")
+              : c,
+          );
+        }
+        return originalSetHeader(name, value);
+      } as any;
+    }
+    next();
+  });
+
   // Seed the fixed user on server startup
   await seedFixedUser();
 
@@ -240,7 +266,13 @@ export async function setupAuth(app: Express) {
         console.error("Logout error:", err);
         return res.status(500).json({ message: "Logout failed" });
       }
-      res.clearCookie("connect.sid");
+      res.clearCookie("connect.sid", {
+        httpOnly: true,
+        secure: req.secure,
+        sameSite: "none",
+        partitioned: true,
+        path: "/",
+      } as any);
       res.json({ message: "Logged out successfully" });
     });
   });
