@@ -52,6 +52,18 @@ export default function EmbedWithIdPage() {
     console.log('[EmbedWithId] Initial role from sessionStorage:', storedRole);
     return storedRole || 'user';
   });
+
+  // Tell the parent page (the site embedding this iframe) that the embed
+  // loaded successfully, so it can hide any fallback/error message.
+  useEffect(() => {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "rmone-embed-ready" }, "*");
+      }
+    } catch {
+      // Ignore cross-origin errors
+    }
+  }, []);
   
   // Extract JWT token from URL query parameter or sessionStorage
   const getJwtTokenFromUrl = (): string | null => {
